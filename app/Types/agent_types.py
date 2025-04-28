@@ -1,6 +1,8 @@
 from pydantic import BaseModel, model_validator
-from typing import Literal,Union
+from typing import Literal, Union, List
+from pydantic import BaseModel
 from enum import Enum
+
 
 class SystemInfo(BaseModel) :
     os: str
@@ -33,3 +35,14 @@ class StepStatus(Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
+class Step(BaseModel):
+    id: str
+    description: str
+    thought: str
+    dependency: List[str]  # dependencies can be a list of step ids
+    expected_output: str
+
+
+class StepsList(BaseModel):
+    steps: List[Step]

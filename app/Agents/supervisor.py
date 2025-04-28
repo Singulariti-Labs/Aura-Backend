@@ -11,7 +11,7 @@ from app.LLM.memory import Message, Memory
 
 class SupervisorAgent(BaseAgent): 
     """ Supervisor is the main AI agent, who is responsible to decides which subagent
-        to call to perform specific task given by the PlannerAgent 
+        to call to perform specific task given by the PlannerAgent
     """
 
     def __init__(self, query: str, llm: LLMConfig, maxTokens: int = 128000):
