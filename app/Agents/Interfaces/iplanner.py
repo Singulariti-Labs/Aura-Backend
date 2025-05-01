@@ -10,38 +10,17 @@ class IPlannerAgent(BaseAgent):
     Interface for PlannerAgent used by the SupervisorAgent to delegate planning tasks.
     """
 
-    def create_agent(self, llm: BaseChatModel) -> Runnable:
-        """
-        Create an agent capable of processing structured task planning.
-
-        Args:
-            llm (BaseChatModel): The language model instance.
-
-        Returns:
-            Runnable: The configured agent.
-        """
-
-    async def execute(self, llm: BaseChatModel, agent: Runnable, query: str) -> Any:
-        """
-        Execute a given task plan using the agent.
-
-        Args:
-            llm (BaseChatModel): The language model.
-            agent (Runnable): The agent object.
-            query (str): The user's task query.
-
-        Returns:
-            Any: The result of execution.
-        """
-
     async def run(self, llm: BaseChatModel, query: str) -> Any:
-        """
-        Main method to generate a structured plan or response from the planner.
+         """
+        Executes the planner logic by passing the query to the appropriate LLM pipeline.
 
-        Args:
-            llm (BaseChatModel): The language model instance.
-            query (str): The task query from the user.
+        Input:
+            llm (BaseChatModel): An instance of the language model (e.g., OpenAI or Anthropic).
+            query (str): The user’s question or task description.
 
         Returns:
-            Any: Structured task steps or simplified response.
+            Any: The output from the LLM—either a structured plan or a single-step task description.
+
+        Raises:
+            RuntimeError: If any error occurs during planning or while calling the LLM.
         """

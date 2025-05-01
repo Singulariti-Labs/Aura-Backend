@@ -1,43 +1,65 @@
 from typing import Optional, Dict, List, Any
 from langchain_core.output_parsers import JsonOutputParser
-
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.Agents.base_agent import BaseAgent
-from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus
+from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus, ROLE_TYPE
 from app.Agents.planner import PlannerAgent
 from app.Prompts.supervisor import SUPERVISOR_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 
 class SupervisorAgent(BaseAgent): 
-    """ Supervisor is the main AI agent, who is responsible to decides which subagent
-        to call to perform specific task given by the PlannerAgent
+    """
+    SupervisorAgent is the central coordinator responsible for handling incoming user queries.
+    It works in collaboration with the PlannerAgent to break down tasks into actionable steps.
+    Based on the complexity of the plan (simple or multi-step), it invokes appropriate sub-agents
+    or tools to execute each step. The class also maintains conversation memory and handles
+    task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, query: str, llm: LLMConfig, maxTokens: int = 128000):
-        self.query = query;
-        self.llm = LLMFactory.create_llm(llm);
+    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None, maxTokens: int = 128000):
+        # self.query = query; #WIP (need to see if query is required while init)
+        self.llm = llm;
         self.max_tokens = maxTokens;
         self.planner_agent = PlannerAgent();
         self.router_parser = JsonOutputParser();
         self.system_info = None;
+        self.memory = memory
 
 
     async def processQuery(self, query: str) -> str:
         """
-            Process the query by passing query to Planner Agent get the detailed plane to complete the task.
+        Passes the user query to the PlannerAgent to generate a structured plan
+        containing one or more steps to accomplish the task.
+
+        Input:
+            query (str): The user's input query.
+
+        Returns:
+            str: A serialized plan representing the task breakdown.
         """
-        result = await self.planner_agent.run(self.llm, self.query)
+        result = await self.planner_agent.run(self.llm, query, self.memory)
         return result
         
-    async def invoke(self, query: str, systemInfo: SystemInfo, screenShot: Optional[str] = None) -> str:
+    async def invoke(self, query: str, system_info: Optional[SystemInfo] = None, screenshot: Optional[str] = None) -> str:
         """
-            Invoke Supervisor Agent.
+        Entry point to handle a user query. It stores the query in memory, calls
+        the planner agent to generate a plan, and then executes the plan using either
+        a simple or complex task execution flow.
+
+        Input:
+            query (str): The user query.
+            system_info (Optional[SystemInfo]): Optional contextual system data.
+            screenshot (Optional[str]): Optional base64 screenshot for additional context.
+
+        Returns:
+            str: The final response or result after processing the plan.
         """
         try:
-            self.system_info = systemInfo
+            self.system_info = system_info
 
-            self.update_memory("user", query, base64_image=screenShot)
+            self.update_memory("user", query, base64_image=screenshot)
 
             plan = await self.processQuery(query)
 
@@ -51,6 +73,7 @@ class SupervisorAgent(BaseAgent):
 
             # Store final result in memory
             self.update_memory("assistant", result)
+            return result
 
         except Exception as e:
             # logger.error(f"Error in SupervisorAgent.invoke: {str(e)}") WIP
@@ -66,16 +89,17 @@ class SupervisorAgent(BaseAgent):
         base64_image: Optional[str] = None,
         **kwargs,
     ) -> None:
-        """Add a message to the agent's memory.
+        """
+        Adds a message to the agent’s memory based on the sender role.
 
-        Args:
-            role: The role of the message sender (user, system, assistant, tool).
-            content: The message content.
-            base64_image: Optional base64 encoded image.
-            **kwargs: Additional arguments (e.g., tool_call_id for tool messages).
+        Input:
+            role (ROLE_TYPE): The message sender role (user, system, assistant, tool).
+            content (str): Message text content.
+            base64_image (Optional[str]): Base64 encoded screenshot, if any.
+            **kwargs: Additional metadata such as tool_call_id.
 
         Raises:
-            ValueError: If the role is unsupported.
+            ValueError: If the provided role is unsupported.
         """
         message_map = {
             "user": Message.user_message,
@@ -93,14 +117,18 @@ class SupervisorAgent(BaseAgent):
 
     async def handle_simple_task(self, plan: List[Dict[str, Any]]) -> str:
         """
-        Handle a simple task with a single step.
-        
-        Args:
-            plan: A list containing a single step
-            
+        Executes a single-step plan as a simple task.
+
+        Input:
+            plan (List[Dict[str, Any]]): The plan containing a single task step.
+
         Returns:
-            The result of executing the step
+            str: The result from executing the single step.
+
+        Raises:
+            ValueError: If the plan does not contain exactly one step.
         """
+
         if not plan or len(plan) != 1:
             raise ValueError("Simple task should have exactly one step")
         
@@ -117,13 +145,14 @@ class SupervisorAgent(BaseAgent):
     
     async def handle_complex_task(self, plan: List[Dict[str, Any]]) -> str:
         """
-        Handle a complex task with multiple steps that may have dependencies.
-        
-        Args:
-            plan: A list of steps to execute
-            
+        Executes a multi-step plan where steps may have dependencies. Tracks
+        step completion status and retries failed steps up to a limit.
+
+        Input:
+            plan (List[Dict[str, Any]]): The structured plan containing multiple steps.
+
         Returns:
-            The final result after executing all steps
+            str: The result of the final step or an error message if steps failed.
         """
         if not plan:
             raise ValueError("Complex task plan cannot be empty")
@@ -183,13 +212,17 @@ class SupervisorAgent(BaseAgent):
 
     async def run_step(self, step: Dict[str, Any]) -> str: # WIP
         """
-        Execute a single step using the appropriate subagent.
-        
-        Args:
-            step: The step to execute
-            
+        Executes a single step by invoking the relevant sub-agent or tool.
+        Prepares context using memory and LLM before executing the tool.
+
+        Input:
+            step (Dict[str, Any]): A dictionary describing the step to be executed.
+
         Returns:
-            The result of the step execution
+            str: The result from the tool/sub-agent execution.
+
+        Raises:
+            Exception: If the tool execution or LLM call fails.
         """
         try:
             # Extract step information

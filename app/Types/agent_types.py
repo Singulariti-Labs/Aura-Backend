@@ -1,12 +1,11 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, Field
 from typing import Literal, Union, List
-from pydantic import BaseModel
 from enum import Enum
 
 
 class SystemInfo(BaseModel) :
-    os: str
-    version: str
+    os: str = Field(..., description="Operating system name")
+    version: str = Field(..., description="OS version")
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high']
 AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
@@ -31,6 +30,8 @@ class Role(str, Enum):
     ASSISTANT = "assistant"
     TOOL = "tool"
 
+ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
+
 class StepStatus(Enum):
     PENDING = "pending"
     COMPLETED = "completed"
@@ -40,7 +41,7 @@ class Step(BaseModel):
     id: str
     description: str
     thought: str
-    dependency: List[str]  # dependencies can be a list of step ids
+    dependency: List[str] = Field(default_factory=list) # dependencies can be a list of step ids
     expected_output: str
 
 

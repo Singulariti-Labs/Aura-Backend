@@ -1,5 +1,6 @@
 from typing import Optional, List, Union, Dict, Any
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+from langchain_openai.chat_models.base import ChatOpenAI
+from langchain_community.chat_models.anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -8,31 +9,63 @@ from langchain.tools import Tool
 from langchain.output_parsers import PydanticOutputParser
 
 
-from app.Types.agent_types import LLMConfig, StepsList
+from app.Types.agent_types import LLMConfig, StepsList, SystemInfo
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
 
-class LLMFactory:
+class LLMFactory():
+    """
+    LLMFactory handles creation and execution of language model agents with optional tools, multimodal inputs, 
+    and memory support for chat history.
+    """
 
-    memory: Memory
+    def __init__(self, memory: Memory):
+        """
+        Initializes the LLMFactory with a memory instance to track chat history and message flow.
+
+        Input:
+        - memory: An instance of the Memory class to persist user and assistant messages.
+        """
+        self.memory = memory
 
     @staticmethod
-    def create_llm(llm_config: LLMConfig) -> BaseChatModel:
+    def create_llm(llm_config: LLMConfig):
+        """
+        Creates a language model instance based on the given provider and model name.
+
+        Input:
+        - llm_config: Configuration containing provider and model_name.
+
+        Returns:
+        - An instance of ChatOpenAI or ChatAnthropic.
+        """
         try:
             if llm_config.provider == "openai":
                 return ChatOpenAI(model=llm_config.model_name)
             elif llm_config.provider == "anthropic":
                 return ChatAnthropic(model=llm_config.model_name)
             else:
-                raise ValueError(f"Unsupported provider: {llm_config.provider}")
+                raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:
             raise RuntimeError(
-                f"Error creating LLM instance for provider '{llm_config.provider}' "
+                f"Error creating LLM instance for provider '{llm_config}' "
                 f"with model '{llm_config.model_name}': {str(e)}"
             )
-    
+        
+    @staticmethod
     def get_agent_type(llm: BaseChatModel, prompt: ChatPromptTemplate, tools: Optional[List[Tool]] = None):
+        """
+        Determines the appropriate agent creation method based on the type of LLM.
 
+        Input:
+        - llm: A BaseChatModel instance.
+        - prompt: A ChatPromptTemplate to guide the agent's behavior.
+        - tools: Optional list of tools to be used by the agent.
+
+        Returns:
+        - An agent configured with the provided tools and LLM.
+        """
+        print(f"PROMT TYPE: {type(prompt)}")
         if isinstance(llm, ChatOpenAI):
             return create_openai_tools_agent(llm, prompt, tools)
         elif isinstance(llm, ChatAnthropic):
@@ -40,22 +73,49 @@ class LLMFactory:
         else:
             raise ValueError(f"Unsupported LLM type: {type(llm)}")
     
+    @staticmethod
     def invoke_agent(
         llm:BaseChatModel,
         agent: Runnable,
+        tools: List[Tool],
+        system_info: SystemInfo,
         query: Union[str, List[Dict[str, Union[str, dict]]]],
-        chat_history: Optional[List[Message]] = []
+        chat_history: Optional[List[Message]] = [],
     ):
+        """
+        Invokes an agent with the given input, tools, and memory context.
+
+        Input:
+        - llm: The language model used by the agent.
+        - agent: The runnable agent instance.
+        - tools: List of tools to assist the agent.
+        - system_info: Optional system-level context.
+        - query: The user input (text or multimodal).
+        - chat_history: Optional list of previous messages.
+
+        Returns:
+        - The final response from the agent after execution.
+        """
         agent_executor = AgentExecutor(
             agent=agent,
+            tools=tools,
             verbose=True,
             return_intermediate_steps=True
         )
-        result = agent_executor.invoke({"input": query, "chat_history": chat_history})
+        result = agent_executor.invoke({"input": query,  "chat_history_for_llm": chat_history, "system_info": system_info})
         return result
     
     def get_multimodal_query(query: str, screenshot: str):
-        """Provide the input query format with screenshot"""
+        """
+        Formats a multimodal query combining user text and screenshot data.
+
+        Input:
+        - query: User's textual input.
+        - screenshot: A base64 image string or URL.
+
+        Returns:
+        - A list combining text and image input formatted for multimodal LLMs.
+        """
 
         multimodal_query =  [
                     {"type": "text", "text": query},
@@ -75,13 +135,28 @@ class LLMFactory:
         system_prompt: str,
         llm: BaseChatModel,
         query: str,
+        system_info: Optional[SystemInfo] = None,
         tools: Optional[List[Tool]] = None,
         # chat_history: Optional[List[Union[HumanMessage, AIMessage, SystemMessage]]] = None,
         chat_history: Optional[List[Message]] = None,
         screenshot: Optional[str] = None,
         max_tokens: int = 128000,
     ):
-        """This method is to invoke the AI agent with tools/subagent, chat_history and image
+        """
+        Executes a user query using the agent or directly via LLM, with optional tools, chat history, and image input.
+
+        Input:
+        - system_prompt: Initial system prompt to guide the agent.
+        - llm: The language model to use.
+        - query: The user's question or command.
+        - system_info: Optional system-specific information.
+        - tools: Optional list of tools the agent can use.
+        - chat_history: Optional list of previous messages to maintain continuity.
+        - screenshot: Optional image input in base64 or URL.
+        - max_tokens: Maximum token limit for the LLM response.
+
+        Returns:
+        - The response from the agent or LLM after processing the query.
         """
         try:
             if screenshot:
@@ -102,20 +177,43 @@ class LLMFactory:
             # Prepare system prompt
             if system_prompt:
                 prompt = ChatPromptTemplate.from_messages([
-                    ("system", system_prompt),  # Only include system prompt here
-                    MessagesPlaceholder(variable_name="chat_history_for_llm"),
-                    MessagesPlaceholder(variable_name="agent_scratchpad"),
-                    ("human", "{input}")
+                    ("system", system_prompt),  # Only include system prompt 
+                    ("system", "{system_info}"),
+                    MessagesPlaceholder(variable_name="chat_history"),
+                    ("human", "{input}"),
+                    MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
             
             # If tools are provided, use create_openai_tools_agent
             if tools:
-                agent = self.get_agent_type(llm, prompt, tools)
-                response = self.invoke_agent(llm, agent, multimodal_query, chat_history_for_llm) #WIP add the message to the memory from tool
+                # agent = self.get_agent_type(llm=llm, prompt=prompt, tools=tools)
+                agent = create_openai_tools_agent(llm, tools, prompt)
+
+
+                # response = self.invoke_agent(
+                #     llm=llm, 
+                #     agent=agent,
+                #     tools=tools,
+                #     system_info=system_info, 
+                #     query=multimodal_query,  # multimodal query should be passed as 'query'
+                #     chat_history=chat_history_for_llm  # chat history as 'chat_history'
+                # ) #WIP add the message to the memory from tool
+                
+
+                executor = AgentExecutor(
+                    agent=agent,
+                    tools=tools,
+                    verbose=True,
+                    return_intermediate_steps=True
+                )
+
+                response = executor.invoke({"input": query, "query": query,  "chat_history": chat_history_for_llm, "system_info": system_info})
+                
                 return response
             else:
+                formated_query = {"input": multimodal_query, "chat_history": chat_history_for_llm, "system_info": system_info}
                 # Invoke the LLM
-                response = await llm.ainvoke({"input": multimodal_query, "chat_history_for_llm": chat_history_for_llm})
+                response = await llm.ainvoke(formated_query)
 
                 # adding response to memory as assistant message.
                 assistant_message = Message.assistant_message(content=response.content, base64_image=screenshot)
@@ -128,15 +226,15 @@ class LLMFactory:
 
     async def invoke_planner_agent(llm: BaseChatModel, prompt_template: str, query: str) -> List[Dict[str, str]]:
         """
-        Invokes the planner agent using the provided LLM, prompt template, and user query.
+        Uses a language model to generate a structured multi-step plan from a user query.
 
-        Args:
-            llm: The language model instance to use (must have a .predict method).
-            prompt_template: The template string with placeholders like {query} and {format_instructions}.
-            query: The user query string that needs to be broken into steps.
+        Input:
+        - llm: The language model instance to generate the plan.
+        - prompt_template: Template string with placeholders for query and formatting.
+        - query: The complex input question to be broken down.
 
         Returns:
-            A list of dictionaries with keys: "id", "description", "thought", "dependency", and "expected_output".
+        - A list of steps, each with id, description, thought, dependency, and expected output.
         """
         try:
             parser = PydanticOutputParser(pydantic_object=StepsList)
