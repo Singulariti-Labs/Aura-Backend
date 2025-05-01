@@ -259,4 +259,4 @@ class SupervisorAgent(BaseAgent):
             
         except Exception as e:
             # logger.error(f"Error in run_step: {str(e)}")
-            raise
+            raise RuntimeError(f"Error while runing the Step given by the Planner-Agnet, Error: {e}")

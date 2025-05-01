@@ -137,7 +137,6 @@ class LLMFactory():
         query: str,
         system_info: Optional[SystemInfo] = None,
         tools: Optional[List[Tool]] = None,
-        # chat_history: Optional[List[Union[HumanMessage, AIMessage, SystemMessage]]] = None,
         chat_history: Optional[List[Message]] = None,
         screenshot: Optional[str] = None,
         max_tokens: int = 128000,
@@ -164,9 +163,9 @@ class LLMFactory():
             else:
                 multimodal_query = query
 
-                # Add the user's query in the memory
-                user_query = Message.user_message(content=query, base64_image=screenshot)
-                self.memory.add_message(user_query)
+                # Add the user's query in the memory -> (User query added in Agent class)
+                # user_query = Message.user_message(content=query, base64_image=screenshot)
+                # self.memory.add_message(user_query)
 
 
             # Prepare chat history
