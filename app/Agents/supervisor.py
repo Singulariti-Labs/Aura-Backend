@@ -39,7 +39,7 @@ class SupervisorAgent(BaseAgent):
         Returns:
             str: A serialized plan representing the task breakdown.
         """
-        result = await self.planner_agent.run(self.llm, query, self.memory)
+        result = await self.planner_agent.run(self.llm, query)
         return result
         
     async def invoke(self, query: str, system_info: Optional[SystemInfo] = None, screenshot: Optional[str] = None) -> str:
@@ -113,7 +113,7 @@ class SupervisorAgent(BaseAgent):
 
         # Create message with appropriate parameters based on role
         kwargs = {"base64_image": base64_image, **(kwargs if role == "tool" else {})}
-        Memory.add_message(message_map[role](content, **kwargs))
+        self.memory.add_message(message_map[role](content, **kwargs))
 
     async def handle_simple_task(self, plan: List[Dict[str, Any]]) -> str:
         """
@@ -241,7 +241,7 @@ class SupervisorAgent(BaseAgent):
             
             # Invoke LLM to process the step
             response = await self.llm.generate(
-                messages=Memory.get_messages(),
+                messages=self.memory.get_messages(),
                 max_tokens=self.max_tokens
             )
             

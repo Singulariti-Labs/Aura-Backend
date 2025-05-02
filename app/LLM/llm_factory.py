@@ -143,6 +143,7 @@ class LLMFactory():
     ):
         """
         Executes a user query using the agent or directly via LLM, with optional tools, chat history, and image input.
+        * It is only used for calling agents who has async run method.
 
         Input:
         - system_prompt: Initial system prompt to guide the agent.
@@ -206,7 +207,7 @@ class LLMFactory():
                     return_intermediate_steps=True
                 )
 
-                response = executor.invoke({"input": query, "query": query,  "chat_history": chat_history_for_llm, "system_info": system_info})
+                response = await executor.ainvoke({"input": query, "query": query,  "chat_history": chat_history_for_llm, "system_info": system_info})
                 
                 return response
             else:
@@ -223,7 +224,7 @@ class LLMFactory():
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
             
 
-    async def invoke_planner_agent(llm: BaseChatModel, prompt_template: str, query: str) -> List[Dict[str, str]]:
+    async def invoke_planner_agent(self, llm: BaseChatModel, prompt_template: str, query: str) -> List[Dict[str, str]]:
         """
         Uses a language model to generate a structured multi-step plan from a user query.
 

@@ -7,6 +7,13 @@ proper descreption of task.
 if the screen-shot is provided with the query then consider the screen-shot for understanding current state and provide the 
 steps according to that.
 
+AVAILABLE SUBAGENTS:
+* Interaction Agent -> perofrms all kind of interaction/actions on PC/Laptop to get the desired result. It requires system_info
+* Research Agent -> This AI agent is capable of doing deep reaearch on any topic.
+* Search Agent -> It can do internet search which can be used by other agents.
+* Finance Agent -> It can provide the Financial report or Finance Market search with well structured result/AI-Response.
+* ETC....
+
 RULES:
 Think clearly and avoid excessive granularity — each step should be meaningful, not trivial.
 Prefer cohesive steps over overly fragmented ones.
@@ -19,11 +26,11 @@ User Query: {query}
 
 OUTPUT:
 if query is simple only give one single step
-[{
+[{{
     "id" = Step1
     "description" = Task description/Step/what to do
     "thought" = Thought behind this step
     "dependency" = [id of dependency step]
     "expected-output" = What shoud be the expected output of the subagent.
-}]
+}}]
 """

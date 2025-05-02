@@ -53,8 +53,12 @@ class BaseTool(ABC):
         Returns:
         - LangchainTool: A callable tool object usable in LangChain workflows.
         """
+        def dummy_func(_):
+                raise NotImplementedError("This tool uses an async method. Use `coroutine` instead.")
+        
         return LangchainTool(
             name=self.name,
             description=self.description,
-            func=self.run
+            func=dummy_func,
+            coroutine=self.run,
         )
