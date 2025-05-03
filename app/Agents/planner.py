@@ -1,58 +1,51 @@
 from app.LLM.llm_factory import LLMFactory
 from langchain_core.output_parsers import JsonOutputParser
-from langchain.chat_models import ChatOpenAI, ChatAnthropic
+from langchain_openai.chat_models.base import ChatOpenAI
+from langchain_community.chat_models.anthropic import ChatAnthropic
 from langchain.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables import Runnable
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from typing import Optional
 
 from app.Prompts.planner import PLANNER_PROMPT
 from app.Agents.base_agent import BaseAgent
+from app.LLM.memory import Memory
 
 class PlannerAgent(BaseAgent) :
     """
-        Planner agent takes the query and provide a structured plan using COT if query is complex if 
-        query is simple and task can be done using single available agent then provide proper description of the task
+    The PlannerAgent is responsible for analyzing a user query and deciding how to approach the task:
+
+        - If the query is **simple**, it returns a brief structured description indicating how the task can be completed directly by a suitable
+          agent.
+        - If the query is **complex**, it generates a **step-by-step plan** (using Chain-of-Thought reasoning) outlining how the task should be
+          divided and which tools or sub-agents are required to accomplish each step.
+
+    This makes it ideal as a high-level controller in a multi-agent system where task decomposition is essential.
     """
 
-    def __init__(self):
+    def __init__(self, memory: Optional[Memory] = None):
         self.planner_prompt = PLANNER_PROMPT
-        self.router_parser = JsonOutputParser
-    
-    def create_agent(self, llm: BaseChatModel):  #can be keep in baseclass
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", self.planner_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-
-        if isinstance(llm, ChatOpenAI):
-            return create_openai_tools_agent(llm, self.tools, prompt)
-        elif isinstance(llm, ChatAnthropic):
-            return create_tool_calling_agent(llm, self.tools, prompt)
-        else:
-            raise ValueError(f"Unsupported LLM type: {type(llm)}")
-    
-    async def execute(self, llm: BaseChatModel, agent: Runnable, query: str) -> AgentExecutor:
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=self.tools,
-            verbose=True,
-            return_intermediate_steps=True
-        )
-        result = agent_executor.invoke({"input": query})
-        return result
+        self.memory = memory
+        self.llm_factory = LLMFactory(self.memory)
 
     async def run(self, llm: BaseChatModel, query: str):
-        """Determine if the query is complex and which agent should handle it"""
-        
-        agent = self.create_agent(llm)
-        response = await self.execute(agent, llm, agent, query)
-        print(f"{response}")
-        return response
+        """
+        Executes the planner logic by passing the query to the appropriate LLM pipeline.
 
+        Input:
+            llm (BaseChatModel): An instance of the language model (e.g., OpenAI or Anthropic).
+            query (str): The user’s question or task description.
 
+        Returns:
+            Any: The output from the LLM—either a structured plan or a single-step task description.
 
-        
+        Raises:
+            RuntimeError: If any error occurs during planning or while calling the LLM.
+        """
+        try: 
+            response = await self.llm_factory.invoke_planner_agent(llm=llm, prompt_template=self.planner_prompt, query=query)
+            print(f"{response}")
+            return response
+        except Exception as e:
+            raise RuntimeError(f"Error while running Planner agent ERROR: {e}")
