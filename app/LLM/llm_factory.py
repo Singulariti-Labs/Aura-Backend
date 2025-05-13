@@ -7,9 +7,11 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain.tools import Tool
 from langchain.output_parsers import PydanticOutputParser
+import re
+import json
 
 
-from app.Types.agent_types import LLMConfig, StepsList, SystemInfo
+from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
 
@@ -105,7 +107,7 @@ class LLMFactory():
         result = agent_executor.invoke({"input": query,  "chat_history_for_llm": chat_history, "system_info": system_info})
         return result
     
-    def get_multimodal_query(query: str, screenshot: str):
+    def get_multimodal_query(query: str, base64_image: str, current_state: Optional[str] = None):
         """
         Formats a multimodal query combining user text and screenshot data.
 
@@ -117,16 +119,31 @@ class LLMFactory():
         - A list combining text and image input formatted for multimodal LLMs.
         """
 
-        multimodal_query =  [
-                    {"type": "text", "text": query},
-                    {
-                        "type": "image_url", 
-                        "image_url": {
-                            "url": screenshot if screenshot.startswith("http") or screenshot.startswith("data:") 
-                                else f"data:image/jpeg;base64,{screenshot}"
-                        }
-                    }
-                ]
+        multimodal_query = []
+
+
+        # Add the user's actual question
+        multimodal_query.append({
+            "type": "text",
+            "text": query
+        })
+
+         # If current state exists, add it first
+        if current_state:
+            multimodal_query.append({
+                "type": "text",
+                "text": f"Parsed Page Info:\n{current_state}"
+            })
+
+        # Add the image if provided
+        if base64_image:
+            multimodal_query.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{base64_image}"
+                }
+            })
+
         return multimodal_query
 
     
@@ -160,7 +177,7 @@ class LLMFactory():
         """
         try:
             if screenshot:
-                multimodal_query = self.get_multimodal_query(query, screenshot)
+                multimodal_query = self.get_multimodal_query(query=query, base64_image=screenshot)
             else:
                 multimodal_query = query
 
@@ -268,3 +285,78 @@ class LLMFactory():
         
         except Exception as e:
             raise Exception(f"Error while creating a plan: {e}")
+
+
+    async def invoke_interaction_agent(
+        self,
+        llm: BaseChatModel,
+        system_prompt: str,
+        query: str,
+        chat_history: List[Message],
+        system_info: Optional[SystemInfo] = None,
+        agent_type: AGENT_TYPE,  # type: ignore
+        base64_image: Optional[str] = None,
+        current_state: Optional[str] = None,  #(parsed_page)
+        max_tokens = 128000,
+    ):
+        try: 
+            if base64_image:
+                query = self.get_multimodal_query(query, base64_image, current_state)
+
+            chat_history_for_llm = []
+            if chat_history:
+                chat_history_for_llm = [message.to_dict() for message in chat_history]
+            
+            
+            if system_prompt:
+                prompt = ChatPromptTemplate.from_messages([
+                    ("system", system_prompt),  # Only include system prompt #WIP** need to add the parsed_page
+                    ("system", "{system_info}"),
+                    MessagesPlaceholder(variable_name="chat_history"),
+                    ("human", "{query}"),
+                    MessagesPlaceholder(variable_name="agent_scratchpad")
+                ])
+            
+            input_message = prompt.format_messages(
+                system_prompt = system_prompt,
+                system_info = system_info,
+                chat_history = chat_history_for_llm,
+                query = query
+            )
+            
+            response = await llm.ainvoke(input_message)
+
+            parsed_content = self.parse_response_in_json(response_content=response.content)
+
+            return parsed_content
+            
+        except Exception as e:
+            raise RuntimeError(f"Error while invoking Interaction agent: {e}")
+
+    
+    def parse_response_in_json(self, response_content: str):
+        """
+        Extracts a JSON code block from markdown-style text (```json ... ```),
+        parses it, and returns the resulting dictionary.
+
+        Parameters:
+            response_content (str): The text content containing a JSON code block.
+
+        Returns:
+            dict: The parsed JSON as a dictionary, if found.
+            None: If no JSON block is found or parsing fails.
+        """
+        match = re.search(r'```json\n(.*?)```', response_content, re.DOTALL)
+        
+        if match:
+            json_string = match.group(1)
+            try:
+                data_dict = json.loads(json_string)
+                print("Parsed JSON:", data_dict)
+                return data_dict
+            except json.JSONDecodeError as e:
+                print("Failed to parse JSON:", e)
+                return None
+        else:
+            print("No JSON object found.")
+            return None

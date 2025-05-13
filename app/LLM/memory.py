@@ -106,7 +106,7 @@ class Message(BaseModel):
 
     @classmethod
     def tool_message(
-        cls, content: str, name, tool_call_id: str, base64_image: Optional[str] = None
+        cls, content: str, name, tool_call_id: Optional[str] = None, base64_image: Optional[str] = None
     ) -> "Message":
         """
         Creates a tool message representing output from a tool execution.

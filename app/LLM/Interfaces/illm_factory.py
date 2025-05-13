@@ -63,7 +63,7 @@ class ILLMFactory():
         - The final response from the agent after execution.
         """
     
-    def get_multimodal_query(query: str, screenshot: str):
+    def get_multimodal_query(query: str, base64_image: str):
         """
         Formats a multimodal query combining user text and screenshot data.
 

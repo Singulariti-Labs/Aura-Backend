@@ -8,6 +8,7 @@ from app.Agents.planner import PlannerAgent
 from app.Prompts.supervisor import SUPERVISOR_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
+from app.helper import update_memory
 
 class SupervisorAgent(BaseAgent): 
     """
@@ -59,7 +60,7 @@ class SupervisorAgent(BaseAgent):
         try:
             self.system_info = system_info
 
-            self.update_memory("user", query, base64_image=screenshot)
+            update_memory(role="user", content=query, memory=self.memory, base64_image=screenshot)
 
             plan = await self.processQuery(query)
 
@@ -72,48 +73,14 @@ class SupervisorAgent(BaseAgent):
                 result = await self.handle_complex_task(plan)
 
             # Store final result in memory
-            self.update_memory("assistant", result)
+            update_memory(role="assistant", content=result, memory=self.memory)
             return result
 
         except Exception as e:
             # logger.error(f"Error in SupervisorAgent.invoke: {str(e)}") WIP
             error_message = f"An error occurred while processing your request: {str(e)}"
-            self.update_memory("assistant", error_message)
-            return error_message    
-
-    # MEMORY - WIP
-    def update_memory(
-        self,
-        role: ROLE_TYPE,  # type: ignore
-        content: str,
-        base64_image: Optional[str] = None,
-        **kwargs,
-    ) -> None:
-        """
-        Adds a message to the agent’s memory based on the sender role.
-
-        Input:
-            role (ROLE_TYPE): The message sender role (user, system, assistant, tool).
-            content (str): Message text content.
-            base64_image (Optional[str]): Base64 encoded screenshot, if any.
-            **kwargs: Additional metadata such as tool_call_id.
-
-        Raises:
-            ValueError: If the provided role is unsupported.
-        """
-        message_map = {
-            "user": Message.user_message,
-            "system": Message.system_message,
-            "assistant": Message.assistant_message,
-            "tool": lambda content, **kw: Message.tool_message(content, **kw),
-        }
-
-        if role not in message_map:
-            raise ValueError(f"Unsupported message role: {role}")
-
-        # Create message with appropriate parameters based on role
-        kwargs = {"base64_image": base64_image, **(kwargs if role == "tool" else {})}
-        self.memory.add_message(message_map[role](content, **kwargs))
+            update_memory(role="assistant", content=error_message, memory=self.memory)
+            return error_message
 
     async def handle_simple_task(self, plan: List[Dict[str, Any]]) -> str:
         """
@@ -140,7 +107,7 @@ class SupervisorAgent(BaseAgent):
             return result
         except Exception as e:
             # logger.error(f"Error executing simple task: {str(e)}")
-            self.update_memory("assistant", f"I encountered an error while processing your request: {str(e)}")
+            update_memory(role="assistant", content=f"I encountered an error while processing your request: {str(e)}", memory=self.memory)
             return f"Failed to complete the task: {str(e)}"
     
     async def handle_complex_task(self, plan: List[Dict[str, Any]]) -> str:
@@ -196,7 +163,7 @@ class SupervisorAgent(BaseAgent):
                 except Exception as e:
                     # logger.error(f"Error executing step {step_id}: {str(e)}")
                     step_status[step_id] = StepStatus.FAILED
-                    self.update_memory("assistant", f"Failed to complete step {step_id}: {str(e)}")
+                    update_memory(role="assistant", content=f"Failed to complete step {step_id}: {str(e)}", memory=self.memory)
         
         # Check if all steps completed successfully
         if all(status == StepStatus.COMPLETED for status in step_status.values()):
@@ -237,7 +204,7 @@ class SupervisorAgent(BaseAgent):
             supervisor_prompt = SUPERVISOR_PROMPT
             
             # Add the supervisor prompt to memory
-            self.update_memory("system", supervisor_prompt)
+            update_memory(role="system", content=supervisor_prompt, memory=self.memory)
             
             # Invoke LLM to process the step
             response = await self.llm.generate(
@@ -252,7 +219,7 @@ class SupervisorAgent(BaseAgent):
             tool_result = await self._execute_tool(tool_name, tool_input)
             
             # Update memory with tool response
-            self.update_memory("tool", tool_result, tool_call_id=step_id)
+            update_memory(role="tool", content=tool_result, tool_call_id=step_id, memory=self.memory)
             
             # Return the result
             return tool_result
