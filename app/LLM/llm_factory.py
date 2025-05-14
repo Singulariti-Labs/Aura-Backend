@@ -292,9 +292,9 @@ class LLMFactory():
         llm: BaseChatModel,
         system_prompt: str,
         query: str,
+        agent_type: AGENT_TYPE,  # type: ignore
         chat_history: List[Message],
         system_info: Optional[SystemInfo] = None,
-        agent_type: AGENT_TYPE,  # type: ignore
         base64_image: Optional[str] = None,
         current_state: Optional[str] = None,  #(parsed_page)
         max_tokens = 128000,

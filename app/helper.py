@@ -5,7 +5,6 @@ from app.Types.agent_types import ROLE_TYPE
 
 # MEMORY - WIP
 def update_memory(
-        self,
         role: ROLE_TYPE,  # type: ignore
         content: str,
         memory: Memory,
