@@ -31,6 +31,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "interaction"]    # type: ignore
 
 class StepStatus(Enum):
     PENDING = "pending"
