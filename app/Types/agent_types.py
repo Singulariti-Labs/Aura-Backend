@@ -1,5 +1,5 @@
 from pydantic import BaseModel, model_validator, Field
-from typing import Literal, Union, List
+from typing import Literal, Union, List, Optional
 from enum import Enum
 
 
@@ -32,6 +32,7 @@ class Role(str, Enum):
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
 AGENT_TYPE = Literal["main", "supervisor", "interaction"]    # type: ignore
+RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 class StepStatus(Enum):
     PENDING = "pending"
@@ -48,3 +49,13 @@ class Step(BaseModel):
 
 class StepsList(BaseModel):
     steps: List[Step]
+
+class SupervisorToolInput(BaseModel):
+    query: str
+    system_info: Optional[SystemInfo | str] = None
+    screenshot: Optional[str] = None
+
+class InteractionToolInput(BaseModel):
+    query: str
+    system_info: Optional[SystemInfo | str] = None
+    base64_image: str

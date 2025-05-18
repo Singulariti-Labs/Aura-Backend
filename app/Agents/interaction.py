@@ -24,80 +24,127 @@ class InteractionAgent():
         self.max_actions_per_step = 10
         self.failure_count = 0
         self.llm_factory = LLMFactory(self.subagent_memory)
+        self.interaction_tool_id = None
         
 
-    async def invoke(self, query: str, system_info: Optional[SystemInfo] = None, screenshot: Optional[str] = None ):
-        """"It invokes the Interaction Agent"""
+    async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None, screenshot: Optional[str] = None ):
+        """ Invokes the Interaction Agent which performs interaction on device on the behalf of user.
+
+        Input:
+            query (str): The user's input or task description to be processed by the agent.
+            tool_call_id (str): An identifier used to track the specific tool call for logging or coordination.
+            system_info (Optional[SystemInfo | str]): Information about the current system environment (OS, apps, etc.).
+            screenshot (Optional[str]): A base64-encoded screenshot representing the current state of the system UI (optional).
+        """
         try:
-            current_state_screenshot = await "API call (get base64 string)" #WIP***
-
             self.system_info = system_info
-            
-            prev_context = self.shared_memory.messages    #prev context from other agents ie, shared memory.
+            self.interaction_tool_id = tool_call_id
+            base64_image = screenshot # Get the screenshot from client of curret_state
+            self.subagent_memory.add_messages(self.shared_memory.messages)
 
-            # update_memory(role="user", content=query, base64_image=current_state_screenshot, memory=self.subagent_memory)
+            response = await self.think(query, self.subagent_memory.messages, base64_image)
+            status = response.get("status")
 
-            self.subagent_memory.add_messages(prev_context)
+            if status == "success":
+                return f"[✅ Success] Step {response.get('step')}: {response.get('result')}"
+            if status == "incomplete":
+                return f"[⚠️ Incomplete] {response.get('reason')} | Last result: {response.get('last_result')}"
+            if status == "failed":
+                return f"[❌ Failed] Step {response.get('step')}: {response.get('reason')}"
 
-            interaction_agent_memory = self.subagent_memory.messages
-
-            response = await self.think(
-                query=query,
-                chat_history=interaction_agent_memory,
-                base64_image=current_state_screenshot
-            )
-
-            return response
+            return "[❓ Unknown] Unexpected agent status."
 
         except Exception as e:
-            raise RuntimeError(f"Interactiion Agent Invoke Failed: {e}")
+            return f"[💥 Error] Interaction Agent Invoke Failed: {str(e)}"
+
 
     async def think(self, query: str, chat_history: List[Message], base64_image: str):
-        """Process invokes the LLM for the react style Interaction agent"""
+        """ Core reasoning loop for the Interaction Agent.
+
+        This method runs a ReAct-style agent loop for a maximum number of steps (`self.max_steps`), 
+        invoking the LLM at each step to process the query and generate the response.
+
+        Input:
+            query (str): The user's original request or task instruction.
+            chat_history (List[Message]): The ongoing chat memory to provide full context to the LLM.
+            base64_image (str): A base64-encoded screenshot representing the current UI or system state.
+        """
+
+        last_result = None  # To store the latest result from the agent
 
         for step in range(self.max_steps):
             try:
                 if await self.is_terminate():
-                    #LOGGER: log the termination response because of max_failer
-                    return {"status": "terminated", "reason": "Terminating due to max failure"}
-                
-                
+                    # Logging can be added here if needed
+                    return {
+                        "status": "failed",
+                        "reason": "Terminating due to max failure or explicit termination signal",
+                        "result": None
+                    }
+
                 result = await self.llm_factory.invoke_interaction_agent(
                     query=query,
                     base64_image=base64_image,
                     chat_history=chat_history,
                     llm=self.llm,
-                    agent_type = "interaction",
-                    system_info= self.system_info,
-                    system_prompt= self.interaction_agent_prompt
+                    agent_type="interaction",
+                    system_info=self.system_info,
+                    system_prompt=self.interaction_agent_prompt
                 )
 
+                last_result = result  # Save the latest result in case we need to return it later
+
+                # Update local memory with the conversation
                 update_memory(role="user", content=query, base64_image=base64_image, memory=self.subagent_memory)
-                update_memory(role="assistant", content=json.dumps(result))
+                update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
 
+                # Check if task has been completed
                 if await self.is_task_completed(result):
-                    update_memory(role="tool", content=json.dumps(result), name="interaction", base64_image=base64_image)
-                    break
-
-
+                    update_memory(
+                        role="tool",
+                        content=json.dumps(result),
+                        name="interaction",
+                        tool_call_id=self.interaction_tool_id,
+                        base64_image=base64_image,
+                        memory=self.shared_memory
+                    )
+                    return {
+                        "status": "success",
+                        "result": result,
+                        "step": step + 1
+                    }
 
             except Exception as e:
-                raise RuntimeError(f"Failed during Think process in Interaction Agent: {e}")
+                # Optional: Add logging here
+                return {
+                    "status": "failed",
+                    "step": step + 1,
+                    "reason": f"Exception occurred: {str(e)}",
+                    "result": None
+                }
+
+        # If max steps are exhausted but task not marked complete
+        return {
+            "status": "incomplete",
+            "reason": "Maximum steps reached without completing the task",
+            "last_result": last_result,
+            "result": None
+        }
                 
 
     
     async def is_terminate(self) -> bool:
-        # Example termination logic — expand as needed
+        """ Check if the faliure_count is greated than max_failure count"""
         return self.failure_count >= self.max_failure
     
     def is_task_completed(data: dict) -> bool:
         """
         Checks if the last action step has 'is_done' key to determine task completion.
         
-        Parameters:
+        Input:
             data (dict): The JSON dictionary containing the action steps.
         
-        Returns:
+        Output:
             bool: True if task is marked as done, False otherwise.
         """
         actions = data.get("action", [])

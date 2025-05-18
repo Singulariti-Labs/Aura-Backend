@@ -1,7 +1,12 @@
+from typing import TYPE_CHECKING
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.LLM.memory import Memory
 from app.Tools.supervisor import SupervisorTool
+from app.Tools.interaction import InteractionTool
+
+if TYPE_CHECKING:
+    from app.Agents.supervisor import SupervisorAgent
 
 class Tools():
     """
@@ -20,7 +25,13 @@ class Tools():
         """
         self.memory = memory
         self.llm = llm
-        self.supervisor_agent = SupervisorTool(llm=self.llm, memory=self.memory)
+
+         # Import at runtime to break the cycle
+        from app.Agents.supervisor import SupervisorAgent
+        self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(llm=self.llm, memory=self.memory, tools=self)
+
+        self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory)
+        self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory)
 
     
     def get_agent_tools(self):
@@ -32,6 +43,11 @@ class Tools():
         """
 
         tools = [
-            self.supervisor_agent.to_tool()
+            self.supervisor_tool.to_tool()
         ]
+        return tools
+    
+    def get_supervisor_tools(self):
+
+        tools = [self.interaction_tool.to_tool()]
         return tools

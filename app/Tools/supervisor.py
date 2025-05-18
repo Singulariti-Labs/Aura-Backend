@@ -1,14 +1,18 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import Tool as LangchainTool
+import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.Tools.tool_input_parser import ToolInputParser
-from app.Agents.supervisor import SupervisorAgent
 from app.LLM.memory import Memory
+from app.Types.agent_types import SupervisorToolInput
+
+if TYPE_CHECKING:
+    from app.Agents.supervisor import SupervisorAgent
 
 class SupervisorTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None):
+    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
         """
         Initializes the SupervisorTool with a language model and optional memory.
 
@@ -19,13 +23,14 @@ class SupervisorTool(BaseTool):
         The constructor sets up a `SupervisorAgent` internally to handle task planning and delegation.
         """
         super().__init__(
-            name="Supervisor",
+            name="supervisor",
             description="Plans and delegates tasks to sub-agents.",
-            memory=memory
+            memory=memory,
+            args_schema=SupervisorToolInput
         )
-        self.supervisor_agent = SupervisorAgent(llm=llm, memory=memory)
+        self.supervisor_agent = supervisor_agent
 
-    async def run(self, inputs: dict | str) -> str:
+    async def run(self, inputs: SupervisorToolInput) -> str:
         """
         Asynchronously executes the tool by delegating to the internal SupervisorAgent.
 
@@ -43,11 +48,16 @@ class SupervisorTool(BaseTool):
         - Any errors during parsing or invocation will propagate up unless handled by the caller.
         """
 
-        parsed = ToolInputParser.parse(inputs)
+        query = inputs.query
+        system_info = inputs.system_info
+        screenshot = inputs.screenshot
+
+        tool_call_id = str(uuid.uuid4())
         response = await self.supervisor_agent.invoke(
-            query=parsed["query"],
-            system_info=parsed["system_info"],
-            screenshot=parsed["screenshot"]
+            query=query,
+            system_info=system_info,
+            screenshot=screenshot,
+            tool_call_id = tool_call_id
         )
         return response
         

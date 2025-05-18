@@ -7,6 +7,7 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain.tools import Tool
 from langchain.output_parsers import PydanticOutputParser
+from langchain_core.runnables import RunnableLambda
 import re
 import json
 
@@ -14,6 +15,7 @@ import json
 from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
+from app.helper import update_memory
 
 class LLMFactory():
     """
@@ -107,7 +109,7 @@ class LLMFactory():
         result = agent_executor.invoke({"input": query,  "chat_history_for_llm": chat_history, "system_info": system_info})
         return result
     
-    def get_multimodal_query(query: str, base64_image: str, current_state: Optional[str] = None):
+    def get_multimodal_query(self, query: str, base64_image: str, current_state: Optional[str] = None):
         """
         Formats a multimodal query combining user text and screenshot data.
 
@@ -152,7 +154,8 @@ class LLMFactory():
         system_prompt: str,
         llm: BaseChatModel,
         query: str,
-        system_info: Optional[SystemInfo] = None,
+        agent_type: AGENT_TYPE,
+        system_info: Optional[SystemInfo | str] = None,
         tools: Optional[List[Tool]] = None,
         chat_history: Optional[List[Message]] = None,
         screenshot: Optional[str] = None,
@@ -187,35 +190,35 @@ class LLMFactory():
 
 
             # Prepare chat history
-            chat_history_for_llm = []
             if chat_history:
                 chat_history_for_llm = [message.to_dict() for message in chat_history]
+
+            update_memory("user", content=query, base64_image=screenshot, memory=self.memory)
             
             # Prepare system prompt
             if system_prompt:
                 prompt = ChatPromptTemplate.from_messages([
-                    ("system", system_prompt),  # Only include system prompt 
-                    ("system", "{system_info}"),
+                    ("system", system_prompt),
                     MessagesPlaceholder(variable_name="chat_history"),
                     ("human", "{input}"),
                     MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
+        
+            
+            system_info_str = system_info
+            if system_info and isinstance(system_info, SystemInfo):
+                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
+
+            
+            formated_input = (
+                f"query: {multimodal_query}\n"
+                f"system_info: {system_info_str}\n"
+            )
             
             # If tools are provided, use create_openai_tools_agent
             if tools:
                 # agent = self.get_agent_type(llm=llm, prompt=prompt, tools=tools)
                 agent = create_openai_tools_agent(llm, tools, prompt)
-
-
-                # response = self.invoke_agent(
-                #     llm=llm, 
-                #     agent=agent,
-                #     tools=tools,
-                #     system_info=system_info, 
-                #     query=multimodal_query,  # multimodal query should be passed as 'query'
-                #     chat_history=chat_history_for_llm  # chat history as 'chat_history'
-                # ) #WIP add the message to the memory from tool
-                
 
                 executor = AgentExecutor(
                     agent=agent,
@@ -224,13 +227,12 @@ class LLMFactory():
                     return_intermediate_steps=True
                 )
 
-                response = await executor.ainvoke({"input": query, "query": query,  "chat_history": chat_history_for_llm, "system_info": system_info})
+                response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
                 
                 return response
             else:
-                formated_query = {"input": multimodal_query, "chat_history": chat_history_for_llm, "system_info": system_info}
                 # Invoke the LLM
-                response = await llm.ainvoke(formated_query)
+                response = await llm.ainvoke({"input": formated_input})
 
                 # adding response to memory as assistant message.
                 assistant_message = Message.assistant_message(content=response.content, base64_image=screenshot)
@@ -294,7 +296,7 @@ class LLMFactory():
         query: str,
         agent_type: AGENT_TYPE,  # type: ignore
         chat_history: List[Message],
-        system_info: Optional[SystemInfo] = None,
+        system_info: Optional[SystemInfo | str] = None,
         base64_image: Optional[str] = None,
         current_state: Optional[str] = None,  #(parsed_page)
         max_tokens = 128000,
@@ -314,7 +316,7 @@ class LLMFactory():
                     ("system", "{system_info}"),
                     MessagesPlaceholder(variable_name="chat_history"),
                     ("human", "{query}"),
-                    MessagesPlaceholder(variable_name="agent_scratchpad")
+                    # MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
             
             input_message = prompt.format_messages(
@@ -327,6 +329,8 @@ class LLMFactory():
             response = await llm.ainvoke(input_message)
 
             parsed_content = self.parse_response_in_json(response_content=response.content)
+
+            print(f"INTERACTION_PARSED_CONTENT: {parsed_content}")
 
             return parsed_content
             
@@ -346,17 +350,18 @@ class LLMFactory():
             dict: The parsed JSON as a dictionary, if found.
             None: If no JSON block is found or parsing fails.
         """
-        match = re.search(r'```json\n(.*?)```', response_content, re.DOTALL)
+        match = re.search(r'```json\s*(\{.*?\})\s*```', response_content, re.DOTALL)
         
         if match:
             json_string = match.group(1)
-            try:
-                data_dict = json.loads(json_string)
-                print("Parsed JSON:", data_dict)
-                return data_dict
-            except json.JSONDecodeError as e:
-                print("Failed to parse JSON:", e)
-                return None
         else:
-            print("No JSON object found.")
+            # If no code block found, assume it's a plain JSON string
+            json_string = response_content.strip()
+        
+        try:
+            data_dict = json.loads(json_string)
+            print("Parsed JSON:", data_dict)
+            return data_dict
+        except json.JSONDecodeError as e:
+            print("Failed to parse JSON:", e)
             return None

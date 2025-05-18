@@ -27,6 +27,4 @@ example query for calling Supervisor.
 * Open a Browser and find me the best Youtube Videos
 * Find me the best podcast on AI and current groath on AI.
 * ETC... (such queries will require Supervisor Agent)
-
-User Query: {query}
 """

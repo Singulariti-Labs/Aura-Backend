@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
-from langchain_core.tools import Tool as LangchainTool
+from typing import Any, Dict, Optional, Type
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel as LCBaseModel
 
 from app.LLM.memory import Memory
 
@@ -17,7 +18,7 @@ class BaseTool(ABC):
 
     The `to_tool` method converts the tool into a Langchain-compatible `Tool` object for execution by LangChain agents.
     """
-    def __init__(self, name: str, description: str, memory: Optional[Memory] = None):
+    def __init__(self, name: str, description: str, memory: Optional[Memory] = None,  args_schema: Optional[Type[LCBaseModel]] = None):
         """
         Initializes the tool with a name, description, and optional memory context.
 
@@ -29,9 +30,10 @@ class BaseTool(ABC):
         self.name = name
         self.description = description
         self.memory = memory
+        self.args_schema = args_schema
 
     @abstractmethod
-    def run(self, inputs: Dict[str, Any]) -> Any:
+    def run(self, inputs: LCBaseModel) -> Any:
         """
         Abstract method to be implemented by subclasses with the aubagent/tool’s execution logic/ method to invoke the subagent/tool's.
 
@@ -46,7 +48,18 @@ class BaseTool(ABC):
         """
         pass
 
-    def to_tool(self) -> LangchainTool:
+    async def _wrapped_func(self, **kwargs) -> Any:
+        """
+        Converts dict inputs to a Pydantic schema and calls `run`.
+        This is the function passed to `StructuredTool`.
+        """
+        if self.args_schema:
+            inputs = self.args_schema(**kwargs)
+        else:
+            raise ValueError("args_schema must be provided to use StructuredTool.")
+        return await self.run(inputs)
+
+    def to_tool(self) -> StructuredTool:
         """
         Converts the BaseTool instance into a Langchain `Tool` for integration with LangChain agents.
 
@@ -56,9 +69,10 @@ class BaseTool(ABC):
         def dummy_func(_):
                 raise NotImplementedError("This tool uses an async method. Use `coroutine` instead.")
         
-        return LangchainTool(
+        return StructuredTool.from_function(
             name=self.name,
             description=self.description,
             func=dummy_func,
-            coroutine=self.run,
+            coroutine=self._wrapped_func,
+            args_schema=self.args_schema
         )

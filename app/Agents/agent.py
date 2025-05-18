@@ -67,7 +67,8 @@ class Agent(BaseAgent):
                     system_prompt=self.agent_prompt,
                     chat_history=chat_history,
                     tools=available_tools,
-                    system_info=self.system_info
+                    system_info=self.system_info,
+                    agent_type="main"
                 )
 
                 print(f"RESULT OF AGENT: {result}")
