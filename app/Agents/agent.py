@@ -16,13 +16,12 @@ class Agent(BaseAgent):
 
     def __init__(
         self,
-        query: str,
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
         screenshot: Optional[str] = None,
     ):
-        self.query = query
+        self.query = None
         self.llm_config = llm
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
@@ -36,7 +35,7 @@ class Agent(BaseAgent):
         self.system_info = system_info
         
 
-    async def invoke(self):
+    async def invoke(self, query: str):
         """
         Executes the main agent by sending a user query and optional screenshot to the LLM with the configured tools.
 
@@ -50,7 +49,8 @@ class Agent(BaseAgent):
         Raises:
             RuntimeError: If an error occurs while invoking the agent or creating the LLM instance.
         """
-
+        self.query = query
+        
         try:
             user_message = Message.user_message(content=self.query, base64_image=self.screenshot)
             self.memory.add_message(user_message)
