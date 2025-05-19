@@ -8,6 +8,9 @@ from websocket.queues import QueueManager
 from websocket.logger import get_logger
 from websocket.metrics import MESSAGE_ROUTING_ERROR
 
+from app.Agents.agent import Agent
+from app.Types.agent_types import LLMConfig, SystemInfo
+
 
 logger = get_logger(__name__)
 
@@ -31,6 +34,13 @@ class MessageRouter:
             "chat": self._handle_chat_message,
             "automation": self._handle_automation_message,
         }
+        
+        # Initialize agent instances cache - will be populated on demand
+        self.agents = {}  # user_id -> Agent instance mapping
+        
+        # Default LLM configuration - can be overridden by subclasses
+        self.llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
+        self.system_info = SystemInfo(os="unknown", version="unknown")
     
     async def route_message(
         self, message: Dict[str, Any], 
@@ -125,7 +135,7 @@ class MessageRouter:
         queue_manager: Optional[QueueManager]
     ) -> Dict[str, Any]:
         """
-        Handle chat channel messages.
+        Handle chat channel messages by integrating with AI agent.
         
         Args:
             message: The chat message to process
@@ -133,28 +143,78 @@ class MessageRouter:
             queue_manager: Optional queue manager for publishing messages
             
         Returns:
-            Response message or error
+            Response message with AI-generated content
         """
-        # Simple echo for now, would integrate with chat service in production
         request_id = message.get("request_id")
         payload = message.get("payload", {})
+        user_id = user_data.get("user_id")
         
-        logger.info("Processing chat message", 
-                   user_id=user_data.get("user_id"), 
+        logger.info("Processing chat message with agent", 
+                   user_id=user_id, 
                    request_id=request_id)
         
-        # Process chat message logic here
-        
-        # For now just echo the message back
-        return {
-            "version": "v1",
-            "channel": "chat",
-            "request_id": request_id,
-            "payload": {
-                "status": "received",
-                "message": f"Received chat message: {json.dumps(payload)}"
+        try:
+            # Extract query from payload
+            query = payload.get("text", "")
+            if not query:
+                return {
+                    "version": "v1",
+                    "channel": "chat",
+                    "request_id": request_id,
+                    "payload": {
+                        "status": "error",
+                        "message": "No message content provided"
+                    }
+                }
+            
+            # Get or create agent for this user
+            agent = self._get_agent_for_user(user_id)
+            
+            # Process query through agent
+            response = await agent.invoke(query)
+            
+            return {
+                "version": "v1",
+                "channel": "chat",
+                "request_id": request_id,
+                "payload": {
+                    "status": "success",
+                    "message": response
+                }
             }
-        }
+            
+        except Exception as e:
+            logger.error("Error processing chat message with agent", 
+                        error=str(e), 
+                        user_id=user_id,
+                        request_id=request_id)
+            return {
+                "version": "v1",
+                "channel": "chat",
+                "request_id": request_id,
+                "payload": {
+                    "status": "error",
+                    "message": f"Error processing message: {str(e)}"
+                }
+            }
+    
+    def _get_agent_for_user(self, user_id: str) -> Agent:
+        """
+        Get or create an agent instance for a specific user.
+        This allows maintaining conversation state per user if needed.
+        
+        Args:
+            user_id: Unique identifier for the user
+            
+        Returns:
+            An Agent instance for the user
+        """
+        if user_id not in self.agents:
+            self.agents[user_id] = Agent(
+                llm=self.llm_config,
+                system_info=self.system_info
+            )
+        return self.agents[user_id]
     
     async def _handle_automation_message(
         self, message: Dict[str, Any], 
