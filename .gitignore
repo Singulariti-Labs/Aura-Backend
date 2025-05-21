@@ -181,3 +181,5 @@ gcp-login.json
 .vscode
 .ruff_cache
 uv.lock
+
+*.pem
