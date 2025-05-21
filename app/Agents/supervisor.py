@@ -13,7 +13,7 @@ from app.helper import update_memory
 if TYPE_CHECKING:
     from app.Tools.tool_calling import Tools
 
-class SupervisorAgent(BaseAgent): 
+class SupervisorAgent(BaseAgent):
     """
     SupervisorAgent is the central coordinator responsible for handling incoming user queries.
     It works in collaboration with the PlannerAgent to break down tasks into actionable steps.
@@ -81,7 +81,11 @@ class SupervisorAgent(BaseAgent):
                 result = await self.handle_complex_task(plan, base64_image=screenshot)
 
             # Store final result in memory
-            update_memory(role="assistant", content=result, memory=self.memory)
+            if "output" in result:
+                final_result = result["output"]
+                update_memory(role="assistant", content=final_result, memory=self.memory)
+            else:
+                update_memory(role="assistant", content="No response recived", memory=self.memory)
             return result
 
         except Exception as e:

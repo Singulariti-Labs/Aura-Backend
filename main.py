@@ -7,12 +7,12 @@ from app.Types.agent_types import LLMConfig, SystemInfo
 
 llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
 system_info = SystemInfo(os="windows", version="11")  # replace with actual init
-query = "Open notepad and type hello"
+query = "open chrome and open youtube.com"
 
 async def main():
     llm=llm_config
     agent = Agent(llm=llm, query=query, system_info=system_info)
     response = await agent.invoke()
-    print(response)
+    print(f"FINAL_RESPONSE: {response}")
 
 asyncio.run(main())

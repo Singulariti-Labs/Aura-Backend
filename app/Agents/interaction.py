@@ -137,7 +137,7 @@ class InteractionAgent():
         """ Check if the faliure_count is greated than max_failure count"""
         return self.failure_count >= self.max_failure
     
-    def is_task_completed(data: dict) -> bool:
+    async def is_task_completed(self, data: dict) -> bool:
         """
         Checks if the last action step has 'is_done' key to determine task completion.
         
@@ -152,7 +152,7 @@ class InteractionAgent():
             return False
 
         last_action = actions[-1]
-        return "is_done" in last_action
+        return "done" in last_action
 
 
 
