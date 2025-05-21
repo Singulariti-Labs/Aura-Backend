@@ -228,6 +228,7 @@ class SupervisorAgent(BaseAgent):
                 )
                 return response
             
+            # SEND_RESPONSE_TO_CLIENT - Supervisor agent output
             else:
                 raise ValueError("Task description or subagent name not found while running step")
             

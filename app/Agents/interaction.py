@@ -74,6 +74,8 @@ class InteractionAgent():
 
         for step in range(self.max_steps):
             try:
+                # GET_MESSAGE_FROM_CLIENT - current screenshot.
+
                 if await self.is_terminate():
                     # Logging can be added here if needed
                     return {
@@ -98,6 +100,8 @@ class InteractionAgent():
                 update_memory(role="user", content=query, base64_image=base64_image, memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
 
+                # SEND_RESPONSE_TO_CLINET - Interaction agent output
+                
                 # Check if task has been completed
                 if await self.is_task_completed(result):
                     update_memory(
