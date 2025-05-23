@@ -16,6 +16,7 @@ from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
 from app.helper import update_memory
+from app.Prompts.validator import VALIDATOR_PROMPT
 
 class LLMFactory():
     """
@@ -365,3 +366,32 @@ class LLMFactory():
         except json.JSONDecodeError as e:
             print("Failed to parse JSON:", e)
             return None
+        
+    async def response_validator(self, llm: BaseChatModel, query:str, response: str, expected_output: str) -> bool:
+        """
+        Validates the response against the expected output.
+        """
+        try:
+            validator_prompt = VALIDATOR_PROMPT
+
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", validator_prompt),
+                ("human", query),
+                ("human", response),
+                ("human", expected_output)
+            ])
+
+            input_message = prompt.format_messages(
+                    validator_prompt = validator_prompt,
+                    query = query,
+                    response = response,
+                    expected_output = expected_output
+                )
+            
+            result = await llm.ainvoke(input_message)
+
+            parsed_content = self.parse_response_in_json(response_content=result.content)
+
+            return parsed_content
+        except Exception as e:
+            raise RuntimeError(f"Falied To Validate Response: {e}")

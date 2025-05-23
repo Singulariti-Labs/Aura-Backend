@@ -34,6 +34,8 @@ class SupervisorAgent(BaseAgent):
         self.llm_factory = LLMFactory(self.memory)
         self.supervisor_prompt = SUPERVISOR_PROMPT
         self.tools = tools
+        self.step_results = {}
+        self.validate_response = False
 
 
     async def processQuery(self, query: str) -> str:
@@ -84,6 +86,8 @@ class SupervisorAgent(BaseAgent):
             if "output" in result:
                 final_result = result["output"]
                 update_memory(role="assistant", content=final_result, memory=self.memory)
+            elif isinstance(result, str):
+                update_memory(role="assistant", content=result, memory=self.memory)
             else:
                 update_memory(role="assistant", content="No response recived", memory=self.memory)
             return result
@@ -117,78 +121,98 @@ class SupervisorAgent(BaseAgent):
         
         try:
             result = await self.run_step(step=step, base64_image=base64_image)
+
+            if self.validate_response:
+                validator_result = await self.response_validator(
+                    query=step.get("description", "No description"),
+                    response=result["output"],
+                    expected_output=step.get("expected-output", "No expected output")
+                )
+
+                if validator_result["is_valid"]:
+                    return result
+                else:
+                    return f"Step {step.get('description')} failed because {validator_result['reason']}"
+                
             return result
         except Exception as e:
             # logger.error(f"Error executing simple task: {str(e)}")
             update_memory(role="assistant", content=f"I encountered an error while processing your request: {str(e)}", memory=self.memory)
             return f"Failed to complete the task: {str(e)}"
     
-    async def handle_complex_task(self, plan: List[Dict[str, Any]], base64_image: Optional[str] = None) -> str:
+    async def handle_complex_task(self, plan: List[Dict[str, Any]], base64_image: Optional[str] = None):
         """
-        Executes a multi-step plan where steps may have dependencies. Tracks
-        step completion status and retries failed steps up to a limit.
-
-        Input:
-            plan (List[Dict[str, Any]]): The structured plan containing multiple steps.
-
-        Returns:
-            str: The result of the final step or an error message if steps failed.
+        Executes a multi-step plan where each step is tracked with detailed status.
+        Stops and returns error details if any step fails after max retries.
         """
         if not plan:
-            raise ValueError("Complex task plan cannot be empty")
-        
-        # logger.info(f"Processing complex task with {len(plan)} steps")
-        
-        # Track status of each step
-        step_status = {step["id"]: StepStatus.PENDING for step in plan}
+            raise ValueError("Plan is not provided! Please provide a plan to complete a complex task.")
+
+        step_responses = []
         max_attempts = 3
-        attempts = 0
-        
-        # Continue until all steps are completed or max attempts reached
-        while StepStatus.PENDING in step_status.values() and attempts < max_attempts:
-            attempts += 1
-            # logger.info(f"Complex task execution attempt {attempts}")
-            
-            for step in plan:
-                step_id = step["id"]
-                
-                # Skip already completed steps
-                if step_status[step_id] == StepStatus.COMPLETED:
-                    continue
-                
-                # Check if dependencies are met
-                dependencies = step.get("dependency", [])
-                deps_met = all(
-                    step_status.get(dep, StepStatus.FAILED) == StepStatus.COMPLETED 
-                    for dep in dependencies
-                )
-                
-                if not deps_met:
-                    # logger.info(f"Skipping step {step_id} - dependencies not met")
-                    continue
-                
+
+        for index, step in enumerate(plan, start=1):
+            step_id = step.get("id", f"Step{index}")
+            description = step.get("description", "No description")
+            attempts = 0
+            step_status = StepStatus.PENDING
+            response = None
+
+            while attempts < max_attempts:
+                attempts += 1
                 try:
-                    # logger.info(f"Executing step {step_id}: {step.get('description', 'No description')}")
-                    result = await self.run_step(step=step, base64_image=base64_image)
-                    self.step_results[step_id] = result
-                    step_status[step_id] = StepStatus.COMPLETED
-                    # logger.info(f"Step {step_id} completed successfully")
+                    response = await self.run_step(step=step, base64_image=base64_image)
+                    self.step_results[step_id] = response
+
+                    if self.validate_response:
+                        validator_result = await self.response_validator(
+                            query=description,
+                            response=response["output"],
+                            expected_output=step.get("expected-output")
+                        )
+
+                        if validator_result["is_valid"]:
+                            step_status = StepStatus.COMPLETED
+                        else:
+                            step_status = StepStatus.FAILED
+                            print(f"Step: {description} Failed because {validator_result["reason"]}")
+                    else:
+                        step_status = StepStatus.COMPLETED
+                    break  # Exit retry loop on success
                 except Exception as e:
-                    # logger.error(f"Error executing step {step_id}: {str(e)}")
-                    step_status[step_id] = StepStatus.FAILED
-                    update_memory(role="assistant", content=f"Failed to complete step {step_id}: {str(e)}", memory=self.memory)
-        
-        # Check if all steps completed successfully
-        if all(status == StepStatus.COMPLETED for status in step_status.values()):
-            final_step = plan[-1]
-            final_result = self.step_results.get(final_step["id"], "Task completed but no final result available")
-            return final_result
-        else:
-            failed_steps = [s_id for s_id, status in step_status.items() if status == StepStatus.FAILED]
-            pending_steps = [s_id for s_id, status in step_status.items() if status == StepStatus.PENDING]
-            error_msg = f"Failed to complete all steps. Failed steps: {failed_steps}. Pending steps: {pending_steps}"
-            # logger.error(error_msg)
-            return error_msg
+                    response = f"Attempt {attempts} failed: {str(e)}"
+                    step_status = StepStatus.FAILED
+
+            # Record step status after attempts
+            step_info = {
+                "step_no": index,
+                "step_id": step_id,
+                "step_description": description,
+                "step_status": step_status.value,
+                "step_response": response,
+            }
+            step_responses.append(step_info)
+
+            if step_status == StepStatus.FAILED:
+                # Update memory and return detailed error info
+                update_memory(
+                    role="assistant",
+                    content=(
+                        f"❌ Step {index} (ID: {step_id}) failed after {max_attempts} attempts.\n"
+                        f"Description: {description}\nError: {response}"
+                    ),
+                    memory=self.memory
+                )
+                error_summary = (
+                    f"❌ Execution stopped at step {index} (ID: {step_id}).\n"
+                    f"Description: {description}\n"
+                    f"Error: {response}\n"
+                    f"Steps Executed:\n{step_responses}"
+                )
+                return error_summary
+
+        # All steps completed successfully
+        return step_responses
 
     async def run_step(self, step: Dict[str, Any], base64_image: Optional[str] = None) -> str: # WIP
         """
@@ -235,3 +259,15 @@ class SupervisorAgent(BaseAgent):
         except Exception as e:
             # logger.error(f"Error in run_step: {str(e)}")
             raise RuntimeError(f"Error while runing the Step given by the Planner-Agnet, Error: {e}")
+
+
+    async def response_validator(self, query: str, response: str, expected_output: str):
+        """
+        Validates the response against the expected output.
+        """
+        try:
+            # Parse the response into a structured format
+            result = await self.llm_factory.response_validator(llm=self.llm, query=query, response=response, expected_output=expected_output)
+            return result
+        except Exception as e:
+            raise RuntimeError(f"Validation failed while valaditing response: {e}")
