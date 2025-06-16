@@ -7,7 +7,8 @@ from app.Types.agent_types import LLMConfig, SystemInfo
 
 llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
 system_info = SystemInfo(os="windows", version="11")  # replace with actual init
-query = "what is your current memory capacity for single chat?"
+
+query = "What is the current conditions of the Gold is it worth to invest in Gold now?"
 
 async def main():
     llm=llm_config
