@@ -74,6 +74,8 @@ class InteractionAgent():
 
         for step in range(self.max_steps):
             try:
+                # GET_MESSAGE_FROM_CLIENT - current screenshot.
+
                 if await self.is_terminate():
                     # Logging can be added here if needed
                     return {
@@ -98,6 +100,8 @@ class InteractionAgent():
                 update_memory(role="user", content=query, base64_image=base64_image, memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
 
+                # SEND_RESPONSE_TO_CLINET - Interaction agent output
+                
                 # Check if task has been completed
                 if await self.is_task_completed(result):
                     update_memory(
@@ -137,7 +141,7 @@ class InteractionAgent():
         """ Check if the faliure_count is greated than max_failure count"""
         return self.failure_count >= self.max_failure
     
-    def is_task_completed(data: dict) -> bool:
+    async def is_task_completed(self, data: dict) -> bool:
         """
         Checks if the last action step has 'is_done' key to determine task completion.
         
@@ -152,7 +156,7 @@ class InteractionAgent():
             return False
 
         last_action = actions[-1]
-        return "is_done" in last_action
+        return "done" in last_action
 
 
 

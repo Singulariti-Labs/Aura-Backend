@@ -71,6 +71,8 @@ class Agent(BaseAgent):
                     agent_type="main"
                 )
 
+                # SEND_RESPONSE_TO_CLIENT - Agent output
+
                 print(f"RESULT OF AGENT: {result}")
                 return result
             except Exception as e:
