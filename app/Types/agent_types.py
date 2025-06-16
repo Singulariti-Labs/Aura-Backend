@@ -59,3 +59,21 @@ class InteractionToolInput(BaseModel):
     query: str
     system_info: Optional[SystemInfo | str] = None
     base64_image: str
+
+class DeepResearchToolInput(BaseModel):
+    query: str
+    base64_image: Optional[str] = None
+
+class DeepSearchInputQueries(BaseModel):
+    query: str
+    results: Optional[List[dict]] = []
+    reason: str
+
+class DeepResearchActionInput(BaseModel):
+    queries: list[DeepSearchInputQueries]
+    search_memory: Optional[list[DeepSearchInputQueries]] = []
+
+class GapDetectionToolInput(BaseModel):
+    search_memory: Optional[list[DeepSearchInputQueries]] = []
+    user_query: str
+    summarize_result: str

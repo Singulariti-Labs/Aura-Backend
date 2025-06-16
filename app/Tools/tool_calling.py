@@ -4,6 +4,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from app.LLM.memory import Memory
 from app.Tools.supervisor import SupervisorTool
 from app.Tools.interaction import InteractionTool
+from app.Tools.deep_research import DeepResearchTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -32,6 +33,7 @@ class Tools():
 
         self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory)
         self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory)
+        self.deep_research_tool = DeepResearchTool(llm=self.llm, memory=self.memory)
 
     
     def get_agent_tools(self):
@@ -49,5 +51,5 @@ class Tools():
     
     def get_supervisor_tools(self):
 
-        tools = [self.interaction_tool.to_tool()]
+        tools = [self.interaction_tool.to_tool(), self.deep_research_tool.to_tool()]
         return tools
