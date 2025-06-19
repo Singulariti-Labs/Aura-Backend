@@ -64,6 +64,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Invoke the agent
             response = await agent.invoke()
+            # response = {
+            #             "type": "screenshot",
+            #             "return_format": "base64",
+            #             "resize": [640, 480],
+            #             "quality": 50
+            #             }
+            # response = {
+            #             "type": "desktop_interaction",
+            #                 "actions":[{
+            #                     "action": {
+            #                         "type": "click",
+            #                         "position": [200, 200],
+            #                         "button": "left"
+            #                     },
+            #                     "interacting_on": "default",
+            #                     "confidence": 1.0
+            # }]}
 
             # Send back the final response
             await send_ws_message(
@@ -71,7 +88,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 type_="response",
                 status="completed",
                 query=query,
-                data={"response": response},
+                data=response,
                 message="Completed",
                 id_=id_
             )
