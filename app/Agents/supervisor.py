@@ -9,6 +9,8 @@ from app.Prompts.supervisor import SUPERVISOR_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.helper import update_memory
+from app.Task.task_manager import TaskManager
+from app.api.websocket_utils import send_ws_message
 
 if TYPE_CHECKING:
     from app.Tools.tool_calling import Tools
@@ -22,10 +24,11 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000):
+    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
+        self.task_id = task_id
         self.planner_agent = PlannerAgent()
         self.router_parser = JsonOutputParser()
         self.system_info = None
@@ -36,6 +39,7 @@ class SupervisorAgent(BaseAgent):
         self.tools = tools
         self.step_results = {}
         self.validate_response = False
+        self.task_manager = TaskManager()
 
 
     async def processQuery(self, query: str) -> str:
@@ -67,12 +71,35 @@ class SupervisorAgent(BaseAgent):
             str: The final response or result after processing the plan.
         """
         try:
+            # Get web socket from task manager
+            task_state = self.task_manager.get_state(self.task_id)
+            self.websocket = task_state.websocket
+
+            # Notify client present inside Main Agent
+            await send_ws_message(
+                websocket=self.websocket,
+                type_="notify",
+                status="processing",
+                query=self.query,
+                message="f(Running Supervisor Agent)",
+                task_id=self.task_id # New Parameter task_id
+            )
+
+            # ⏸ Pause check before any heavy work
+            await self.task_manager.wait_if_paused(self.task_id)
+
             self.system_info = system_info
             self.supervisor_tool_id = tool_call_id
 
             update_memory(role="user", content=query, memory=self.memory, base64_image=screenshot)
 
+            # ⏸ Pause check before any planning
+            await self.task_manager.wait_if_paused(self.task_id)
+
             plan = await self.processQuery(query)
+
+            # ⏸ Pause check before running planed steps
+            await self.task_manager.wait_if_paused(self.task_id)
 
             # Execute plan based on complexity
             if len(plan) == 1:
@@ -120,6 +147,9 @@ class SupervisorAgent(BaseAgent):
         # logger: Log the performing step-no/Total steps
         
         try:
+            # ⏸ Pause check before run_step
+            await self.task_manager.wait_if_paused(self.task_id)
+
             result = await self.run_step(step=step, base64_image=base64_image)
 
             if self.validate_response:
@@ -161,6 +191,9 @@ class SupervisorAgent(BaseAgent):
             while attempts < max_attempts:
                 attempts += 1
                 try:
+                    # ⏸ Pause check before run_step
+                    await self.task_manager.wait_if_paused(self.task_id)
+
                     response = await self.run_step(step=step, base64_image=base64_image)
                     self.step_results[step_id] = response
 
@@ -238,6 +271,9 @@ class SupervisorAgent(BaseAgent):
             tools = self.tools.get_supervisor_tools()
         
             chat_history = self.memory.messages
+
+            # ⏸ Pause check before running step
+            await self.task_manager.wait_if_paused(self.task_id)
 
             if description:
                 response = await self.llm_factory.agent_executor(

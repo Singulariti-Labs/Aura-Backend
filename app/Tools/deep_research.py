@@ -10,7 +10,7 @@ from app.LLM.memory import Memory
 from app.Types.agent_types import DeepResearchToolInput
 
 class DeepResearchTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None):
         """
         Initialize DeepResearchTool with a language model and memory
 
@@ -25,7 +25,7 @@ class DeepResearchTool(BaseTool):
             memory=memory,
             args_schema=DeepResearchToolInput
         )
-        self.deep_research_agent = DeepResearchAgent(llm=llm, memory=memory)
+        self.deep_research_agent = DeepResearchAgent(llm=llm, task_id=task_id, memory=memory)
 
     async def run(self, inputs: DeepResearchToolInput) -> str:
 

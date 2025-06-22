@@ -10,12 +10,13 @@ from app.LLM.memory import Memory
 from app.Types.agent_types import InteractionToolInput
 
 class InteractionTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None):
         """
         Initializes the SupervisorTool with a language model and optional memory.
 
         Input:
         - llm: A chat-based LLM instance that powers the SupervisorAgent.
+        - task_id: A unique identifier for a task.
         - memory: Optional memory object to retain conversation history/context.
 
         The constructor sets up a `SupervisorAgent` internally to handle task planning and delegation.
@@ -26,7 +27,7 @@ class InteractionTool(BaseTool):
             memory=memory,
             args_schema=InteractionToolInput
         )
-        self.interaction_agent = InteractionAgent(llm=llm, memory=memory)
+        self.interaction_agent = InteractionAgent(llm=llm, task_id=task_id, memory=memory)
 
     async def run(self, inputs: InteractionToolInput) -> str:
 
