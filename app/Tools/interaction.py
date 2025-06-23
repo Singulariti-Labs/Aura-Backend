@@ -22,8 +22,9 @@ class InteractionTool(BaseTool):
         The constructor sets up a `SupervisorAgent` internally to handle task planning and delegation.
         """
         super().__init__(
-            name="supervisor",
-            description="Plans and delegates tasks to sub-agents.",
+            name="interaction_agent",
+            description="""Interaction Agent simulates human actions like clicking, typing, and navigating to control applications and 
+                    websites in real time. use interaction agent if there is any interaction required to perform on system UI""",
             memory=memory,
             args_schema=InteractionToolInput
         )

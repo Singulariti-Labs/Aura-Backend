@@ -28,6 +28,8 @@ class TaskManager:
         self.tasks[task_id].task = task
 
     def get_state(self, task_id: str):
+        if task_id not in self.tasks:
+            raise KeyError(f"Task ID {task_id} not found in TaskManager.")
         return self.tasks[task_id]
 
     def pause_task(self, task_id: str):
@@ -47,3 +49,5 @@ class TaskManager:
 
     async def wait_for_input(self, task_id: str):
         return await self.tasks[task_id].input_queue.get()
+
+task_manager = TaskManager()

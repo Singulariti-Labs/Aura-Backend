@@ -25,7 +25,8 @@ class SupervisorTool(BaseTool):
         """
         super().__init__(
             name="supervisor",
-            description="Plans and delegates tasks to sub-agents.",
+            description="""Supervisor Agent assigns tasks to specialized sub-agents, ensuring each part of a complex workflow is handled by 
+                    the most suitable agent.""",
             memory=memory,
             args_schema=SupervisorToolInput
         )

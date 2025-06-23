@@ -10,7 +10,7 @@ from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
 from app.Types.agent_types import LLMConfig, SystemInfo
 from app.api.websocket_utils import send_ws_message
-from app.Task.task_manager import TaskManager
+from app.Task.task_manager import task_manager
 import asyncio
 import uuid
 
@@ -22,7 +22,7 @@ manager = ConnectionManager()
 
 # Default configuration for the LLM agent
 llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
-task_manager = TaskManager()
+# task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -144,6 +144,7 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 # Wait for the next incoming JSON message from the client
                 message = await websocket.receive_json()
+                print(f"WEBSOCKET MESSAGE RECIVED, {message}")
                 msg_type = message.get("type_")
                 task_id = str(uuid.uuid4())
 
@@ -172,16 +173,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     input_data = message.get("input")
                     task_manager.provide_input(task_id, input_data)
                 
-                # No need of this.
-                # else:
-                #     await send_ws_message(
-                #         websocket,
-                #         type_="error",
-                #         status="error",
-                #         message=f"Unknown message type: {msg_type}",
-                #         id_ = message.get("id_"),
-                #         task_id=message.get("task_id")
-                # )
+                else:
+                    await send_ws_message(
+                        websocket,
+                        type_="error",
+                        status="error",
+                        message=f"Unknown message type: {msg_type}",
+                        id_ = message.get("id_"),
+                        task_id=message.get("task_id")
+                )
 
             except ValueError:
                 # Notify client of JSON decode errors

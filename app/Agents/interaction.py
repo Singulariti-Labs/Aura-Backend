@@ -7,7 +7,7 @@ from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus, ROLE_TYPE
 from app.helper import update_memory
 from app.Prompts.interaction import INTERACTION_AGENT_PROMPT
 from app.LLM.llm_factory import LLMFactory
-from app.Task.task_manager import TaskManager
+from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 
 
@@ -29,7 +29,7 @@ class InteractionAgent():
         self.failure_count = 0
         self.llm_factory = LLMFactory(self.subagent_memory)
         self.interaction_tool_id = None
-        self.task_manager = TaskManager()
+        # self.task_manager = TaskManager()
         
 
     async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None, screenshot: Optional[str] = None ):
@@ -43,8 +43,9 @@ class InteractionAgent():
         """
         try:
             # Get web socket from task manager
-            task_state = self.task_manager.get_state(self.task_id)
+            task_state = task_manager.get_state(self.task_id)
             self.websocket = task_state.websocket
+            self.query = query
 
             # send WS message to client - (inside interaction agent)
             # Notify client present inside Main Agent
@@ -58,7 +59,7 @@ class InteractionAgent():
             )
 
             # ⏸ Pause check before heavy run
-            await self.task_manager.wait_if_paused(self.task_id)
+            await task_manager.wait_if_paused(self.task_id)
 
             self.system_info = system_info
             self.interaction_tool_id = tool_call_id
@@ -80,7 +81,7 @@ class InteractionAgent():
             )
 
             # Waiting for base64 image (screenshot)
-            current_state = await self.task_manager.wait_for_input(self.task_id)
+            current_state = await task_manager.wait_for_input(self.task_id)
             base64_image = current_state.get("scrrenshot")
 
             # base64_image = screenshot # Get the screenshot from client of curret_state
@@ -121,7 +122,7 @@ class InteractionAgent():
                 # GET_MESSAGE_FROM_CLIENT - current screenshot.
 
                 # ⏸ Pause check before invoking LLM for interaction agent
-                await self.task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.task_id)
 
                 if await self.is_terminate():
                     # Logging can be added here if needed
@@ -189,7 +190,7 @@ class InteractionAgent():
                     return response
                 
                 # Waiting for base64 image (screenshot)
-                current_state = await self.task_manager.wait_for_input(self.task_id)
+                current_state = await task_manager.wait_for_input(self.task_id)
                 base64_image = current_state.get("scrrenshot")
 
             except Exception as e:

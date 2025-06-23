@@ -9,7 +9,7 @@ from app.Prompts.deep_research import SUMMARIZE_SEARCHED_CONTENT_PROMPT, GAP_DET
 from app.LLM.llm_factory import LLMFactory
 from app.Types.agent_types import DeepSearchInputQueries, DeepResearchActionInput, GapDetectionToolInput
 from datetime import datetime
-from app.Task.task_manager import TaskManager
+from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 
 
@@ -32,14 +32,17 @@ class DeepResearchAgent():
         self.failure_count = 0
         self.interaction_tool_id = None
         self.depth = 5
-        self.task_manager = TaskManager()
+        # self.task_manager = TaskManager()
 
     async def invoke(self, query: str, tool_call_id: str, base64_image: Optional[str] = None):
         "Invoking the Deep Research Agent to perform research on given query"
         try:
             # Get web socket from task manager
-            task_state = self.task_manager.get_state(self.task_id)
+            task_state = task_manager.get_state(self.task_id)
             self.websocket = task_state.websocket
+            self.query = query
+            self.deep_research_tool_id = tool_call_id
+            self.today = datetime.now().strftime("%Y-%m-%d")
 
             # send WS message to client - (inside deep research)
             await send_ws_message(
@@ -47,19 +50,12 @@ class DeepResearchAgent():
                 type_="status",
                 status="processing",
                 query=self.query,
-                message="f(Running Interaction Agent)",
+                message="f(Running Deep Research Agent)",
                 task_id=self.task_id # New Parameter task_id
             )
 
             # ⏸ Pause check before heavy run
-            await self.task_manager.wait_if_paused(self.task_id)
-
-            self.query = query
-            self.deep_research_tool_id = tool_call_id
-            self.today = datetime.now().strftime("%Y-%m-%d")
-
-            # ⏸ Pause check before modifing query
-            await self.task_manager.wait_if_paused(self.task_id)
+            await task_manager.wait_if_paused(self.task_id)
 
             modified_query = await self.get_modified_query(self.query)
 
@@ -71,7 +67,7 @@ class DeepResearchAgent():
             # ])
 
             # ⏸ Pause check before thinking
-            await self.task_manager.wait_if_paused(self.task_id)
+            await task_manager.wait_if_paused(self.task_id)
 
             result = await self.think(queries=queries)
             update_memory(
@@ -96,7 +92,7 @@ class DeepResearchAgent():
             
             for i in range(depth):
                 # ⏸ Pause check before searching action
-                await self.task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.task_id)
 
                 print(f" 🏃‍♂️ Running DEEP RESEARCH AGENT Iteration {i + 1}")
 
@@ -109,7 +105,7 @@ class DeepResearchAgent():
                 #Pass to the gap_detection till depth-1
                 if i < depth-1:
                     # ⏸ Pause check before gap detection
-                    await self.task_manager.wait_if_paused(self.task_id)
+                    await task_manager.wait_if_paused(self.task_id)
 
                     print("🧠 Finding The Gap In Information Recived")
                     gap_detection_input = {"search_memory": search_memory, "user_query": self.query, "summarize_result": content_summary}
@@ -124,7 +120,7 @@ class DeepResearchAgent():
                     print(f"Exiting Task loop Due To Max Depth Reached..., \n Generating Final Answer With Key Findings")
         
             # ⏸ Pause check before making final answer
-            await self.task_manager.wait_if_paused(self.task_id)
+            await task_manager.wait_if_paused(self.task_id)
 
             # Make the Final summary
             final_result = await self.final_answer_generator(search_memory=search_memory, user_query=self.query)

@@ -20,8 +20,10 @@ class DeepResearchTool(BaseTool):
         """
 
         super().__init__(
-            name="supervisor",
-            description="Plans and delegates tasks to sub-agents.",
+            name="deep_research_agent",
+            description="""Deep-Research Agent Conducts in-depth research on any given topic by searching the internet, analyzing sources, and 
+                    generating comprehensive, well-structured reports with relevant insights and citations.Use deep research agent only for 
+                    structured reports or in depth analysis and information gathering""",
             memory=memory,
             args_schema=DeepResearchToolInput
         )

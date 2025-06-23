@@ -6,7 +6,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Tools.tool_calling import Tools
-from app.Task.task_manager import TaskManager
+from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 
 import asyncio
@@ -41,7 +41,7 @@ class Agent(BaseAgent):
         self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id)
         self.max_tokens = maxTokens
         self.system_info = system_info
-        self.task_manager = TaskManager()
+        # self.task_manager = TaskManager()
         
 
     async def invoke(self):
@@ -61,7 +61,7 @@ class Agent(BaseAgent):
 
         try:
             # Get web socket from task manager
-            task_state = self.task_manager.get_state(self.task_id)
+            task_state = task_manager.get_state(self.task_id)
             self.websocket = task_state.websocket
 
             # Notify client present inside Main Agent
@@ -81,16 +81,16 @@ class Agent(BaseAgent):
 
             try:
                 # ⏸ Pause check before any heavy work
-                await self.task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.task_id)
 
                 available_tools = self.tools.get_agent_tools()
 
                 # ❌ Optional cancel check (recommended)
-                if self.task_manager.get_state(self.task_id).cancelled:
+                if task_manager.get_state(self.task_id).cancelled:
                     raise asyncio.CancelledError()
                 
                 # ⏸ Pause check again before the LLM call
-                await self.task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.task_id)
 
                 result = await self.llm_factory.agent_executor(
                     llm=self.llm,
