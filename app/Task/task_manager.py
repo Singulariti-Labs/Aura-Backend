@@ -1,4 +1,5 @@
 from fastapi import WebSocket
+from app.api.websocket_utils import send_ws_message
 
 import asyncio
 
@@ -32,22 +33,40 @@ class TaskManager:
             raise KeyError(f"Task ID {task_id} not found in TaskManager.")
         return self.tasks[task_id]
 
-    def pause_task(self, task_id: str):
+    async def pause_task(self, task_id: str):
+        print(f"⏸ Pausing Task {task_id}")
         self.tasks[task_id].paused.clear()
+        await send_ws_message(
+            websocket=self.tasks[task_id].websocket,
+            type_="status",
+            status="paused",
+            message="Task has been paused by the user",
+            task_id=task_id
+        )
 
-    def resume_task(self, task_id: str):
+    async def resume_task(self, task_id: str):
+        print(f"▶ Resume Running Task")
         self.tasks[task_id].paused.set()
+        await send_ws_message(
+            websocket=self.tasks[task_id].websocket,
+            type_="status",
+            status="resumed",
+            message="Task has resumed by the user",
+            task_id=task_id
+        )
 
     # def cancel_task(self, task_id: str):
     #     self.tasks[task_id].cancelled = True
 
     async def wait_if_paused(self, task_id: str):
+        print(f"⏸ Waiting due to pause state for Task {task_id}")
         await self.tasks[task_id].paused.wait()
 
     def provide_input(self, task_id: str, data):
         self.tasks[task_id].input_queue.put_nowait(data)
 
     async def wait_for_input(self, task_id: str):
+        print(f"🧭 Waiting For The User Input")
         return await self.tasks[task_id].input_queue.get()
 
 task_manager = TaskManager()

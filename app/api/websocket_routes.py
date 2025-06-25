@@ -92,13 +92,18 @@ async def websocket_endpoint(websocket: WebSocket):
             #                     "confidence": 1.0
             # }]}
 
+            final_result = {
+                "input": response["input"],
+                "output": response["output"]
+            }
+
             # Send back the final response
             await send_ws_message(
                 websocket,
                 type_="response",
                 status="completed",
                 query=query,
-                data=response,
+                data=final_result,
                 message="Completed",
                 id_=id_,
                 task_id=task_id
@@ -151,7 +156,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type == "query":
                     # Create task state with WebSocket
                     task_manager.create_task(task_id, websocket)
-
                     # Handle each message in its own asynchronous task
                     task = asyncio.create_task(handle_query(message, task_id))
                     task_manager.set_task(task_id, task)
@@ -170,7 +174,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif msg_type == "user_input":
                     task_id = message.get("task_id")
-                    input_data = message.get("input")
+                    input_data = message.get("data")
                     task_manager.provide_input(task_id, input_data)
                 
                 else:

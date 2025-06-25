@@ -70,6 +70,7 @@ class InteractionAgent():
                 "quality": 50
             }
 
+            # Send messsage to client too get teh screeshot of users current window
             await send_ws_message(
                 websocket=self.websocket,
                 type_="screenshot",
@@ -81,8 +82,27 @@ class InteractionAgent():
             )
 
             # Waiting for base64 image (screenshot)
-            current_state = await task_manager.wait_for_input(self.task_id)
-            base64_image = current_state.get("scrrenshot")
+            user_input = await task_manager.wait_for_input(self.task_id)
+            response_type = user_input["type"]
+
+            # Re Run if Failed to get screenshot from client
+            if response_type == "screenshot_response":
+                base64_image = user_input["data"]["image_base64"]
+            else :
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type_="response",
+                    status="ERROR",
+                    query=self.query,
+                    message="Failed to capture screenshot",
+                    task_id=self.task_id # New Parameter task_id
+                )
+                response = {
+                    "status": "Incomplete",
+                    "message": "Failed to capture screenshot"  
+                }
+                return response
+
 
             # base64_image = screenshot # Get the screenshot from client of curret_state
             self.subagent_memory.add_messages(self.shared_memory.messages)
@@ -152,11 +172,11 @@ class InteractionAgent():
                 # 🐤 Send actions to the client
                 await send_ws_message(
                     websocket=self.websocket,
-                    type_="screenshot",
+                    type_="response",
                     status="processing",
                     query=self.query,
                     data=last_result,
-                    message="Asking for screenshot of current state to perform actions",
+                    message="Interaaction Agent Action for the step.",
                     task_id=self.task_id # New Parameter task_id
                 )
                 
@@ -179,19 +199,39 @@ class InteractionAgent():
                     # What to give the type for this
                     await send_ws_message(
                         websocket=self.websocket,
-                        type_="screenshot",
+                        type_="response",
                         status="processing",
                         query=self.query,
                         data=response,
-                        message="Asking for screenshot of current state to perform actions",
+                        message="Interaction Agent Task Completed",
                         task_id=self.task_id # New Parameter task_id
                     )
 
                     return response
                 
                 # Waiting for base64 image (screenshot)
-                current_state = await task_manager.wait_for_input(self.task_id)
-                base64_image = current_state.get("scrrenshot")
+                user_input = await task_manager.wait_for_input(self.task_id)
+
+                response_type = user_input["type"]
+
+                # Re Run if Failed to get screenshot from client
+                if response_type == "screenshot_response":
+                    base64_image = user_input["data"]["image_base64"]
+                else :
+                    await send_ws_message(
+                        websocket=self.websocket,
+                        type_="response",
+                        status="ERROR",
+                        query=self.query,
+                        message="Failed to capture screenshot",
+                        task_id=self.task_id # New Parameter task_id
+                    )
+                    response = {
+                        "status": "Incomplete",
+                        "message": "Failed to capture screenshot"  
+                    }
+                    return response
+                
 
             except Exception as e:
                 # Optional: Add logging here
@@ -226,11 +266,11 @@ class InteractionAgent():
         # What to give the type for this
         await send_ws_message(
             websocket=self.websocket,
-            type_="screenshot",
+            type_="response",
             status="processing",
             query=self.query,
             data=response,
-            message="Asking for screenshot of current state to perform actions",
+            message="Interation agent task completed",
             task_id=self.task_id # New Parameter task_id
         )
 
