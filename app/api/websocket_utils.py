@@ -14,9 +14,10 @@ async def send_ws_message(
     type_: str,
     status: str,
     query: str,
+    task_id: str,
     message: str = "",
     data: dict = None,
-    id_: str = None
+    id_: str = None,
 ):
     """
     Sends a structured JSON message to a WebSocket client.
@@ -29,6 +30,7 @@ async def send_ws_message(
         message (str, optional): A human-readable message for the client. Defaults to "".
         data (dict, optional): Any additional data to send (e.g., agent response). Defaults to None.
         id_ (str, optional): Optional ID to correlate the response with a specific client message. Defaults to None.
+        task_id (str): Unique Identifier for a task.
     """
     # Build the standard payload structure
     payload = {
@@ -36,6 +38,7 @@ async def send_ws_message(
         "status": status,
         "query": query,
         "message": message,
+        "task_id": task_id
     }
 
     # Include optional fields if provided

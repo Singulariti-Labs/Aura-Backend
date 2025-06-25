@@ -12,19 +12,21 @@ if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
 
 class SupervisorTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
         """
         Initializes the SupervisorTool with a language model and optional memory.
 
         Input:
         - llm: A chat-based LLM instance that powers the SupervisorAgent.
+        - task_id: A unique identifier for a task
         - memory: Optional memory object to retain conversation history/context.
 
         The constructor sets up a `SupervisorAgent` internally to handle task planning and delegation.
         """
         super().__init__(
             name="supervisor",
-            description="Plans and delegates tasks to sub-agents.",
+            description="""Supervisor Agent assigns tasks to specialized sub-agents, ensuring each part of a complex workflow is handled by 
+                    the most suitable agent.""",
             memory=memory,
             args_schema=SupervisorToolInput
         )

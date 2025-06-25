@@ -6,6 +6,11 @@ from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Tools.tool_calling import Tools
+from app.Task.task_manager import task_manager
+from app.api.websocket_utils import send_ws_message
+
+import asyncio
+
 
 
 class Agent(BaseAgent):
@@ -17,12 +22,14 @@ class Agent(BaseAgent):
     def __init__(
         self,
         query: str,
+        task_id: str,
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
-        screenshot: Optional[str] = None,
+        screenshot: Optional[str] = None
     ):
         self.query = query
+        self.task_id = task_id
         self.llm_config = llm
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
@@ -31,9 +38,10 @@ class Agent(BaseAgent):
         self.system_info = None
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
-        self.tools = Tools(llm=self.llm, memory=self.memory)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id)
         self.max_tokens = maxTokens
         self.system_info = system_info
+        # self.task_manager = TaskManager()
         
 
     async def invoke(self):
@@ -52,13 +60,37 @@ class Agent(BaseAgent):
         """
 
         try:
+            # Get web socket from task manager
+            task_state = task_manager.get_state(self.task_id)
+            self.websocket = task_state.websocket
+
+            # Notify client present inside Main Agent
+            await send_ws_message(
+                websocket=self.websocket,
+                type_="notify",
+                status="processing",
+                query=self.query,
+                message="f(Running Main Agent with task: {query})",
+                task_id=self.task_id # New Parameter task_id
+            )
+
             user_message = Message.user_message(content=self.query, base64_image=self.screenshot)
             self.memory.add_message(user_message)
 
             chat_history = self.memory.messages
 
             try:
+                # ⏸ Pause check before any heavy work
+                await task_manager.wait_if_paused(self.task_id)
+
                 available_tools = self.tools.get_agent_tools()
+
+                # ❌ Optional cancel check (recommended)
+                if task_manager.get_state(self.task_id).cancelled:
+                    raise asyncio.CancelledError()
+                
+                # ⏸ Pause check again before the LLM call
+                await task_manager.wait_if_paused(self.task_id)
 
                 result = await self.llm_factory.agent_executor(
                     llm=self.llm,
@@ -75,6 +107,7 @@ class Agent(BaseAgent):
 
                 print(f"RESULT OF AGENT: {result}")
                 return result
+            
             except Exception as e:
                 raise RuntimeError(
                     f"Error while calling Agent: Error -> {str(e)}"
@@ -84,14 +117,4 @@ class Agent(BaseAgent):
             raise RuntimeError(
                 f"Error creating LLM instance for provider '{self.llm_config.provider}' "
                 f"with model '{self.llm_config.model_name}': {str(e)}"
-            )     
-        
-
-
-        
-
-        
-      
-
-
-
+            )
