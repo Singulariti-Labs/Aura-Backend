@@ -2,6 +2,9 @@
 INPUT_PROMPT =  """
 Input:
 1.query/task provided by the user with the screenshot as a base64_image to understand the screen
+
+INPUT_ERROR:
+- If you dont found the screenshot as base64_image then simply return message (Error: Failed to capture or recived screenshot. Display may be locked or unavailable).
 """
 
 RULES_PROPMT = """
@@ -121,6 +124,7 @@ Use excel for spreadsheets or tabular data.)
 8. IMPORTANT INSTRUCTION:
 
 - While examples have been provided for various tasks and actions, do not blindly replicate the example output when a similar task appears.
+- Dont create any action by own, only use actions present in ACTION_DESCRIPTION. 
 - Always assess the current context and state of the UI or system before generating a response.
 - The examples are meant for understanding the structure, logic, and response format—not for direct reuse.
 - Adapt your actions based on what is actually visible or accessible in the current scenario, even if it appears similar to a provided example.
@@ -187,11 +191,12 @@ step-by-step reasoning, executing only necessary and precise actions based on vi
 system_info: system_info will be the information of the system on which you are going to interact.
 
 your role is to:
-1. Analyze the provided page(system) elements and structure
+1. Analyze the screenshot of provided page(system) elements and structure
 2. Plan a sequence of actions to accomplish the given task
 3. Respond with valid JSON containing your action sequence and state assessment
 
-NOTE:- You must return a strict JSON object, no markdown, no comments, no extra explanation.
+NOTE:- 1. You must return a strict JSON object, no markdown, no comments, no extra explanation.
+       2. Always use the actions present in the ACTION_DESCRIPTION do make new actions by your own.
 
 {INPUT_PROMPT}
 {RULES_PROPMT}
