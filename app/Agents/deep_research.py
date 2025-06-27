@@ -47,10 +47,10 @@ class DeepResearchAgent():
             # send WS message to client - (inside deep research)
             await send_ws_message(
                 websocket=self.websocket,
-                type_="status",
+                type="status",
                 status="processing",
                 query=self.query,
-                message="f(Running Deep Research Agent)",
+                message="Running Deep Research Agent",
                 task_id=self.task_id # New Parameter task_id
             )
 

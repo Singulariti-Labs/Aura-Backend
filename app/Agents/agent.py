@@ -67,10 +67,10 @@ class Agent(BaseAgent):
             # Notify client present inside Main Agent
             await send_ws_message(
                 websocket=self.websocket,
-                type_="notify",
+                type="notify",
                 status="processing",
                 query=self.query,
-                message="f(Running Main Agent with task: {query})",
+                message=f"Running Main Agent with task: {self.query}",
                 task_id=self.task_id # New Parameter task_id
             )
 

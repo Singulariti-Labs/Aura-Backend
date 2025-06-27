@@ -11,7 +11,7 @@ from fastapi import WebSocket
 async def send_ws_message(
     websocket: WebSocket,
     *,
-    type_: str,
+    type: str,
     status: str,
     query: str,
     task_id: str,
@@ -24,7 +24,7 @@ async def send_ws_message(
 
     Args:
         websocket (WebSocket): The WebSocket connection to send the message through.
-        type_ (str): The type of message (e.g., "status", "response", "error").
+        type (str): The type of message (e.g., "status", "response", "error").
         status (str): The status of the message (e.g., "processing", "completed", "error").
         query (str): The original query from the client, echoed back for context.
         message (str, optional): A human-readable message for the client. Defaults to "".
@@ -34,7 +34,7 @@ async def send_ws_message(
     """
     # Build the standard payload structure
     payload = {
-        "type": type_,
+        "type": type,
         "status": status,
         "query": query,
         "message": message,

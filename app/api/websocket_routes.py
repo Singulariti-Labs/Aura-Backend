@@ -64,7 +64,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Notify client that processing has started
             await send_ws_message(
                 websocket,
-                type_="status",
+                type="status",
                 status="processing",
                 query=query,
                 message="Agent is processing the request",
@@ -100,11 +100,11 @@ async def websocket_endpoint(websocket: WebSocket):
             # Send back the final response
             await send_ws_message(
                 websocket,
-                type_="response",
+                type="response",
                 status="completed",
                 query=query,
                 data=final_result,
-                message="Completed",
+                message=final_result["output"],
                 id_=id_,
                 task_id=task_id
             )
@@ -112,7 +112,7 @@ async def websocket_endpoint(websocket: WebSocket):
         except asyncio.CancelledError:
             await send_ws_message(
                 websocket,
-                type_="status",
+                type="status",
                 status="cancelled",
                 message="Task was cancelled by the user.",
                 id_=id_,
@@ -123,7 +123,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Handle missing 'query' field
             await send_ws_message(
                 websocket,
-                type_="error",
+                type="error",
                 status="error",
                 query=message.get("query", ""),
                 message="Missing required field 'query'",
@@ -134,7 +134,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Catch-all for unexpected runtime errors
             await send_ws_message(
                 websocket,
-                type_="error",
+                type="error",
                 status="error",
                 query=message.get("query", ""),
                 message=str(e),
@@ -150,10 +150,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Wait for the next incoming JSON message from the client
                 message = await websocket.receive_json()
                 print(f"WEBSOCKET MESSAGE RECIVED, {message}")
-                msg_type = message.get("type_")
+                msg_type = message.get("type")
                 task_id = str(uuid.uuid4())
 
-                if msg_type == "query":
+                if msg_type == "message":
                     # Create task state with WebSocket
                     task_manager.create_task(task_id, websocket)
                     # Handle each message in its own asynchronous task
@@ -180,7 +180,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     await send_ws_message(
                         websocket,
-                        type_="error",
+                        type="error",
                         status="error",
                         message=f"Unknown message type: {msg_type}",
                         id_ = message.get("id_"),

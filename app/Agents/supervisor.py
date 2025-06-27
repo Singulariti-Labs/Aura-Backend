@@ -79,7 +79,7 @@ class SupervisorAgent(BaseAgent):
             # Notify client present inside Main Agent
             await send_ws_message(
                 websocket=self.websocket,
-                type_="notify",
+                type="notify",
                 status="processing",
                 query=self.query,
                 message="f(Running Supervisor Agent)",

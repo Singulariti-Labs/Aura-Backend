@@ -38,7 +38,7 @@ class TaskManager:
         self.tasks[task_id].paused.clear()
         await send_ws_message(
             websocket=self.tasks[task_id].websocket,
-            type_="status",
+            type="status",
             status="paused",
             message="Task has been paused by the user",
             task_id=task_id
@@ -49,7 +49,7 @@ class TaskManager:
         self.tasks[task_id].paused.set()
         await send_ws_message(
             websocket=self.tasks[task_id].websocket,
-            type_="status",
+            type="status",
             status="resumed",
             message="Task has resumed by the user",
             task_id=task_id
