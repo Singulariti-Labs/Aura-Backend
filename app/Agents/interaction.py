@@ -27,6 +27,7 @@ class InteractionAgent():
         self.failure_count = 0
         self.llm_factory = LLMFactory(self.subagent_memory)
         self.interaction_tool_id = None
+        self.scale_factors = None
         # self.task_manager = TaskManager()
         
 
@@ -85,9 +86,11 @@ class InteractionAgent():
             user_input = await task_manager.wait_for_input(self.task_id)
             response_type = user_input["type"]
 
+
             # Re Run if Failed to get screenshot from client
             if response_type == "screenshot_response":
                 base64_image = user_input["data"]["image_base64"]
+                self.scale_factors = user_input["data"]["scale_factors"]
             else :
                 await send_ws_message(
                     websocket=self.websocket,
@@ -167,6 +170,8 @@ class InteractionAgent():
                 # Update local memory with the conversation
                 update_memory(role="user", content=query, base64_image=base64_image, memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
+
+                last_result["scale_factors"] = self.scale_factors
 
                 # SEND_RESPONSE_TO_CLINET - Interaction agent output
                 # 🐤 Send actions to the client
