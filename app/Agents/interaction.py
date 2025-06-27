@@ -66,7 +66,7 @@ class InteractionAgent():
             get_current_state_screenshot = {
                 "type": "screenshot",
                 "return_format": "base64",
-                "resize": [960, 540],
+                "resize": [640, 480],
                 "quality": 50
                 }
 
