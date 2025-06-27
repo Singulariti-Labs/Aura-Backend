@@ -143,26 +143,16 @@ Drags the mouse from one position to another:
 {{drag: {{'from_': 'Tuple[int, int]', 'to_': 'Tuple[int, int]'}}}}
 Types text optionally at a specified position:
 {{type_text: {{'text': 'str', 'position': 'Union[Tuple[int, int], NoneType]'}}}}
-Presses a special key like Ctrl, Alt, Enter, etc.:
-{{press_key: {{'key': "Literal['ctrl', 'alt', 'shift', 'enter', 'esc', 'tab', 'space']"}}}}
-Presses a combination of keyboard keys as a hotkey:
-{{hotkey: {{'keys': 'List[str]'}}}} eg, {{'keys': ['ctrl', 's']}} it meanse use ctrl + s(char) // (saving something)
+Presses a single or combination of keyboard keys as a hotkey:
+{{hotkey: {{'keys': 'List[str]'}}}} <<<eg, {{'keys': ['ctrl', 's']}} it meanse use ctrl + s(char) // (saving something), {{'keys': ['enter']}} it means use only enter. (if there is a need to press multiple keys then provide keys as ['key1', 'key2', ...]  and if there is need to press only one key then  provide key as ['key'] )>>>
 Scrolls the screen in a specified direction and amount:
 {{scroll: {{'direction': "Literal['up', 'down', 'left', 'right']", 'amount': 'int'}}}}
 Waits for a number of seconds, optionally with a reason:
 {{wait: {{'seconds': 'float', 'reason': 'Union[str, NoneType]'}}}}
 Opens an application by name:
 {{open_app: {{'app_name': 'str'}}}}
-Closes an application by name:
-{{close_app: {{'app_name': 'str'}}}}
 Closes a window at a specific screen position:
 {{close_window: {{'position': 'Tuple[int, int]'}}}}
-Switches to a different application window:
-{{switch_app: {{'app_name': 'str', 'window_title': 'Union[str, NoneType]'}}}}
-Minimizes the given application window:
-{{minimize_window: {{'app_name': 'Union[str, NoneType]'}}}}
-Maximizes the given application window:
-{{maximize_window: {{'app_name': 'Union[str, NoneType]'}}}}
 Moves the mouse cursor to a given position without clicking:
 {{hover: {{'position': 'Tuple[int, int]'}}}}
 Marks the task as completed with optional message and success flag:
