@@ -149,7 +149,6 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 # Wait for the next incoming JSON message from the client
                 message = await websocket.receive_json()
-                print(f"WEBSOCKET MESSAGE RECIVED, {message}")
                 msg_type = message.get("type")
                 task_id = str(uuid.uuid4())
 

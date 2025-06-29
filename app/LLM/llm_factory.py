@@ -361,7 +361,7 @@ class LLMFactory():
         
         try:
             data_dict = json.loads(json_string)
-            print("Parsed JSON:", data_dict)
+            # print("Parsed JSON:", data_dict)
             return data_dict
         except json.JSONDecodeError as e:
             print("Failed to parse JSON:", e)

@@ -186,7 +186,9 @@ your role is to:
 3. Respond with valid JSON containing your action sequence and state assessment
 
 NOTE:- 1. You must return a strict JSON object, no markdown, no comments, no extra explanation.
-       2. Always use the actions present in the ACTION_DESCRIPTION do make new actions by your own.
+       2. Always use the actions present in the ACTION_DESCRIPTION do not make new actions by your own. available actions - [open_app, click, 
+       double_click, drag, type_text, hotkey, scroll, wait, close_window, hover, done, select_area, 
+       ClipboardAction].
 
 {INPUT_PROMPT}
 {RULES_PROPMT}
