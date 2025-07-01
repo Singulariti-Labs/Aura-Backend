@@ -34,12 +34,10 @@ class InteractionTool(BaseTool):
 
         query = inputs.query
         system_info = inputs.system_info
-        base64_image = inputs.base64_image
         tool_call_id = str(uuid.uuid4())
         response = await self.interaction_agent.invoke(
             query=query,
             system_info=system_info,
-            screenshot=base64_image,
             tool_call_id = tool_call_id
         )
         return response

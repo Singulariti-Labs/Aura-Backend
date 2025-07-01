@@ -52,13 +52,11 @@ class SupervisorTool(BaseTool):
 
         query = inputs.query
         system_info = inputs.system_info
-        screenshot = inputs.screenshot
 
         tool_call_id = str(uuid.uuid4())
         response = await self.supervisor_agent.invoke(
             query=query,
             system_info=system_info,
-            screenshot=screenshot,
             tool_call_id = tool_call_id
         )
         return response

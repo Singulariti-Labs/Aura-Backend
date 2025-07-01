@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from app.Agents.base_agent import BaseAgent
 from app.Types.agent_types import LLMConfig, SystemInfo
@@ -26,7 +26,7 @@ class Agent(BaseAgent):
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
-        screenshot: Optional[str] = None
+        screenshot:  Optional[List[str]] = None
     ):
         self.query = query
         self.task_id = task_id
@@ -74,7 +74,7 @@ class Agent(BaseAgent):
                 task_id=self.task_id # New Parameter task_id
             )
 
-            user_message = Message.user_message(content=self.query, base64_image=self.screenshot)
+            user_message = Message.user_message(content=self.query, base64_images=self.screenshot)
             self.memory.add_message(user_message)
 
             chat_history = self.memory.messages

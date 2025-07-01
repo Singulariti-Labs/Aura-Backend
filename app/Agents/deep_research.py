@@ -34,7 +34,7 @@ class DeepResearchAgent():
         self.depth = 5
         # self.task_manager = TaskManager()
 
-    async def invoke(self, query: str, tool_call_id: str, base64_image: Optional[str] = None):
+    async def invoke(self, query: str, tool_call_id: str):
         "Invoking the Deep Research Agent to perform research on given query"
         try:
             # Get web socket from task manager
@@ -75,7 +75,6 @@ class DeepResearchAgent():
                 content=result,
                 name="deep_research",
                 tool_call_id=self.deep_research_tool_id,
-                base64_image=base64_image,
                 memory=self.shared_memory
             )
 

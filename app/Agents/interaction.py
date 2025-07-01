@@ -31,14 +31,13 @@ class InteractionAgent():
         # self.task_manager = TaskManager()
         
 
-    async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None, screenshot: Optional[str] = None ):
+    async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None ):
         """ Invokes the Interaction Agent which performs interaction on device on the behalf of user.
 
         Input:
             query (str): The user's input or task description to be processed by the agent.
             tool_call_id (str): An identifier used to track the specific tool call for logging or coordination.
-            system_info (Optional[SystemInfo | str]): Information about the current system environment (OS, apps, etc.).
-            screenshot (Optional[str]): A base64-encoded screenshot representing the current state of the system UI (optional).
+            system_info (Optional[SystemInfo | str]): Information about the current system environment (OS, apps, etc).
         """
         try:
             # Get web socket from task manager
@@ -66,7 +65,7 @@ class InteractionAgent():
             get_current_state_screenshot = {
                 "type": "screenshot",
                 "return_format": "base64",
-                "resize": [640, 480],
+                "resize": [1920, 1080],
                 "quality": 50
                 }
 
@@ -140,6 +139,8 @@ class InteractionAgent():
 
         last_result = None  # To store the latest result from the agent
 
+        input_message = self.prepare_interaction_agent_messages_for_openai(query=query, chat_history=chat_history)
+
         for step in range(self.max_steps):
             try:
                 # GET_MESSAGE_FROM_CLIENT - current screenshot.
@@ -156,20 +157,20 @@ class InteractionAgent():
                     }
 
                 result = await self.llm_factory.invoke_interaction_agent(
-                    query=query,
                     base64_image=base64_image,
-                    chat_history=chat_history,
                     llm=self.llm,
                     agent_type="interaction",
-                    system_info=self.system_info,
-                    system_prompt=self.interaction_agent_prompt
+                    input_message=input_message
                 )
 
                 last_result = result  # Save the latest result in case we need to return it later
+                
+                print(f"✅RESULT: {last_result}\n\n")
 
                 # Update local memory with the conversation
-                update_memory(role="user", content=query, base64_image=base64_image, memory=self.subagent_memory)
+                update_memory(role="user", content=query, base64_images=[base64_image], memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
+                input_message.append({"role":"assistant", "content":json.dumps(result)})
 
                 last_result["scale_factors"] = self.scale_factors
 
@@ -192,7 +193,7 @@ class InteractionAgent():
                         content=json.dumps(result),
                         name="interaction",
                         tool_call_id=self.interaction_tool_id,
-                        base64_image=base64_image,
+                        base64_images=[base64_image],
                         memory=self.shared_memory
                     )
                     response = {
@@ -304,7 +305,43 @@ class InteractionAgent():
         last_action = actions[-1]
         return "done" in last_action
 
+    def prepare_interaction_agent_messages_for_openai(
+        self,
+        chat_history: List[Message],
+        query: str
+    ) -> List[dict]:
+        """
+        Prepares a message list in OpenAI format for a multimodal interaction agent
 
+        Inputs:
+            system_prompt (str): System instructions for the LLM.
+            chat_history (List[dict]): Prior conversation in OpenAI format.
+            query (str): User’s new input or command.
+
+        Output:
+            List[dict]: Messages to send to the LLM.
+        """
+        input_messages = []
+        system_prompt = self.interaction_agent_prompt
+        system_info = self.system_info
+
+        # 1. Add system prompt
+        if system_prompt:
+            input_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # 2. Add past message objects
+        input_messages.extend([message.to_dict() for message in chat_history])
+
+        # 3. Add current user query
+        input_messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text":f"query:{query}\nsystem_info:{system_info}"}]
+        })
+
+        return input_messages
 
             
                  

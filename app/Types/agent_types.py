@@ -53,16 +53,13 @@ class StepsList(BaseModel):
 class SupervisorToolInput(BaseModel):
     query: str
     system_info: Optional[SystemInfo | str] = None
-    screenshot: Optional[str] = None
 
 class InteractionToolInput(BaseModel):
     query: str
     system_info: Optional[SystemInfo | str] = None
-    base64_image: str
 
 class DeepResearchToolInput(BaseModel):
     query: str
-    base64_image: Optional[str] = None
 
 class DeepSearchInputQueries(BaseModel):
     query: str
