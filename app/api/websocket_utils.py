@@ -13,9 +13,9 @@ async def send_ws_message(
     *,
     type: str,
     status: str,
-    query: str,
     task_id: str,
     message: str = "",
+    query: str = "",
     data: dict = None,
     id_: str = None,
 ):

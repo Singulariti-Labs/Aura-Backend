@@ -15,7 +15,7 @@ import json
 from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
-from app.helper import update_memory
+from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
 
 class LLMFactory():
@@ -110,13 +110,13 @@ class LLMFactory():
         result = agent_executor.invoke({"input": query,  "chat_history_for_llm": chat_history, "system_info": system_info})
         return result
     
-    def get_multimodal_query(self, query: str, base64_image: str, current_state: Optional[str] = None):
+    def get_multimodal_query(self, query: str, base64_images:  Optional[List[str]] = None, current_state: Optional[str] = None):
         """
         Formats a multimodal query combining user text and screenshot data.
 
         Input:
         - query: User's textual input.
-        - screenshot: A base64 image string or URL.
+        - base_images: A list of base64 image string or URL.
 
         Returns:
         - A list combining text and image input formatted for multimodal LLMs.
@@ -139,13 +139,16 @@ class LLMFactory():
             })
 
         # Add the image if provided
-        if base64_image:
-            multimodal_query.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{base64_image}"
+        if base64_images:
+            multimodal_query.extend([
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{img}"  # JPEG format make png
+                    }
                 }
-            })
+                for img in base64_images
+        ])
 
         return multimodal_query
 
@@ -159,7 +162,7 @@ class LLMFactory():
         system_info: Optional[SystemInfo | str] = None,
         tools: Optional[List[Tool]] = None,
         chat_history: Optional[List[Message]] = None,
-        screenshot: Optional[str] = None,
+        screenshot:  Optional[List[str]] = None,
         max_tokens: int = 128000,
     ):
         """
@@ -180,10 +183,10 @@ class LLMFactory():
         - The response from the agent or LLM after processing the query.
         """
         try:
-            if screenshot:
-                multimodal_query = self.get_multimodal_query(query=query, base64_image=screenshot)
-            else:
-                multimodal_query = query
+            # if screenshot:
+            #     multimodal_query = self.get_multimodal_query(query=query, base64_images=screenshot)
+            # else:
+            #     multimodal_query = query
 
                 # Add the user's query in the memory -> (User query added in Agent class)
                 # user_query = Message.user_message(content=query, base64_image=screenshot)
@@ -194,7 +197,7 @@ class LLMFactory():
             if chat_history:
                 chat_history_for_llm = [message.to_dict() for message in chat_history]
 
-            update_memory("user", content=query, base64_image=screenshot, memory=self.memory)
+            # update_memory("user", content=query, base64_images=screenshot, memory=self.memory)
             
             # Prepare system prompt
             if system_prompt:
@@ -212,7 +215,7 @@ class LLMFactory():
 
             
             formated_input = (
-                f"query: {multimodal_query}\n"
+                f"query: {query}\n"
                 f"system_info: {system_info_str}\n"
             )
             
@@ -236,7 +239,7 @@ class LLMFactory():
                 response = await llm.ainvoke({"input": formated_input})
 
                 # adding response to memory as assistant message.
-                assistant_message = Message.assistant_message(content=response.content, base64_image=screenshot)
+                assistant_message = Message.assistant_message(content=response.content)
                 self.memory.add_message(assistant_message);
                 return response
         
@@ -293,41 +296,19 @@ class LLMFactory():
     async def invoke_interaction_agent(
         self,
         llm: BaseChatModel,
-        system_prompt: str,
-        query: str,
+        input_message: List[dict],
         agent_type: AGENT_TYPE,  # type: ignore
-        chat_history: List[Message],
-        system_info: Optional[SystemInfo | str] = None,
         base64_image: Optional[str] = None,
         current_state: Optional[str] = None,  #(parsed_page)
         max_tokens = 128000,
     ):
-        try: 
-            if base64_image:
-                query = self.get_multimodal_query(query, base64_image, current_state)
+        try:
+            llm_invoke_message = input_message 
 
-            chat_history_for_llm = []
-            if chat_history:
-                chat_history_for_llm = [message.to_dict() for message in chat_history]
+            if base64_image or current_state:
+                llm_invoke_message = update_input_messages_with_screenshot_and_context(input_message=input_message, base64_image=base64_image, current_state=current_state)
             
-            
-            if system_prompt:
-                prompt = ChatPromptTemplate.from_messages([
-                    ("system", system_prompt),  # Only include system prompt #WIP** need to add the parsed_page
-                    ("system", "{system_info}"),
-                    MessagesPlaceholder(variable_name="chat_history"),
-                    ("human", "{query}"),
-                    # MessagesPlaceholder(variable_name="agent_scratchpad")
-                ])
-            
-            input_message = prompt.format_messages(
-                system_prompt = system_prompt,
-                system_info = system_info,
-                chat_history = chat_history_for_llm,
-                query = query
-            )
-            
-            response = await llm.ainvoke(input_message)
+            response = await llm.ainvoke(llm_invoke_message)
 
             parsed_content = self.parse_response_in_json(response_content=response.content)
 

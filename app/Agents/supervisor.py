@@ -56,7 +56,7 @@ class SupervisorAgent(BaseAgent):
         result = await self.planner_agent.run(self.llm, query)
         return result
         
-    async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None, screenshot: Optional[str] = None,) -> str:
+    async def invoke(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None) -> str:
         """
         Entry point to handle a user query. It stores the query in memory, calls
         the planner agent to generate a plan, and then executes the plan using either
@@ -65,7 +65,6 @@ class SupervisorAgent(BaseAgent):
         Input:
             query (str): The user query.
             system_info (Optional[SystemInfo]): Optional contextual system data.
-            screenshot (Optional[str]): Optional base64 screenshot for additional context.
 
         Returns:
             str: The final response or result after processing the plan.
@@ -92,7 +91,7 @@ class SupervisorAgent(BaseAgent):
             self.system_info = system_info
             self.supervisor_tool_id = tool_call_id
 
-            update_memory(role="user", content=query, memory=self.memory, base64_image=screenshot)
+            # update_memory(role="user", content=query, memory=self.memory, base64_image=screenshot)
 
             # ⏸ Pause check before any planning
             await task_manager.wait_if_paused(self.task_id)
@@ -105,10 +104,10 @@ class SupervisorAgent(BaseAgent):
             # Execute plan based on complexity
             if len(plan) == 1:
                 # logger.info("Processing as simple task")  WIP
-                result = await self.handle_simple_task(plan, base64_image=screenshot)
+                result = await self.handle_simple_task(plan)
             else:
                 # logger.info("Processing as complex task")
-                result = await self.handle_complex_task(plan, base64_image=screenshot)
+                result = await self.handle_complex_task(plan)
 
             # Store final result in memory
             if "output" in result:
@@ -126,7 +125,7 @@ class SupervisorAgent(BaseAgent):
             update_memory(role="assistant", content=error_message, memory=self.memory)
             return error_message
 
-    async def handle_simple_task(self, plan: List[Dict[str, Any]], base64_image: Optional[str] = None) -> str:
+    async def handle_simple_task(self, plan: List[Dict[str, Any]]) -> str:
         """
         Executes a single-step plan as a simple task.
 
@@ -151,7 +150,7 @@ class SupervisorAgent(BaseAgent):
             # ⏸ Pause check before run_step
             await task_manager.wait_if_paused(self.task_id)
 
-            result = await self.run_step(step=step, base64_image=base64_image)
+            result = await self.run_step(step=step)
 
             if self.validate_response:
                 validator_result = await self.response_validator(
@@ -171,7 +170,7 @@ class SupervisorAgent(BaseAgent):
             update_memory(role="assistant", content=f"I encountered an error while processing your request: {str(e)}", memory=self.memory)
             return f"Failed to complete the task: {str(e)}"
     
-    async def handle_complex_task(self, plan: List[Dict[str, Any]], base64_image: Optional[str] = None):
+    async def handle_complex_task(self, plan: List[Dict[str, Any]]):
         """
         Executes a multi-step plan where each step is tracked with detailed status.
         Stops and returns error details if any step fails after max retries.
@@ -195,7 +194,7 @@ class SupervisorAgent(BaseAgent):
                     # ⏸ Pause check before run_step
                     await task_manager.wait_if_paused(self.task_id)
 
-                    response = await self.run_step(step=step, base64_image=base64_image)
+                    response = await self.run_step(step=step)
                     self.step_results[step_id] = response
 
                     if self.validate_response:
@@ -248,7 +247,7 @@ class SupervisorAgent(BaseAgent):
         # All steps completed successfully
         return step_responses
 
-    async def run_step(self, step: Dict[str, Any], base64_image: Optional[str] = None) -> str: # WIP
+    async def run_step(self, step: Dict[str, Any]) -> str: # WIP
         """
         Executes a single step by invoking the relevant sub-agent or tool.
         Prepares context using memory and LLM before executing the tool.
@@ -284,8 +283,7 @@ class SupervisorAgent(BaseAgent):
                     agent_type="supervisor",
                     system_info=self.system_info,
                     tools=tools,
-                    chat_history=chat_history,
-                    screenshot=base64_image
+                    chat_history=chat_history
                 )
                 return response
             

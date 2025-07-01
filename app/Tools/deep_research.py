@@ -32,11 +32,9 @@ class DeepResearchTool(BaseTool):
     async def run(self, inputs: DeepResearchToolInput) -> str:
 
         query = inputs.query
-        base64_image = inputs.base64_image
         tool_call_id = str(uuid.uuid4())
         response = await self.deep_research_agent.invoke(
             query=query,
-            base64_image=base64_image,
             tool_call_id=tool_call_id
         )
         return response

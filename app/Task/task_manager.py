@@ -68,5 +68,9 @@ class TaskManager:
     async def wait_for_input(self, task_id: str):
         print(f"🧭 Waiting For The User Input")
         return await self.tasks[task_id].input_queue.get()
+    
+    def remove_task(self, task_id: str):
+        if task_id in self.tasks:
+            del self.tasks[task_id]
 
 task_manager = TaskManager()

@@ -15,7 +15,10 @@ class Message(BaseModel):
     tool_calls: Optional[List[Tool]] = Field(default=None)
     name: Optional[str] = Field(default=None)
     tool_call_id: Optional[str] = Field(default=None)
-    base64_image: Optional[str] = Field(default=None)
+
+    base64_images: Optional[List[str]] = Field(default=None)
+    audio_urls: Optional[List[str]] = Field(default=None)
+    file_urls: Optional[List[str]] = Field(default=None)
 
     def __add__(self, other) -> List["Message"]:
         """
@@ -43,37 +46,64 @@ class Message(BaseModel):
 
     def to_dict(self) -> dict:
         """
-        Converts the Message instance into a dictionary, including only the defined fields.
+        Converts the Message to a dictionary formatted for OpenAI's API, including only the defined fields.
         Useful for serialization.
         """
         message = {"role": self.role}
-        if self.content is not None:
+        multimodal_content = []
+
+        if self.content:
+            multimodal_content.append({"type": "text", "text": self.content})
+
+        if self.base64_images:
+            multimodal_content.extend([
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img}"}}  # JPEG format make png
+                for img in self.base64_images
+            ])
+
+        if self.audio_urls:
+            multimodal_content.extend([
+                {"type": "audio_url", "audio_url": {"url": url}}
+                for url in self.audio_urls
+            ])
+
+        if self.file_urls:
+            multimodal_content.extend([
+                {"type": "file_url", "file_url": {"url": url}}
+                for url in self.file_urls
+            ])
+
+        if multimodal_content:
+            message["content"] = multimodal_content
+        else:
             message["content"] = self.content
-        if self.tool_calls is not None:
-            message["tool_calls"] = [tool_call.dict() for tool_call in self.tool_calls]
-        if self.name is not None:
+
+        if self.tool_calls:
+            message["tool_calls"] = [tc.dict() for tc in self.tool_calls]
+        if self.name:
             message["name"] = self.name
-        if self.tool_call_id is not None:
+        if self.tool_call_id:
             message["tool_call_id"] = self.tool_call_id
-        if self.base64_image is not None:
-            message["base64_image"] = self.base64_image
+
         return message
 
     @classmethod
     def user_message(
-        cls, content: str, base64_image: Optional[str] = None
+        cls, content: str, base64_images: Optional[List[str]] = None, audio_urls: Optional[List[str]] = None, file_urls: Optional[List[str]] = None
     ) -> "Message":
         """
         Creates a user message with optional image input.
 
         Input:
         - content: Text content of the message.
-        - base64_image: Optional image in base64 format.
+        - base64_images: Optional image in base64 format.
+        - audio_urls: Optional audio urls
+        - files_urls: Optional files urls
 
         Returns:
         - A Message instance with role set to USER.
         """
-        return cls(role=Role.USER, content=content, base64_image=base64_image)
+        return cls(role=Role.USER, content=content, base64_images=base64_images, audio_urls=audio_urls, file_urls=file_urls)
 
     @classmethod
     def system_message(cls, content: str) -> "Message":
@@ -90,23 +120,23 @@ class Message(BaseModel):
 
     @classmethod
     def assistant_message(
-        cls, content: Optional[str] = None, base64_image: Optional[str] = None
+        cls, content: Optional[str] = None, base64_images: Optional[List[str]] = None,
     ) -> "Message":
         """
         Creates a message from the assistant, optionally containing an image.
 
         Input:
         - content: Assistant's reply content.
-        - base64_image: Optional image in base64 format.
+        - base64_images: Optional image in base64 format.
 
         Returns:
         - A Message instance with role set to ASSISTANT.
         """
-        return cls(role=Role.ASSISTANT, content=content, base64_image=base64_image)
+        return cls(role=Role.ASSISTANT, content=content, base64_images=base64_images)
 
     @classmethod
     def tool_message(
-        cls, content: str, name, tool_call_id: Optional[str] = None, base64_image: Optional[str] = None
+        cls, content: str, name, tool_call_id: Optional[str] = None, base64_images: Optional[List[str]] = None, audio_urls: Optional[List[str]] = None, file_urls: Optional[List[str]] = None
     ) -> "Message":
         """
         Creates a tool message representing output from a tool execution.
@@ -115,7 +145,9 @@ class Message(BaseModel):
         - content: Tool output.
         - name: Tool name.
         - tool_call_id: Identifier linking to the triggering call.
-        - base64_image: Optional image data.
+        - base64_images: Optional image data.
+        - audio_urls: Optional audio urls
+        - files_urls: Optional files urls
 
         Returns:
         - A Message instance with role set to TOOL.
@@ -125,7 +157,9 @@ class Message(BaseModel):
             content=content,
             name=name,
             tool_call_id=tool_call_id,
-            base64_image=base64_image,
+            base64_images=base64_images,
+            audio_urls=audio_urls,
+            file_urls=file_urls
         )
 
     @classmethod
@@ -133,7 +167,9 @@ class Message(BaseModel):
         cls,
         tool_calls: List[Any],
         content: Union[str, List[str]] = "",
-        base64_image: Optional[str] = None,
+        base64_images: Optional[List[str]] = None,
+        audio_urls: Optional[List[str]] = None,
+        file_urls: Optional[List[str]] = None,
         **kwargs,
     ):
         """
@@ -142,7 +178,7 @@ class Message(BaseModel):
         Input:
         - tool_calls: List of raw tool call objects from the LLM.
         - content: Optional message content.
-        - base64_image: Optional base64 image.
+        - base64_images: Optional base64 image.
 
         Returns:
         - A Message instance containing the tool_calls.
@@ -155,7 +191,9 @@ class Message(BaseModel):
             role=Role.ASSISTANT,
             content=content,
             tool_calls=formatted_calls,
-            base64_image=base64_image,
+            base64_images=base64_images,
+            audio_urls=audio_urls,
+            file_urls=file_urls,
             **kwargs,
         )
 
