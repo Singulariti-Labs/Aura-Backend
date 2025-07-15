@@ -299,14 +299,14 @@ class LLMFactory():
         input_message: List[dict],
         agent_type: AGENT_TYPE,  # type: ignore
         base64_image: Optional[str] = None,
-        current_state: Optional[str] = None,  #(parsed_page)
+        parsed_screen_context: Optional[str] = None,  #(parsed_page)
         max_tokens = 128000,
     ):
         try:
             llm_invoke_message = input_message 
 
-            if base64_image or current_state:
-                llm_invoke_message = update_input_messages_with_screenshot_and_context(input_message=input_message, base64_image=base64_image, current_state=current_state)
+            if base64_image or parsed_screen_context:
+                llm_invoke_message = update_input_messages_with_screenshot_and_context(input_message=input_message, base64_image=base64_image, parsed_screen_context=parsed_screen_context)
             
             response = await llm.ainvoke(llm_invoke_message)
 
