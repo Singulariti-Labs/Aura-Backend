@@ -144,7 +144,7 @@ class InteractionAgent():
         except Exception as e:
             return f"[💥 Error] Interaction Agent Invoke Failed: {str(e)}"
 
-
+    # WIP** - Make sure the final response going to client or getting add in memory should be readable.
     async def think(self, query: str, chat_history: List[Message], base64_image: str, parsed_screen: str):
         """ Core reasoning loop for the Interaction Agent.
 
@@ -207,9 +207,12 @@ class InteractionAgent():
                 
                 # Check if task has been completed
                 if await self.is_task_completed(result):
+
+                    final_result = result["done"]["messages"]
+                    # WIP** - from here this message is aading to main memory (complete it in the way so that we get entire results of this tool in summarized way)
                     update_memory(
                         role="tool",
-                        content=json.dumps(result),
+                        content=json.dumps(final_result),
                         name="interaction",
                         tool_call_id=self.interaction_tool_id,
                         base64_images=[base64_image],
@@ -217,7 +220,7 @@ class InteractionAgent():
                     )
                     response = {
                         "status": "success",
-                        "result": result,
+                        "result": final_result,
                         "step": step + 1
                     }
 
@@ -227,7 +230,7 @@ class InteractionAgent():
                         type="response",
                         status="processing",
                         query=self.query,
-                        data=response,
+                        data=response["result"],
                         message="Interaction Agent Task Completed",
                         task_id=self.task_id # New Parameter task_id
                     )
@@ -288,7 +291,7 @@ class InteractionAgent():
         # If max steps are exhausted but task not marked complete
         response = {
             "status": "incomplete",
-            "reason": "Maximum steps reached without completing the task",
+            "reason": "Maximum steps reached without completing the task - Task Incompleted",
             "last_result": last_result,
             "result": None
         }
@@ -299,7 +302,7 @@ class InteractionAgent():
             type="response",
             status="processing",
             query=self.query,
-            data=response,
+            data=response["reason"],
             message="Interation agent task completed",
             task_id=self.task_id # New Parameter task_id
         )

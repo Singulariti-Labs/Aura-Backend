@@ -17,6 +17,7 @@ from app.LLM.memory import Message
 from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
+from app.handler import AgentCallbackHandler
 
 class LLMFactory():
     """
@@ -228,7 +229,8 @@ class LLMFactory():
                     agent=agent,
                     tools=tools,
                     verbose=True,
-                    return_intermediate_steps=True
+                    return_intermediate_steps=True,
+                    callbacks=[AgentCallbackHandler(self.memory)]
                 )
 
                 response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})

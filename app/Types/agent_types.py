@@ -74,3 +74,8 @@ class GapDetectionToolInput(BaseModel):
     search_memory: Optional[list[DeepSearchInputQueries]] = []
     user_query: str
     summarize_result: str
+
+class WebSearchInput(BaseModel):
+    search_memory: Optional[list[DeepSearchInputQueries]] = []
+    query: str
+    num_results: Optional[int]

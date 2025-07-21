@@ -12,7 +12,6 @@ from app.api.websocket_utils import send_ws_message
 import asyncio
 
 
-
 class Agent(BaseAgent):
     """ 
     This is the main agent that will do the normal connversation and will decide wether to call the supervisor agent or not on the 

@@ -159,12 +159,12 @@ Use excel for spreadsheets or tabular data.)
 7. TASK COMPLETION:
 
 - Use the "done" action when the task is complete.
+- Add the complete description about what you did in this task.
 - Don't hallucinate actions.
-- If stuck after 5 attempts, use "done" with error details.
+- If stuck after 5 attempts, use "done" with error details with proper description.
 - If task is failed, provide the best explanation of what went wrong with the "done" action.
 - Stable UIs (e.g., Calculator): Element indices remain consistent across actions, Batch up to max_actions_per_step actions (e.g., click "5", "+", "3", "=").
 - Dynamic UIs (e.g., Mail): Elements may refresh or reorder after actions, perform one action at a time.
-
 
 8. NAVIGATION & ERROR HANDLING:
 
