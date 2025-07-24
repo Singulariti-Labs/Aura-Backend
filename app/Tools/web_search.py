@@ -24,5 +24,3 @@ class WebSearchTool(BaseTool):
         response = await web_search(query=query, num_results=num_results, memory=self.memory, tool_call_id=tool_call_id)
 
         return response
-
-        

@@ -76,6 +76,32 @@ class GapDetectionToolInput(BaseModel):
     summarize_result: str
 
 class WebSearchInput(BaseModel):
-    search_memory: Optional[list[DeepSearchInputQueries]] = []
     query: str
     num_results: Optional[int]
+
+class WebScraperInput(BaseModel):
+    urls_string: str
+    workspace_path: str
+    chat_name: str
+
+class AskToolInput(BaseModel):
+    text: str = Field(
+        ...,
+        description=(
+            "Question text to present to user - should be specific and clearly indicate what information you need. "
+            "Include: 1) Clear question or request, 2) Context about why the input is needed, "
+            "3) Available options if applicable, 4) Impact of different choices, "
+            "5) Any relevant constraints or considerations."
+        )
+    )
+    attachments: Optional[Union[str, List[str]]] = Field(
+        None,
+        description=(
+            "(Optional) List of files or URLs to attach to the question. "
+            "Include when: 1) Question relates to specific files or configurations, "
+            "2) User needs to review content before answering, "
+            "3) Options or choices are documented in files, "
+            "4) Supporting evidence or context is needed. "
+            "Always use relative paths to /workspace directory."
+        )
+    )
