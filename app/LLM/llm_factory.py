@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_community.chat_models.anthropic import ChatAnthropic
@@ -8,6 +9,7 @@ from langchain_core.runnables import Runnable
 from langchain.tools import Tool
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableLambda
+import os
 import re
 import json
 
@@ -18,6 +20,8 @@ from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.handler import AgentCallbackHandler
+
+load_dotenv()
 
 class LLMFactory():
     """
@@ -47,8 +51,19 @@ class LLMFactory():
         """
         try:
             if llm_config.provider == "openai":
-                return ChatOpenAI(model=llm_config.model_name)
+                api_key = os.environ.get("OPENAI_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+                return ChatOpenAI(model=llm_config.model_name, api_key=api_key)
+            
             elif llm_config.provider == "anthropic":
+                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+                
                 return ChatAnthropic(model=llm_config.model_name)
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")

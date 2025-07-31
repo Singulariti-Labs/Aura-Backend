@@ -7,7 +7,28 @@ import os
 
 screen_parser_url = os.getenv("SCREEN_PARSING_URL")
 
-async def get_parsed_screen(base64_image: str, screen_width: Optional[int] = 1920, screen_height: Optional[int] = 1080) -> str:
+async def get_parsed_screen(base64_image: str, screen_width: Optional[int] = 1920, screen_height: Optional[int] = 1080):
+    """Function is used to get the content, position and interactivity of elements present on the screen using omni parser server
+
+    input:
+        base64_image - screenshot of screen in base64 format
+        screen_width - width of the screen set default to 1920
+        screen_height - height of the screen set default to 1080
+
+    output:
+        parsed content of the screen in XML format
+
+        eg: <screen>
+                <element index="0" type="button" interactivity="true">
+                    <position>288, 270</position>
+                    <content>Submit</content>
+                </element>
+                <element index="1" type="link" interactivity="false">
+                    <position>1056, 567</position>
+                    <content>Read more</content>
+                </element>
+            </screen>    
+    """
     try:
         # Step 2: Send the base64 string to the FastAPI server
         url = screen_parser_url
@@ -16,14 +37,38 @@ async def get_parsed_screen(base64_image: str, screen_width: Optional[int] = 192
             "base64_image": base64_image
         }
 
-        response = await requests.post(url, json=payload, headers=headers)
-        parsed_screen_xml_content = get_parsed_screen_xml(elements=response, screen_height=screen_height, screen_width=screen_width)
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        screen_elements = data["parsed_content_list"]
+        parsed_screen_xml_content = get_parsed_screen_xml(elements=screen_elements, screen_height=screen_height, screen_width=screen_width)
         return parsed_screen_xml_content
     except requests.exceptions.RequestException as e:
         print(f"❌ Screen Parsing API request failed: {e}")
         return {"error": str(e)}
         
-def get_parsed_screen_xml(elements: list, screen_width: Optional[int] = 1920, screen_height: Optional[int] = 1080) -> str:
+def get_parsed_screen_xml(elements: list, screen_width: Optional[int] = 1920, screen_height: Optional[int] = 1080):
+    """This function converts parsed UI element data into a structured XML format, making it easier for an LLM to understand screen layout, 
+    element positions, interactivity, and content.
+    
+    input:
+        elements (list) - It is the list of the elements present on the screen with there positions, interactivity adn content.
+        screen_width - width of the screen set default to 1920
+        screen_height - height of the screen set default to 1080
+    
+    output:
+        parsed content of the screen in XML format
+
+        eg: <screen>
+                <element index="0" type="button" interactivity="true">
+                    <position>288, 270</position>
+                    <content>Submit</content>
+                </element>
+                <element index="1" type="link" interactivity="false">
+                    <position>1056, 567</position>
+                    <content>Read more</content>
+                </element>
+            </screen>
+    """
     root = ET.Element("screen")
 
     for index, item in enumerate(elements, start=0):

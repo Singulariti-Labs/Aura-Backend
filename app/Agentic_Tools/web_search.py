@@ -160,5 +160,3 @@ async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, mem
     update_memory(role="tool", name="web_scraper", tool_call_id=tool_call_id, content=message, memory=memory)
 
     return message
-
-
