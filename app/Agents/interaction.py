@@ -9,6 +9,7 @@ from app.Prompts.interaction import INTERACTION_AGENT_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
+from app.Adapters.screenshot_parser import get_parsed_screen, get_parsed_screen_xml
 
 
 class InteractionAgent():
@@ -27,7 +28,6 @@ class InteractionAgent():
         self.failure_count = 0
         self.llm_factory = LLMFactory(self.subagent_memory)
         self.interaction_tool_id = None
-        self.scale_factors = None
         # self.task_manager = TaskManager()
         
 
@@ -89,7 +89,7 @@ class InteractionAgent():
             # Re Run if Failed to get screenshot from client
             if response_type == "screenshot_response":
                 base64_image = user_input["data"]["image_base64"]
-                self.scale_factors = user_input["data"]["scale_factors"]
+                resolution = user_input["data"]["resolution"]
             else :
                 await send_ws_message(
                     websocket=self.websocket,
@@ -104,12 +104,32 @@ class InteractionAgent():
                     "message": "Failed to capture screenshot"  
                 }
                 return response
+            
+            
+            height = resolution["height"]
+            width = resolution["width"]
 
-
+            parsed_screen = await get_parsed_screen(base64_image=base64_image, screen_height=height, screen_width=width)
+            
+            # # ✅ Check for parsed screen errors
+            # if not parsed_screen or "error" in parsed_screen:
+            #     error_msg = parsed_screen.get("error", "Unknown error during screen parsing")
+            #     await send_ws_message(
+            #         websocket=self.websocket,
+            #         type="response",
+            #         status="ERROR",
+            #         query=self.query,
+            #         message=f"Failed to parse screen: {error_msg}",
+            #         task_id=self.task_id
+            #     )
+            #     return {
+            #         "status": "Failed",
+            #         "message": f"Screen parsing failed: {error_msg}"
+            #     }
             # base64_image = screenshot # Get the screenshot from client of curret_state
             self.subagent_memory.add_messages(self.shared_memory.messages)
 
-            response = await self.think(query, self.subagent_memory.messages, base64_image)
+            response = await self.think(query, self.subagent_memory.messages, base64_image, parsed_screen)
             status = response.get("status")
 
             if status == "success":
@@ -124,8 +144,8 @@ class InteractionAgent():
         except Exception as e:
             return f"[💥 Error] Interaction Agent Invoke Failed: {str(e)}"
 
-
-    async def think(self, query: str, chat_history: List[Message], base64_image: str):
+    # WIP** - Make sure the final response going to client or getting add in memory should be readable.
+    async def think(self, query: str, chat_history: List[Message], base64_image: str, parsed_screen: str):
         """ Core reasoning loop for the Interaction Agent.
 
         This method runs a ReAct-style agent loop for a maximum number of steps (`self.max_steps`), 
@@ -160,7 +180,8 @@ class InteractionAgent():
                     base64_image=base64_image,
                     llm=self.llm,
                     agent_type="interaction",
-                    input_message=input_message
+                    input_message=input_message,
+                    parsed_screen_context=parsed_screen
                 )
 
                 last_result = result  # Save the latest result in case we need to return it later
@@ -171,8 +192,6 @@ class InteractionAgent():
                 update_memory(role="user", content=query, base64_images=[base64_image], memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
                 input_message.append({"role":"assistant", "content":json.dumps(result)})
-
-                last_result["scale_factors"] = self.scale_factors
 
                 # SEND_RESPONSE_TO_CLINET - Interaction agent output
                 # 🐤 Send actions to the client
@@ -188,9 +207,12 @@ class InteractionAgent():
                 
                 # Check if task has been completed
                 if await self.is_task_completed(result):
+
+                    final_result = result["done"]["messages"]
+                    # WIP** - from here this message is aading to main memory (complete it in the way so that we get entire results of this tool in summarized way)
                     update_memory(
                         role="tool",
-                        content=json.dumps(result),
+                        content=json.dumps(final_result),
                         name="interaction",
                         tool_call_id=self.interaction_tool_id,
                         base64_images=[base64_image],
@@ -198,7 +220,7 @@ class InteractionAgent():
                     )
                     response = {
                         "status": "success",
-                        "result": result,
+                        "result": final_result,
                         "step": step + 1
                     }
 
@@ -208,7 +230,7 @@ class InteractionAgent():
                         type="response",
                         status="processing",
                         query=self.query,
-                        data=response,
+                        data=response["result"],
                         message="Interaction Agent Task Completed",
                         task_id=self.task_id # New Parameter task_id
                     )
@@ -223,6 +245,7 @@ class InteractionAgent():
                 # Re Run if Failed to get screenshot from client
                 if response_type == "screenshot_response":
                     base64_image = user_input["data"]["image_base64"]
+                    resolution = user_input["data"]["resolution"]
                 else :
                     await send_ws_message(
                         websocket=self.websocket,
@@ -238,7 +261,11 @@ class InteractionAgent():
                     }
                     return response
                 
+                height = resolution["height"]
+                width = resolution["width"]
 
+                parsed_screen = await get_parsed_screen(base64_image=base64_image, screen_height=height, screen_width=width)
+                
             except Exception as e:
                 # Optional: Add logging here
                 response = {
@@ -264,7 +291,7 @@ class InteractionAgent():
         # If max steps are exhausted but task not marked complete
         response = {
             "status": "incomplete",
-            "reason": "Maximum steps reached without completing the task",
+            "reason": "Maximum steps reached without completing the task - Task Incompleted",
             "last_result": last_result,
             "result": None
         }
@@ -275,7 +302,7 @@ class InteractionAgent():
             type="response",
             status="processing",
             query=self.query,
-            data=response,
+            data=response["reason"],
             message="Interation agent task completed",
             task_id=self.task_id # New Parameter task_id
         )

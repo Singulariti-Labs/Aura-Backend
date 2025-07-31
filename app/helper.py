@@ -40,7 +40,7 @@ def update_memory(
 def update_input_messages_with_screenshot_and_context(
     input_message: List[dict],
     base64_image: Optional[str] = None,
-    current_state: Optional[str] = None
+    parsed_screen_context: Optional[str] = None
 ) -> List[dict]:
     """
     Updates input_messages (OpenAI format) to:
@@ -67,8 +67,8 @@ def update_input_messages_with_screenshot_and_context(
     )
 
     default_text = "query: This is the updated screenshot after performing the actions."
-    if current_state:
-        default_text += f"\ncurrent_state: {current_state}"
+    if parsed_screen_context:
+        default_text += f"\nscreen_context: {parsed_screen_context}"
 
     # CASE 1: Last message is user, and content is list (OpenAI multimodal format)
     if last_message and last_message.get("role") == "user":
@@ -78,7 +78,7 @@ def update_input_messages_with_screenshot_and_context(
         if isinstance(content, list):
             # Update the first text block (assuming it's the query)
             if content and content[0]["type"] == "text" and "query:" in content[0]["text"]:
-                content[0]["text"] += f"\ncurrent_state: {current_state}" if current_state else ""
+                content[0]["text"] += f"\nscreen_context: {parsed_screen_context}" if parsed_screen_context else ""
 
             # Append the image if provided
             if image_part:

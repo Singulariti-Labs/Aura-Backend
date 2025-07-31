@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_community.chat_models.anthropic import ChatAnthropic
@@ -8,6 +9,7 @@ from langchain_core.runnables import Runnable
 from langchain.tools import Tool
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableLambda
+import os
 import re
 import json
 
@@ -17,6 +19,9 @@ from app.LLM.memory import Message
 from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
+from app.handler import AgentCallbackHandler
+
+load_dotenv()
 
 class LLMFactory():
     """
@@ -46,8 +51,19 @@ class LLMFactory():
         """
         try:
             if llm_config.provider == "openai":
-                return ChatOpenAI(model=llm_config.model_name)
+                api_key = os.environ.get("OPENAI_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
+                return ChatOpenAI(model=llm_config.model_name, api_key=api_key)
+            
             elif llm_config.provider == "anthropic":
+                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+                
                 return ChatAnthropic(model=llm_config.model_name)
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
@@ -228,7 +244,8 @@ class LLMFactory():
                     agent=agent,
                     tools=tools,
                     verbose=True,
-                    return_intermediate_steps=True
+                    return_intermediate_steps=True,
+                    callbacks=[AgentCallbackHandler(self.memory)]
                 )
 
                 response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
@@ -299,14 +316,14 @@ class LLMFactory():
         input_message: List[dict],
         agent_type: AGENT_TYPE,  # type: ignore
         base64_image: Optional[str] = None,
-        current_state: Optional[str] = None,  #(parsed_page)
+        parsed_screen_context: Optional[str] = None,  #(parsed_page)
         max_tokens = 128000,
     ):
         try:
             llm_invoke_message = input_message 
 
-            if base64_image or current_state:
-                llm_invoke_message = update_input_messages_with_screenshot_and_context(input_message=input_message, base64_image=base64_image, current_state=current_state)
+            if base64_image or parsed_screen_context:
+                llm_invoke_message = update_input_messages_with_screenshot_and_context(input_message=input_message, base64_image=base64_image, parsed_screen_context=parsed_screen_context)
             
             response = await llm.ainvoke(llm_invoke_message)
 
