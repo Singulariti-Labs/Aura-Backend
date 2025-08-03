@@ -14,12 +14,14 @@ from app.LLM.memory import Memory
 from app.helper import update_memory
 
 
-async def web_search(query: str, num_results: Optional[int] = 20, memory: Optional[Memory] = None, tool_call_id: Optional[str] = None):
+async def web_search(query: str, task_id: str, chat_id: str,num_results: Optional[int] = 20, memory: Optional[Memory] = None, tool_call_id: Optional[str] = None):
     """
     This is the web search tool which takes the query, max_results and returns the results.
 
     input:
         query: str
+        task_id: str
+        chat_id: str
         num_results: Optional[int] = 20
         memory: Optional[Memory] = None
         tool_call_id: Optional[str] = None
@@ -43,7 +45,7 @@ async def web_search(query: str, num_results: Optional[int] = 20, memory: Option
         return f"Error in web search for query: {query}\n error: {e}"
     
 
-async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, memory: Optional[Memory] = None, tool_call_id: Optional[str] = None):
+async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, task_id: str, chat_id: str, memory: Optional[Memory] = None, tool_call_id: Optional[str] = None):
     """
     This is the web scraping tool which takes the url's seprated by comma, workspace_path, chat_name and saves the scraped data at the provided location.
 
@@ -51,6 +53,8 @@ async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, mem
         urls_string: str
         workspace_path: str
         chat_name: str
+        task_id: str
+        chat_id: str
         memory: Optional[Memory] = None
         tool_call_id: Optional[str] = None
 

@@ -7,7 +7,7 @@ from app.LLM.memory import Memory
 from app.Agentic_Tools.web_search import web_scraper
 
 class WebScraperTool(BaseTool):
-    def __init__(self, task_id: str, memory: Optional[Memory] = None):
+    def __init__(self, task_id: str, chat_id: str, memory: Optional[Memory] = None):
         super().__init__(
             name="web_scraper",
             description="Performs the web scraping for the given urls if the content from web search is not sufficient to provide indetail information.",
@@ -15,6 +15,8 @@ class WebScraperTool(BaseTool):
             args_schema=WebScraperInput
         )
         self.memory = memory
+        self.task_id = task_id
+        self.chat_id = chat_id
 
     async def run(self, inputs: WebScraperInput) -> str:
         urls_string = inputs.urls_string
@@ -22,6 +24,6 @@ class WebScraperTool(BaseTool):
         chat_name = inputs.chat_name
         tool_call_id = str(uuid.uuid4())
 
-        response = await web_scraper(urls_string=urls_string, workspace_path=workspace_path, chat_name=chat_name, tool_call_id=tool_call_id)
+        response = await web_scraper(urls_string=urls_string, workspace_path=workspace_path, chat_name=chat_name, task_id=self.task_id, chat_id=self.chat_id, memory=self.memory, tool_call_id=tool_call_id)
 
         return response

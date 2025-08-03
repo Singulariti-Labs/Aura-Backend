@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
 
 class SupervisorTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
         """
         Initializes the SupervisorTool with a language model and optional memory.
 

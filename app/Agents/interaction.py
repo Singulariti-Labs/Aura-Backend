@@ -8,15 +8,16 @@ from app.helper import update_memory
 from app.Prompts.interaction import INTERACTION_AGENT_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.Task.task_manager import task_manager
-from app.api.websocket_utils import send_ws_message
+from app.API.websocket_utils import send_ws_message
 from app.Adapters.screenshot_parser import get_parsed_screen, get_parsed_screen_xml
 
 
 class InteractionAgent():
 
-    def __init__(self,  llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, maxTokens: int = 128000) -> None:
+    def __init__(self,  llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, maxTokens: int = 128000) -> None:
         self.llm = llm
         self.task_id = task_id
+        self.chat_id = chat_id
         self.max_tokens = maxTokens
         self.system_info = None
         self.shared_memory = memory
@@ -49,11 +50,14 @@ class InteractionAgent():
             # Notify client present inside Main Agent
             await send_ws_message(
                 websocket=self.websocket,
-                type="status",
-                status="processing",
-                query=self.query,
-                message="Running Interaction Agent",
-                task_id=self.task_id # New Parameter task_id
+                type="aura_status",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "query": self.query,
+                    "message": "Running <INTERACTION AGENT>",
+                    "status": "processing",
+                }
             )
 
             # ⏸ Pause check before heavy run
@@ -62,25 +66,27 @@ class InteractionAgent():
             self.system_info = system_info
             self.interaction_tool_id = tool_call_id
 
-            get_current_state_screenshot = {
-                "type": "screenshot",
-                "return_format": "base64",
-                "resize": [1920, 1080],
-                "quality": 50
-                }
+            # get_current_state_screenshot = {
+            #     "type": "screenshot",
+            #     "return_format": "base64",
+            #     "resize": [1920, 1080],
+            #     "quality": 50
+            # }
 
-            # Send messsage to client too get teh screeshot of users current window
+            # Send messsage to client too get the screeshot of users current window in base64 format
             await send_ws_message(
                 websocket=self.websocket,
-                type="screenshot",
-                status="processing",
-                query=self.query,
-                data=get_current_state_screenshot,
-                message="Asking for screenshot of current state to perform actions",
-                task_id=self.task_id # New Parameter task_id
+                type="client_tool_request",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "tool": "screenshot",
+                    # "input": get_current_state_screenshot
+                }
             )
             
-
+            # WIP** - The screenshot is the type client_tool_response it is not the user_input (chage how we are accessing screenshot)
+    
             # Waiting for base64 image (screenshot)
             user_input = await task_manager.wait_for_input(self.task_id)
             response_type = user_input["type"]
@@ -91,13 +97,16 @@ class InteractionAgent():
                 base64_image = user_input["data"]["image_base64"]
                 resolution = user_input["data"]["resolution"]
             else :
+                # NNA-check it once there no such need to send this to client (NNA -> Not Necessary to add)
                 await send_ws_message(
                     websocket=self.websocket,
-                    type="response",
-                    status="ERROR",
-                    query=self.query,
-                    message="Failed to capture screenshot",
-                    task_id=self.task_id # New Parameter task_id
+                    type="error_message",
+                    task_id=self.task_id, # New Parameter task_id
+                    chat_id=self.chat_id,
+                    payload={
+                        "error_code": "CLIENT_TOOL_FAILED",
+                        "message": "Client Tool failed to get the screenshot"
+                    }            
                 )
                 response = {
                     "status": "Incomplete",
@@ -193,16 +202,19 @@ class InteractionAgent():
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
                 input_message.append({"role":"assistant", "content":json.dumps(result)})
 
+
+                # WIP** - Just provide the actions array to the client tool
                 # SEND_RESPONSE_TO_CLINET - Interaction agent output
                 # 🐤 Send actions to the client
                 await send_ws_message(
                     websocket=self.websocket,
-                    type="response",
-                    status="processing",
-                    query=self.query,
-                    data=last_result,
-                    message="Interaaction Agent Action for the step.",
-                    task_id=self.task_id # New Parameter task_id
+                    type= "client_tool_request",
+                    task_id=self.task_id, # New Parameter task_id
+                    chat_id=self.chat_id,
+                    payload={
+                        "tool": "interaction",
+                        "input": last_result
+                    }
                 )
                 
                 # Check if task has been completed
@@ -223,16 +235,21 @@ class InteractionAgent():
                         "result": final_result,
                         "step": step + 1
                     }
-
+                    
                     # What to give the type for this
                     await send_ws_message(
                         websocket=self.websocket,
-                        type="response",
-                        status="processing",
-                        query=self.query,
-                        data=response["result"],
-                        message="Interaction Agent Task Completed",
-                        task_id=self.task_id # New Parameter task_id
+                        type="server_tool_response",
+                        task_id=self.task_id, # New Parameter task_id
+                        chat_id=self.chat_id,
+                        payload={
+                            "tool": "interaction",
+                            "content": {
+                                "role": "tool",
+                                "message": final_result,
+                                "status": "success"
+                            }
+                        }
                     )
 
                     return response
@@ -247,6 +264,7 @@ class InteractionAgent():
                     base64_image = user_input["data"]["image_base64"]
                     resolution = user_input["data"]["resolution"]
                 else :
+                    # NNA - check it once.
                     await send_ws_message(
                         websocket=self.websocket,
                         type="response",
@@ -275,15 +293,15 @@ class InteractionAgent():
                     "result": None
                 }
 
-                # What to give the type for this
                 await send_ws_message(
                     websocket=self.websocket,
-                    type="screenshot",
-                    status="processing",
-                    query=self.query,
-                    data=response,
-                    message="Asking for screenshot of current state to perform actions",
-                    task_id=self.task_id # New Parameter task_id
+                    type = "client_tool_request",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "tool": "screenshot",
+                        # "input": get_current_state_screenshot
+                    }
                 )
 
                 return response
@@ -296,6 +314,8 @@ class InteractionAgent():
             "result": None
         }
 
+
+        #  NNA - check it once before addin to client
         # What to give the type for this
         await send_ws_message(
             websocket=self.websocket,

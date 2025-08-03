@@ -10,7 +10,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.Types.agent_types import DeepSearchInputQueries, DeepResearchActionInput, GapDetectionToolInput
 from datetime import datetime
 from app.Task.task_manager import task_manager
-from app.api.websocket_utils import send_ws_message
+from app.API.websocket_utils import send_ws_message
 
 
 import asyncio
@@ -19,10 +19,11 @@ import re
 
 class DeepResearchAgent():
 
-    def __init__(self,  llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, maxTokens: int = 128000):
+    def __init__(self,  llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, maxTokens: int = 128000):
 
-        self.llm = llm;
+        self.llm = llm
         self.task_id = task_id
+        self.chat_id = chat_id
         self.max_tokens = maxTokens
         self.shared_memory = memory
         # self.interaction_agent_prompt = DEEP_REAEARCH_PROMPT
@@ -47,11 +48,14 @@ class DeepResearchAgent():
             # send WS message to client - (inside deep research)
             await send_ws_message(
                 websocket=self.websocket,
-                type="status",
-                status="processing",
-                query=self.query,
-                message="Running Deep Research Agent",
-                task_id=self.task_id # New Parameter task_id
+                type="aura_status",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "query": self.query,
+                    "message": "Running <DEEP RESEARCH AGENT>",
+                    "status": "processing",
+                }
             )
 
             # ⏸ Pause check before heavy run

@@ -6,7 +6,7 @@ from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
 
 class AskTool(BaseTool):
-    def __init__(self, task_id: str, memory: Optional[Memory] = None):
+    def __init__(self, task_id: str, chat_id: str, memory: Optional[Memory] = None):
         super().__init__(
             name="ask",
             description="""This tool is used to ask user a question and wait for response. Use for: 1) Requesting clarification on ambiguous requirements, 
@@ -18,6 +18,8 @@ class AskTool(BaseTool):
             args_schema=AskToolInput
         )
         self.memory = memory
+        self.task_id = task_id
+        self.chat_id = chat_id
 
     async def run(self, inputs: AskToolInput) -> str:
         text = inputs.text

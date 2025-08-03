@@ -10,7 +10,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.helper import update_memory
 from app.Task.task_manager import task_manager
-from app.api.websocket_utils import send_ws_message
+from app.API.websocket_utils import send_ws_message
 
 if TYPE_CHECKING:
     from app.Tools.tool_calling import Tools
@@ -24,11 +24,12 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
         self.task_id = task_id
+        self.chat_id = chat_id
         self.planner_agent = PlannerAgent()
         self.router_parser = JsonOutputParser()
         self.system_info = None
@@ -78,11 +79,14 @@ class SupervisorAgent(BaseAgent):
             # Notify client present inside Main Agent
             await send_ws_message(
                 websocket=self.websocket,
-                type="notify",
-                status="processing",
-                query=self.query,
-                message="f(Running Supervisor Agent)",
-                task_id=self.task_id # New Parameter task_id
+                type="aura_status",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "query": self.query,
+                    "message": "Running <SUPERVISOR AGENT>",
+                    "status": "processing",
+                }
             )
 
             # ⏸ Pause check before any heavy work

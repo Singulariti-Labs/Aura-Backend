@@ -18,7 +18,7 @@ class Tools():
     This class encapsulates tool setup logic and exposes them in a format compatible
     with LangChain's tool interface.
     """
-    def __init__(self, llm: BaseChatModel, memory: Memory, task_id: str):
+    def __init__(self, llm: BaseChatModel, memory: Memory, task_id: str, chat_id: str):
         """
         Initializes the Tools manager with an LLM and memory.
 
@@ -26,24 +26,25 @@ class Tools():
         - llm: A language model instance that tools will use for reasoning and output generation.
         - memory: A memory object to store contextual conversation history or state.
         - task_id: A unique identifier for a task.
-
+        - chat_id: A unique identifier for a chat.
         Sets up individual tools like the SupervisorTool internally.
         """
         self.memory = memory
         self.llm = llm
         self.task_id = task_id
+        self.chat_id = chat_id
 
          # Import at runtime to break the cycle
         from app.Agents.supervisor import SupervisorAgent
-        self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(llm=self.llm, memory=self.memory, tools=self, task_id=self.task_id)
+        self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(llm=self.llm, memory=self.memory, tools=self, task_id=self.task_id, chat_id=self.chat_id)
 
-        self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory, task_id=self.task_id)
-        self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory, task_id=self.task_id)
-        self.deep_research_tool = DeepResearchTool(llm=self.llm, memory=self.memory, task_id=self.task_id)
-        self.web_search_tool = WebSearchTool(memory=self.memory, task_id=self.task_id)
-        self.web_scraping_tool = WebScraperTool(memory=self.memory, task_id=self.task_id)
-        self.ask_tool = AskTool(memory=self.memory, task_id=self.task_id)
-        self.complete_tool = CompleteTool(memory=self.memory, task_id=self.task_id)
+        self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.deep_research_tool = DeepResearchTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.web_search_tool = WebSearchTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.web_scraping_tool = WebScraperTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.ask_tool = AskTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.complete_tool = CompleteTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):

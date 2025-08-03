@@ -9,7 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
 from app.Types.agent_types import LLMConfig, SystemInfo
-from app.api.websocket_utils import send_ws_message
+from app.API.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 import asyncio
 import uuid
@@ -35,7 +35,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await manager.connect(websocket)
 
-    async def handle_query(message: dict, task_id: str):
+    async def handle_query(message: dict, task_id: str, chat_id: str):
         """
         Handle an individual query message from the client.
 
@@ -46,100 +46,123 @@ async def websocket_endpoint(websocket: WebSocket):
             message (dict): The incoming JSON message from the WebSocket client.
         """
         try:
-            query = message["query"]
-            os_info = message.get("os", "windows")
-            version_info = message.get("version", "11")
-            id_ = message.get("id")  # Optional identifier for tracking response
+            payload = message.get("payload")
+            if payload:
+                query = payload.get("query")
 
-            # # Create a task_id to identify task
-            # task_id = str(uuid.uuid4())
-            
-            # # Creating the task using TaskManager class
-            # task_manager.create_task(task_id, websocket)          
+                if query is None:
+                    raise ValueError("Missing required field: 'query'")
+                
+                os_info = payload.get("os", "windows")
+                version_info = message.get("os_version", "11")
+                workspace_path = message.get("workspace")  # WIP** -> Workspace Path need to add in the AURA Prompt.
+                # id_ = message.get("id")  # Optional identifier for tracking response         
 
-            # Prepare agent with system and LLM configuration
-            system_info = SystemInfo(os=os_info, version=version_info)
-            agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id)
+                # Prepare agent with system and LLM configuration
+                system_info = SystemInfo(os=os_info, version=version_info)
+                agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id)
 
-            # Notify client that processing has started
-            await send_ws_message(
-                websocket,
-                type="status",
-                status="processing",
-                query=query,
-                message="Agent is processing the request",
-                id_=id_,
-                task_id=task_id # New Parameter task_id
-            )
+                # Notify client that processing has started
+                await send_ws_message(
+                    websocket,
+                    type="aura_status",
+                    task_id=task_id, # New Parameter task_id
+                    chat_id=chat_id,
+                    payload= {
+                        "query": query,
+                        "message": "Agent is processing the request",
+                        "status": "processing",
+                    }
+                )
 
-            # Invoke the agent
-            response = await agent.invoke()
-            # response = {
-            #             "type": "screenshot",
-            #             "return_format": "base64",
-            #             "resize": [640, 480],
-            #             "quality": 50
-            #             }
-            # response = {
-            #             "type": "desktop_interaction",
-            #                 "actions":[{
-            #                     "action": {
-            #                         "type": "click",
-            #                         "position": [200, 200],
-            #                         "button": "left"
-            #                     },
-            #                     "interacting_on": "default",
-            #                     "confidence": 1.0
-            # }]}
+                # Invoke the agent
+                response = await agent.invoke()
+                # response = {
+                #             "type": "screenshot",
+                #             "return_format": "base64",
+                #             "resize": [640, 480],
+                #             "quality": 50
+                #             }
+                # response = {
+                #             "type": "desktop_interaction",
+                #                 "actions":[{
+                #                     "action": {
+                #                         "type": "click",
+                #                         "position": [200, 200],
+                #                         "button": "left"
+                #                     },
+                #                     "interacting_on": "default",
+                #                     "confidence": 1.0
+                # }]}
 
-            final_result = {
-                "input": response["input"],
-                "output": response["output"]
-            }
+                final_result = {
+                    "input": response["input"],
+                    "output": response["output"]
+                }
 
-            # Send back the final response
-            await send_ws_message(
-                websocket,
-                type="response",
-                status="completed",
-                query=query,
-                data=final_result,
-                message=final_result["output"],
-                id_=id_,
-                task_id=task_id
-            )
+                # Send back the final response
+                await send_ws_message(
+                    websocket,
+                    type="server_tool_response",
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    payload={
+                        "tool": "aura",
+                        "content": {
+                            "role": "assistant",
+                            "message": final_result["output"]
+                        },
+                        "status": "completed"
+                    }
+                )
+            else:
+                await send_ws_message(
+                    websocket,
+                    type="error_message",
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    payload={
+                        "error_code": "PAYLOAD_NOT_FOUND",
+                        "message": "Error due to payload not found in the task request"
+                    }
+                )
 
         except asyncio.CancelledError:
             await send_ws_message(
                 websocket,
-                type="status",
-                status="cancelled",
-                message="Task was cancelled by the user.",
-                id_=id_,
-                task_id=task_id
+                type="aura_status",
+                task_id=task_id,
+                chat_id=chat_id,
+                payload= {
+                    "query": query,
+                    "message": "Task is cancled by the user",
+                    "status": "cancelled",
+                }
             )
 
         except KeyError:
             # Handle missing 'query' field
             await send_ws_message(
                 websocket,
-                type="error",
-                status="error",
-                query=message.get("query", ""),
-                message="Missing required field 'query'",
-                id_=message.get("id"),
-                task_id=task_id
+                type="error_message",
+                task_id=task_id,
+                chat_id=chat_id,
+                payload={
+                    "error_code": "MISSING_REQUIRED_FIELD",
+                    "message": "Missing required field 'query' in the payload"
+                }
             )
         except Exception as e:
             # Catch-all for unexpected runtime errors
             await send_ws_message(
                 websocket,
-                type="error",
-                status="error",
-                query=message.get("query", ""),
-                message=str(e),
-                id_=message.get("id"),
-                task_id=task_id
+                type="error_message",
+                task_id=task_id,
+                chat_id=chat_id,
+                payload={
+                    "error_code": "SYSTEM_ERROR",
+                    "message": f"ERROR: {str(e)}"
+                }            
             )
         finally:
             task_manager.remove_task(task_id)
@@ -150,13 +173,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Wait for the next incoming JSON message from the client
                 message = await websocket.receive_json()
                 msg_type = message.get("type")
-                task_id = str(uuid.uuid4())
+                task_id = message.get("task_id") | str(uuid.uuid4())
+                chat_id = message.get("chat_id")
 
-                if msg_type == "message":
+                if msg_type == "task_request":
                     # Create task state with WebSocket
                     task_manager.create_task(task_id, websocket)
                     # Handle each message in its own asynchronous task
-                    task = asyncio.create_task(handle_query(message, task_id))
+                    task = asyncio.create_task(handle_query(message, task_id, chat_id))
                     task_manager.set_task(task_id, task)
                 
                 elif msg_type == "cancel":
@@ -179,19 +203,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     await send_ws_message(
                         websocket,
-                        type="error",
-                        status="error",
-                        message=f"Unknown message type: {msg_type}",
-                        id_ = message.get("id_"),
-                        task_id=message.get("task_id")
+                        type="error_message",
+                        task_id=message.get("task_id"),
+                        chat_id=chat_id,
+                        payload={
+                            "error_code": "INTERNAL_ERROR",
+                            "message": f"Unknown message type: {msg_type}"
+                        }    
                 )
 
             except ValueError:
                 # Notify client of JSON decode errors
-                await websocket.send_json({
-                    "status": "error",
-                    "message": "Invalid JSON format"
-                })
+                await send_ws_message(
+                    websocket,
+                    type="error_message",
+                    task_id=message.get("task_id"),
+                    chat_id=chat_id,
+                    payload={
+                        "error_code": "INTERNAL_ERROR",
+                        "message": f"Invalid JSON format"
+                    }
+                )
 
     except WebSocketDisconnect:
         # Cleanly remove disconnected WebSocket from the manager

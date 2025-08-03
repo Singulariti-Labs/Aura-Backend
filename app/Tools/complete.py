@@ -6,7 +6,7 @@ from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
 
 class CompleteTool(BaseTool):
-    def __init__(self, task_id: str, memory: Optional[Memory] = None):
+    def __init__(self, task_id: str, chat_id: str, memory: Optional[Memory] = None):
         super().__init__(
             name="complete",
             description="""A special tool to indicate you have completed all tasks and are about to enter complete state. Use ONLY when: 
@@ -17,6 +17,8 @@ class CompleteTool(BaseTool):
             memory=memory
         )
         self.memory = memory
+        self.task_id = task_id
+        self.chat_id = chat_id
 
     async def run(self) -> str:
         tool_call_id = str(uuid.uuid4())

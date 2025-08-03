@@ -7,7 +7,7 @@ from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
-from app.api.websocket_utils import send_ws_message
+from app.API.websocket_utils import send_ws_message
 
 import asyncio
 
@@ -22,6 +22,7 @@ class Agent(BaseAgent):
         self,
         query: str,
         task_id: str,
+        chat_id: str,
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
@@ -29,6 +30,7 @@ class Agent(BaseAgent):
     ):
         self.query = query
         self.task_id = task_id
+        self.chat_id = chat_id
         self.llm_config = llm
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
@@ -37,7 +39,7 @@ class Agent(BaseAgent):
         self.system_info = None
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.max_tokens = maxTokens
         self.system_info = system_info
         # self.task_manager = TaskManager()
@@ -66,11 +68,14 @@ class Agent(BaseAgent):
             # Notify client present inside Main Agent
             await send_ws_message(
                 websocket=self.websocket,
-                type="notify",
-                status="processing",
-                query=self.query,
-                message=f"Running Main Agent with task: {self.query}",
-                task_id=self.task_id # New Parameter task_id
+                type="aura_status",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "query": self.query,
+                    "message": "Running <AURA>",
+                    "status": "processing",
+                }
             )
 
             user_message = Message.user_message(content=self.query, base64_images=self.screenshot)

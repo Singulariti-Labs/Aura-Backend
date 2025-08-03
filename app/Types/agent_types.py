@@ -34,6 +34,14 @@ ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
 AGENT_TYPE = Literal["main", "supervisor", "interaction"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
+# WS_MESSAGE_TYPE is the types of web socket messages between client and the server
+#   "client_tool_request",     // Server → Client: Request to run tools on client
+#   "client_tool_response",    // Client → Server: Result of client-side tool
+#   "server_tool_response",    // Server → Client: Result of server-side tool
+#   "error_message",           // Error messages
+#   "user_input"               // User's raw input
+WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input"]
+
 class StepStatus(Enum):
     PENDING = "pending"
     COMPLETED = "completed"
@@ -105,3 +113,4 @@ class AskToolInput(BaseModel):
             "Always use relative paths to /workspace directory."
         )
     )
+
