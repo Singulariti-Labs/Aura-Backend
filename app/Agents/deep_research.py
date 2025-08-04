@@ -26,7 +26,6 @@ class DeepResearchAgent():
         self.chat_id = chat_id
         self.max_tokens = maxTokens
         self.shared_memory = memory
-        # self.interaction_agent_prompt = DEEP_REAEARCH_PROMPT
         self.max_failure = 4
         self.max_steps = 100
         self.max_actions_per_step = 10
@@ -64,11 +63,6 @@ class DeepResearchAgent():
             modified_query = await self.get_modified_query(self.query)
 
             queries = modified_query
-
-            # system_prompt = ChatPromptTemplate.from_messages([
-            #     ("system", prompt),
-            #     ("human", "{today}"),
-            # ])
 
             # ⏸ Pause check before thinking
             await task_manager.wait_if_paused(self.task_id)

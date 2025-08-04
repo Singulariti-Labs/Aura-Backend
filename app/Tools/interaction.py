@@ -8,6 +8,7 @@ from app.Tools.tool_input_parser import ToolInputParser
 from app.Agents.interaction import InteractionAgent
 from app.LLM.memory import Memory
 from app.Types.agent_types import InteractionToolInput
+from app.helper import send_last_assistant_message
 
 class InteractionTool(BaseTool):
     def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str,  memory: Optional[Memory] = None):
@@ -33,6 +34,8 @@ class InteractionTool(BaseTool):
 
     async def run(self, inputs: InteractionToolInput) -> str:
 
+        # Sending the last assistant message to the client.
+        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="interaction")
         query = inputs.query
         system_info = inputs.system_info
         tool_call_id = str(uuid.uuid4())

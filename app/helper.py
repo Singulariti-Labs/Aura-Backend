@@ -2,6 +2,9 @@ from typing import Optional, List
 
 from app.LLM.memory import Message, Memory
 from app.Types.agent_types import ROLE_TYPE
+from app.Task.task_manager import task_manager
+from app.API.websocket_utils import send_ws_message
+
 
 # MEMORY - WIP
 def update_memory(
@@ -101,3 +104,56 @@ def update_input_messages_with_screenshot_and_context(
         input_message.append(new_user_message)
 
     return input_message
+
+async def send_last_assistant_message(task_id: str, chat_id: str, memory: Optional[Memory], tool_name: Optional[str] = None):
+    """Sends the Last role = assistant message to the client. for displaying user.
+    
+    input:
+        - memory(Optional[Memory]): Chat Memory,
+        - task_id(str) : unique identfier for the task,
+        - chat_id(str) : unique identfier for the chat
+
+    """
+    try:
+
+        task_state = task_manager.get_state(task_id)
+        websocket = task_state.websocket
+
+        messages = memory.messages
+
+        last_assistant_msg = last_assistant_content = next((msg.get("content") for msg in reversed(messages) if msg.get("role") == "assistant"), None)
+
+        if last_assistant_msg:
+
+            # this message to send the assistant message and to tell which tool we are going to call next in perticular step
+            if tool_name:
+                await send_ws_message(
+                    websocket=websocket,
+                    type="aura_message",
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    payload = {
+                        "content": {
+                            "role": "assistant",
+                            "tool": tool_name,
+                            "message": last_assistant_msg
+                        }
+                    }
+            )
+            
+            else:
+                await send_ws_message(
+                    websocket=websocket,
+                    type="aura_message",
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    payload = {
+                        "content": {
+                            "role": "assistant",
+                            "message": last_assistant_msg
+                        }
+                    }
+                )
+    except Exception as e:
+        print(f"Error while sending assistant message to the client: {e}")
+        

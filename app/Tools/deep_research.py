@@ -8,6 +8,7 @@ from app.Tools.tool_input_parser import ToolInputParser
 from app.Agents.deep_research import DeepResearchAgent
 from app.LLM.memory import Memory
 from app.Types.agent_types import DeepResearchToolInput
+from app.helper import send_last_assistant_message
 
 class DeepResearchTool(BaseTool):
     def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None):
@@ -31,6 +32,8 @@ class DeepResearchTool(BaseTool):
 
     async def run(self, inputs: DeepResearchToolInput) -> str:
 
+        # Sending the last assistant message to the client.
+        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="deep_reasearch")
         query = inputs.query
         tool_call_id = str(uuid.uuid4())
         response = await self.deep_research_agent.invoke(

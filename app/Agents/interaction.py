@@ -89,15 +89,18 @@ class InteractionAgent():
     
             # Waiting for base64 image (screenshot)
             user_input = await task_manager.wait_for_input(self.task_id)
-            response_type = user_input["type"]
+            response_type = user_input.get("type")
 
 
             # Re Run if Failed to get screenshot from client
-            if response_type == "screenshot_response":
-                base64_image = user_input["data"]["image_base64"]
-                resolution = user_input["data"]["resolution"]
+            if response_type == "client_tool_response":
+                payload = user_input.get("payload")
+
+                if payload.get("tool") == "screenshot":
+                    base64_image = payload.get("result").get("image_base64")
+                    resolution = payload.get("result").get("resolution")
             else :
-                # NNA-check it once there no such need to send this to client (NNA -> Not Necessary to add)
+                # NNA-check it once there no such need to send this to client (NNA -> Not Necessary to add) Insted of this retry for screenshot.
                 await send_ws_message(
                     websocket=self.websocket,
                     type="error_message",
@@ -109,8 +112,8 @@ class InteractionAgent():
                     }            
                 )
                 response = {
-                    "status": "Incomplete",
-                    "message": "Failed to capture screenshot"  
+                    "status": "failed",
+                    "message": "Failed to capture the screenshot"  
                 }
                 return response
             
@@ -120,22 +123,6 @@ class InteractionAgent():
 
             parsed_screen = await get_parsed_screen(base64_image=base64_image, screen_height=height, screen_width=width)
             
-            # # ✅ Check for parsed screen errors
-            # if not parsed_screen or "error" in parsed_screen:
-            #     error_msg = parsed_screen.get("error", "Unknown error during screen parsing")
-            #     await send_ws_message(
-            #         websocket=self.websocket,
-            #         type="response",
-            #         status="ERROR",
-            #         query=self.query,
-            #         message=f"Failed to parse screen: {error_msg}",
-            #         task_id=self.task_id
-            #     )
-            #     return {
-            #         "status": "Failed",
-            #         "message": f"Screen parsing failed: {error_msg}"
-            #     }
-            # base64_image = screenshot # Get the screenshot from client of curret_state
             self.subagent_memory.add_messages(self.shared_memory.messages)
 
             response = await self.think(query, self.subagent_memory.messages, base64_image, parsed_screen)
@@ -164,11 +151,14 @@ class InteractionAgent():
             query (str): The user's original request or task instruction.
             chat_history (List[Message]): The ongoing chat memory to provide full context to the LLM.
             base64_image (str): A base64-encoded screenshot representing the current UI or system state.
+            parsed_screen (str): A XML string representing the elements present on the screen.
         """
 
         last_result = None  # To store the latest result from the agent
 
         input_message = self.prepare_interaction_agent_messages_for_openai(query=query, chat_history=chat_history)
+
+        update_memory(role="user", content=query, base64_images=[base64_image], memory=self.subagent_memory)
 
         for step in range(self.max_steps):
             try:
@@ -181,7 +171,7 @@ class InteractionAgent():
                     # Logging can be added here if needed
                     return {
                         "status": "failed",
-                        "reason": "Terminating due to max failure or explicit termination signal",
+                        "message": "Terminating due to max failure or explicit termination signal",
                         "result": None
                     }
 
@@ -198,7 +188,6 @@ class InteractionAgent():
                 print(f"✅RESULT: {last_result}\n\n")
 
                 # Update local memory with the conversation
-                update_memory(role="user", content=query, base64_images=[base64_image], memory=self.subagent_memory)
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
                 input_message.append({"role":"assistant", "content":json.dumps(result)})
 
@@ -220,7 +209,7 @@ class InteractionAgent():
                 # Check if task has been completed
                 if await self.is_task_completed(result):
 
-                    final_result = result["done"]["messages"]
+                    final_result = result.get("done").get("messages")
                     # WIP** - from here this message is aading to main memory (complete it in the way so that we get entire results of this tool in summarized way)
                     update_memory(
                         role="tool",
@@ -232,6 +221,7 @@ class InteractionAgent():
                     )
                     response = {
                         "status": "success",
+                        "message": "Task completed successfully",
                         "result": final_result,
                         "step": step + 1
                     }
@@ -257,25 +247,29 @@ class InteractionAgent():
                 # Waiting for base64 image (screenshot)
                 user_input = await task_manager.wait_for_input(self.task_id)
 
-                response_type = user_input["type"]
+                response_type = user_input.get("type")
+
 
                 # Re Run if Failed to get screenshot from client
-                if response_type == "screenshot_response":
-                    base64_image = user_input["data"]["image_base64"]
-                    resolution = user_input["data"]["resolution"]
+                if response_type == "client_tool_response":
+                    payload = user_input.get("payload")
+
+                    if payload.get("tool") == "screenshot":
+                        base64_image = payload.get("result").get("image_base64")
+                        resolution = payload.get("result").get("resolution")
                 else :
-                    # NNA - check it once.
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        type="response",
-                        status="ERROR",
-                        query=self.query,
-                        message="Failed to capture screenshot",
-                        task_id=self.task_id # New Parameter task_id
-                    )
+                    # NNA - check it once.  Insted of this write retry logic.
+                    # await send_ws_message(
+                    #     websocket=self.websocket,
+                    #     type="response",
+                    #     status="ERROR",
+                    #     query=self.query,
+                    #     message="Failed to capture screenshot",
+                    #     task_id=self.task_id # New Parameter task_id
+                    # )
                     response = {
-                        "status": "Incomplete",
-                        "message": "Failed to capture screenshot"  
+                        "status": "failed",
+                        "message": "Interaction agent failed to capture the screenshot"
                     }
                     return response
                 
@@ -289,7 +283,7 @@ class InteractionAgent():
                 response = {
                     "status": "failed",
                     "step": step + 1,
-                    "reason": f"Exception occurred: {str(e)}",
+                    "message": f"Exception occurred: {str(e)}",
                     "result": None
                 }
 
@@ -308,24 +302,22 @@ class InteractionAgent():
 
         # If max steps are exhausted but task not marked complete
         response = {
-            "status": "incomplete",
-            "reason": "Maximum steps reached without completing the task - Task Incompleted",
-            "last_result": last_result,
-            "result": None
+            "status": "failed",
+            "message": "Maximum steps reached without completing the task - Task Incompleted"
         }
 
 
         #  NNA - check it once before addin to client
         # What to give the type for this
-        await send_ws_message(
-            websocket=self.websocket,
-            type="response",
-            status="processing",
-            query=self.query,
-            data=response["reason"],
-            message="Interation agent task completed",
-            task_id=self.task_id # New Parameter task_id
-        )
+        # await send_ws_message(
+        #     websocket=self.websocket,
+        #     type="response",
+        #     status="processing",
+        #     query=self.query,
+        #     data=response["reason"],
+        #     message="Interation agent task completed",
+        #     task_id=self.task_id # New Parameter task_id
+        # )
 
         return response
                 
