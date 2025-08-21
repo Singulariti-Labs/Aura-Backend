@@ -81,7 +81,7 @@ class InteractionAgent():
                 chat_id=self.chat_id,
                 payload={
                     "tool": "screenshot",
-                    # "input": get_current_state_screenshot
+                    "input": {}
                 }
             )
             
@@ -190,8 +190,46 @@ class InteractionAgent():
                 # Update local memory with the conversation
                 update_memory(role="assistant", content=json.dumps(result), memory=self.subagent_memory)
                 input_message.append({"role":"assistant", "content":json.dumps(result)})
+                
+                # Check if task has been completed
+                if await self.is_task_completed(result):
 
+                    final_result = result.get("action", [{}])[0].get("done", {})
+                    message = final_result.get("message")
+                    # WIP** - from here this message is aading to main memory (complete it in the way so that we get entire results of this tool in summarized way)
+                    update_memory(
+                        role="tool",
+                        content=json.dumps(message),
+                        name="interaction",
+                        tool_call_id=self.interaction_tool_id,
+                        base64_images=[base64_image],
+                        memory=self.shared_memory
+                    )
+                    response = {
+                        "status": "success",
+                        "message": "Task completed successfully",
+                        "result": message,
+                        "step": step + 1
+                    }
+                    
+                    # What to give the type for this
+                    await send_ws_message(
+                        websocket=self.websocket,
+                        type="server_tool_response",
+                        task_id=self.task_id, # New Parameter task_id
+                        chat_id=self.chat_id,
+                        payload={
+                            "tool": "interaction",
+                            "content": {
+                                "role": "tool",
+                                "message": message,
+                                "status": "success"
+                            }
+                        }
+                    )
 
+                    return response
+                
                 # WIP** - Just provide the actions array to the client tool
                 # SEND_RESPONSE_TO_CLINET - Interaction agent output
                 # 🐤 Send actions to the client
@@ -206,55 +244,17 @@ class InteractionAgent():
                     }
                 )
                 
-                # Check if task has been completed
-                if await self.is_task_completed(result):
-
-                    final_result = result.get("done").get("messages")
-                    # WIP** - from here this message is aading to main memory (complete it in the way so that we get entire results of this tool in summarized way)
-                    update_memory(
-                        role="tool",
-                        content=json.dumps(final_result),
-                        name="interaction",
-                        tool_call_id=self.interaction_tool_id,
-                        base64_images=[base64_image],
-                        memory=self.shared_memory
-                    )
-                    response = {
-                        "status": "success",
-                        "message": "Task completed successfully",
-                        "result": final_result,
-                        "step": step + 1
-                    }
-                    
-                    # What to give the type for this
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        type="server_tool_response",
-                        task_id=self.task_id, # New Parameter task_id
-                        chat_id=self.chat_id,
-                        payload={
-                            "tool": "interaction",
-                            "content": {
-                                "role": "tool",
-                                "message": final_result,
-                                "status": "success"
-                            }
-                        }
-                    )
-
-                    return response
-                
                 # Waiting for base64 image (screenshot)
-                user_input = await task_manager.wait_for_input(self.task_id)
+                tool_resp = await task_manager.wait_for_input(self.task_id)
 
-                response_type = user_input.get("type")
+                response_type = tool_resp.get("type")
 
 
                 # Re Run if Failed to get screenshot from client
                 if response_type == "client_tool_response":
-                    payload = user_input.get("payload")
+                    payload = tool_resp.get("payload")
 
-                    if payload.get("tool") == "screenshot":
+                    if payload.get("tool") == "interaction":
                         base64_image = payload.get("result").get("image_base64")
                         resolution = payload.get("result").get("resolution")
                 else :
@@ -286,7 +286,7 @@ class InteractionAgent():
                     "message": f"Exception occurred: {str(e)}",
                     "result": None
                 }
-
+                # WIP**: Why we are triggering screenshot tool here? 
                 await send_ws_message(
                     websocket=self.websocket,
                     type = "client_tool_request",

@@ -28,6 +28,8 @@ class DeepResearchTool(BaseTool):
             memory=memory,
             args_schema=DeepResearchToolInput
         )
+        self.task_id = task_id
+        self.chat_id = chat_id
         self.deep_research_agent = DeepResearchAgent(llm=llm, task_id=task_id, chat_id=chat_id, memory=memory)
 
     async def run(self, inputs: DeepResearchToolInput) -> str:

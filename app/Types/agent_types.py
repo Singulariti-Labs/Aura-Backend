@@ -39,8 +39,10 @@ RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 #   "client_tool_response",    // Client → Server: Result of client-side tool
 #   "server_tool_response",    // Server → Client: Result of server-side tool
 #   "error_message",           // Error messages
-#   "user_input"               // User's raw input
-WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input"]
+#   "user_input",               // User's raw input
+#   "aura_status",              // Status messages send to aura frontend.
+#   "task_request"              // Request coming from the aura frontend for new task.
+WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input", "aura_status", "aura_message", "task_request"]
 
 class StepStatus(Enum):
     PENDING = "pending"

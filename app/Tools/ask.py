@@ -31,6 +31,6 @@ class AskTool(BaseTool):
         tool_call_id = str(uuid.uuid4())
 
         # WIP**
-        # send ws message to client and wait untill the response dont comes from the user.
+        # send ws message to client and close the task here and Compress the messages and feed them to next task run new task with the user_input.
 
         return response

@@ -60,7 +60,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Prepare agent with system and LLM configuration
                 system_info = SystemInfo(os=os_info, version=version_info)
-                agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id)
+                agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id, chat_id=chat_id)
 
                 # Notify client that processing has started
                 await send_ws_message(
@@ -110,9 +110,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         "tool": "aura",
                         "content": {
                             "role": "assistant",
-                            "message": final_result["output"]
-                        },
-                        "status": "completed"
+                            "message": final_result["output"],
+                            "status": "success"
+                        }
                     }
                 )
             else:
@@ -173,7 +173,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Wait for the next incoming JSON message from the client
                 message = await websocket.receive_json()
                 msg_type = message.get("type")
-                task_id = message.get("task_id") | str(uuid.uuid4())
+                task_id = message.get("task_id") or str(uuid.uuid4())
                 chat_id = message.get("chat_id")
 
                 if msg_type == "task_request":
@@ -198,6 +198,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif msg_type == "user_input":
                     task_id = message.get("task_id")
                     input_data = message.get("data")
+                    task_manager.provide_input(task_id, input_data)
+
+                elif msg_type == "client_tool_response":
+                    task_id = message.get("task_id")
+                    input_data = message
                     task_manager.provide_input(task_id, input_data)
                 
                 else:

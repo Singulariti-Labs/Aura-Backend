@@ -224,7 +224,6 @@ Interacting with app or default system ui
 {{Interacting_on: str}} // defalut for sustem ui and app_name if it is any app
 Confidance for successfully completing the step
 {{confidence: float}} // maximum will be 1
-
 """
 
 
