@@ -116,3 +116,30 @@ class AskToolInput(BaseModel):
         )
     )
 
+class CreateFileToolInput(BaseModel):
+    path: str = Field(..., description="Path to the file to be created, relative to /singulariti_workspace (e.g., 'src/main.py')")
+    content: str = Field(..., description="The content to write to the file")
+    permissions: str = Field(default="644", description="File permissions in octal string format (default: 644)")
+
+class StrReplaceToolInput(BaseModel):
+    path: str = Field(..., description="Path to the target file, relative to /singulariti_workspace (e.g., 'src/main.py')")
+    old_str: str = Field(..., description="Text to be replaced (must appear exactly once)")
+    new_str: str = Field(..., description="Replacement text")
+
+class RewriteFileToolInput(BaseModel):
+    path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
+    content: str = Field(..., description="The new content to write to the file, replacing all existing content")
+    permissions: str = Field(default="644", description="File permissions in octal string format (default: 644)")
+
+class DeleteFileToolInput(BaseModel):
+    path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
+
+class InsertStrToolInput(BaseModel):
+    path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
+    input_str_no: int = Field(..., description="input number where string will be inserted")
+    new_str: str = Field(..., description="String to be inserted")
+
+class EditFileToolInput(BaseModel):
+    path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
+    instructions: str = Field(..., description="A single sentence written in the first person describing what you're changing")
+    code_edit: str = Field(..., description="Only the precise lines of code to edit. Use // ... existing code ... for unchanged sections")

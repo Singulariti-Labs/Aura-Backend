@@ -40,7 +40,7 @@ async def web_search(query: str, task_id: str, chat_id: str,num_results: Optiona
         result = search_tool.invoke({"query": query})
         
         # Update local memory with the conversation
-        update_memory(role="user", content=query, memory=memory)
+        update_memory(role="assistant", content=query, memory=memory)
         update_memory(role="tool", name="web_search", tool_call_id=tool_call_id, content=json.dumps(result), memory=memory)
         
         # sending the websocket message to client.
@@ -188,8 +188,8 @@ async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, tas
         error_details = "; ".join([f"{r['url']}: {r.get('error', 'Unknown error')}" for r in results])
         return f"Failed to scrape all {len(results)} URLs. Errors: {error_details}"
     
-    # Update local memory with the conversation
-    update_memory(role="user", content=urls_string, memory=memory)
+    # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
+    update_memory(role="assistant", content=urls_string, memory=memory)
     update_memory(role="tool", name="web_scraper", tool_call_id=tool_call_id, content=message, memory=memory)
 
     # sending the websocket message to client.

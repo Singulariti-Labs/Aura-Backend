@@ -9,6 +9,12 @@ from app.Tools.web_search import WebSearchTool
 from app.Tools.web_scraper import WebScraperTool
 from app.Tools.ask import AskTool
 from app.Tools.complete import CompleteTool
+from app.Tools.create_file import CreateFileTool
+from app.Tools.delete_file import DeleteFileTool
+from app.Tools.edit_file import EditFileTool
+from app.Tools.insert_str import InsertStrTool
+from app.Tools.rewrite_file import RewriteFileTool
+from app.Tools.str_replace import StrReplaceTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -45,6 +51,12 @@ class Tools():
         self.web_scraping_tool = WebScraperTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ask_tool = AskTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.complete_tool = CompleteTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.create_file_tool = CreateFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.delete_file_tool = DeleteFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.insert_str_tool = InsertStrTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.edit_file_tool = EditFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.rewrite_file_tool = RewriteFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.str_replace_tool = StrReplaceTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -72,6 +84,12 @@ class Tools():
                  self.web_search_tool.to_tool(),
                  self.web_scraping_tool.to_tool(),
                  self.ask_tool.to_tool(),
-                 self.complete_tool.to_tool()
+                 self.complete_tool.to_tool(),
+                 self.create_file_tool.to_tool(),
+                 self.delete_file_tool.to_tool(),
+                 self.edit_file_tool.to_tool(),
+                 self.insert_str_tool.to_tool(),
+                 self.rewrite_file_tool.to_tool(),
+                 self.str_replace_tool.to_tool(),
                 ]
         return tools

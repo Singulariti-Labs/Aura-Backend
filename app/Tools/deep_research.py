@@ -32,7 +32,7 @@ class DeepResearchTool(BaseTool):
         self.chat_id = chat_id
         self.deep_research_agent = DeepResearchAgent(llm=llm, task_id=task_id, chat_id=chat_id, memory=memory)
 
-    async def run(self, inputs: DeepResearchToolInput) -> str:
+    async def run(self, inputs: DeepResearchToolInput):
 
         # Sending the last assistant message to the client.
         await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="deep_reasearch")

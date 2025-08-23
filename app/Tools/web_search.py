@@ -19,7 +19,7 @@ class WebSearchTool(BaseTool):
         self.task_id = task_id
         self.chat_id = chat_id
 
-    async def run(self, inputs: WebSearchInput) -> str:
+    async def run(self, inputs: WebSearchInput):
 
         # Sending the last assistant message to the client.
         await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="web_search")

@@ -34,7 +34,7 @@ class InteractionTool(BaseTool):
         self.task_id = task_id
         self.interaction_agent = InteractionAgent(llm=llm, task_id=task_id, chat_id=chat_id, memory=memory)
 
-    async def run(self, inputs: InteractionToolInput) -> str:
+    async def run(self, inputs: InteractionToolInput):
 
         # Sending the last assistant message to the client.
         await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="interaction")

@@ -32,7 +32,7 @@ class SupervisorTool(BaseTool):
         )
         self.supervisor_agent = supervisor_agent
 
-    async def run(self, inputs: SupervisorToolInput) -> str:
+    async def run(self, inputs: SupervisorToolInput):
         """
         Asynchronously executes the tool by delegating to the internal SupervisorAgent.
 
