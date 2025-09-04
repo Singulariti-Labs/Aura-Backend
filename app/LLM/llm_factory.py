@@ -393,3 +393,75 @@ class LLMFactory():
             return parsed_content
         except Exception as e:
             raise RuntimeError(f"Falied To Validate Response: {e}")
+
+
+    async def aura_executor(
+            self,
+            system_prompt: str,
+            llm: BaseChatModel,
+            query: str,
+            agent_type: AGENT_TYPE,
+            system_info: Optional[SystemInfo | str] = None,
+            tools: Optional[List[Tool]] = None,
+            chat_history: Optional[List[Message]] = None,
+            base_64_image:  Optional[List[str]] = None,
+            max_tokens: int = 128000,
+        ):
+        """
+        Method to run the aura agent with the given task in a loop till the task is not completed.
+
+        inputs:
+            - system_prompt: Initial system prompt to guide the agent.
+            - llm: The language model to use.
+            - query: The user's question or command.
+            - system_info: Optional system-specific information.
+            - tools: Optional list of tools the agent can use.
+            - chat_history: Optional list of previous messages to maintain continuity.
+            - base_64_image: Optional image input in base64 or URL.
+            - max_tokens: Maximum token limit for the LLM response.
+        
+        Returns:
+            - The response from the agent or LLM after processing the query.
+        """
+        try:
+            # Prepare chat history  WIP**- Adding chat_histroy later when we introduce memory for prev_message.
+            # if chat_history:
+            #     chat_history_for_llm = [message.to_dict() for message in chat_history]
+            
+            # Prepare system prompt
+            if system_prompt:
+                prompt = ChatPromptTemplate.from_messages([
+                    ("system", system_prompt),
+                    ("human", "{input}"),
+                    MessagesPlaceholder(variable_name="agent_scratchpad")
+                ])
+            
+            system_info_str = system_info
+            if system_info and isinstance(system_info, SystemInfo):
+                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
+            
+            formated_input = (
+                f"query: {query}\n"
+                f"system_info: {system_info_str}\n"
+            )
+            
+            
+            agent = create_openai_tools_agent(llm, tools, prompt)
+
+            # Creating agent executor.
+            executor = AgentExecutor(
+                agent=agent,
+                tools=tools,
+                verbose=True,
+                return_intermediate_steps=True,
+                callbacks=[AgentCallbackHandler(self.memory)]
+            )
+
+            # Invoking LLM
+            response = await executor.ainvoke({"input": formated_input})
+            # returning response bac to the aura agent.
+            return response
+                
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")

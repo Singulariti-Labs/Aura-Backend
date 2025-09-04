@@ -31,7 +31,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "interaction"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server
@@ -136,7 +136,7 @@ class DeleteFileToolInput(BaseModel):
 
 class InsertStrToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
-    input_str_no: int = Field(..., description="input number where string will be inserted")
+    insert_line_no: int = Field(..., description="number of line where string will be inserted")
     new_str: str = Field(..., description="String to be inserted")
 
 class EditFileToolInput(BaseModel):

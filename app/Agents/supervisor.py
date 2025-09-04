@@ -11,6 +11,7 @@ from app.LLM.memory import Message, Memory
 from app.helper import update_memory
 from app.Task.task_manager import task_manager
 from app.API.websocket_utils import send_ws_message
+from app.Prompts.aura import AURA_PROMPT
 
 if TYPE_CHECKING:
     from app.Tools.tool_calling import Tools
@@ -310,3 +311,71 @@ class SupervisorAgent(BaseAgent):
             return result
         except Exception as e:
             raise RuntimeError(f"Validation failed while valaditing response: {e}")
+
+    async def invoke_aura(self, query: str, tool_call_id: str, system_info: Optional[SystemInfo | str] = None):
+        """
+        Method to invoke aura agent, starting point of agentinc flow to complete complex task
+        
+        inputs:
+            query (str): users query,
+            system_info (Optional[SystemInfo]): Optional users system related data
+            tool_call_id (str): unique id for a tool call.
+        """ 
+
+        try:
+             # Get web socket from task manager
+            task_state = task_manager.get_state(self.task_id)
+            self.websocket = task_state.websocket
+            self.query = query
+
+            # Get all the tools for the Aura
+            tools = self.tools.get_supervisor_tools()
+
+            prompt = AURA_PROMPT
+
+            result = None
+            # LLM call
+            if query:
+                result = self.llm_factory.aura_executor(
+                    query=query,
+                    system_prompt=prompt,
+                    tools=tools,
+                    system_info=system_info,
+                    llm=self.llm,
+                    agent_type="aura"
+                )
+
+                final_result = None
+                if "output" in result:
+                    final_result = result.get("output")
+                else:
+                    final_result = "Aura LLM run failed, task failed to complete successfull."
+
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_message",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload = {
+                        "content": {
+                            "role": "assistant",
+                            "tool": "aura",
+                            "message": result
+                        }
+                    }
+                )
+
+                update_memory(role="assistant", content=final_result, memory=self.memory)
+
+                return final_result
+
+            else:
+                return ("Aura run failed, input query not available")
+            
+
+            
+
+        except Exception as e:
+            error_message = f"An error occurred while processing your request, Aura run failed: {str(e)}"
+            update_memory(role="tool", name = "aura", tool_call_id=tool_call_id, content=error_message, memory=self.memory)
+            return error_message
