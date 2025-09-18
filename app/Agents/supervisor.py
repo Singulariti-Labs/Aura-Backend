@@ -336,7 +336,7 @@ class SupervisorAgent(BaseAgent):
             result = None
             # LLM call
             if query:
-                result = self.llm_factory.aura_executor(
+                result = await self.llm_factory.aura_executor(
                     query=query,
                     system_prompt=prompt,
                     tools=tools,

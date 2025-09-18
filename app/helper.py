@@ -1,10 +1,12 @@
-from typing import Optional, List
-
+from typing import Optional, List, Any, Union, Dict
 from app.LLM.memory import Message, Memory
 from app.Types.agent_types import ROLE_TYPE
 from app.Task.task_manager import task_manager
 from app.API.websocket_utils import send_ws_message
+from pathlib import Path
 
+
+import json
 
 # MEMORY - WIP
 def update_memory(
@@ -121,7 +123,14 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         messages = memory.messages
 
-        last_assistant_msg = last_assistant_content = next((msg.get("content") for msg in reversed(messages) if msg.get("role") == "assistant"), None)
+        last_assistant_msg = last_assistant_content = next((msg.content for msg in reversed(messages) if msg.role == "assistant"), None)
+
+        # Save tool response
+        save_tool_response(
+            task_id=task_id,
+            tool_name="assistant",
+            response= json.dumps(last_assistant_content)
+        )
 
         if last_assistant_msg:
 
@@ -157,3 +166,47 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
     except Exception as e:
         print(f"Error while sending assistant message to the client: {e}")
         
+
+def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, Any], str]):
+    """
+    Save a tool's response to a file, grouped by task_id.
+
+    Format:
+    <task_id = "task_id">
+    [tool_name] -> response/output
+    </>
+    """
+    file_path = Path(__file__).parent.parent / "tools_output.txt"
+    # Format the response: if it's not a string, convert it to JSON
+    if not isinstance(response, str):
+        try:
+            response = json.dumps(response, ensure_ascii=False, indent=2)
+        except Exception:
+            response = str(response)
+
+    entry = f'[ {tool_name} ] -> {response}\n'
+
+    # Read existing content to check if task_id section exists
+    content = ""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        pass
+
+    task_tag = f'<task_id = "{task_id}">'
+    closing_tag = '</>'
+
+    if task_tag in content:
+        # Task already exists → insert before the closing tag
+        updated_content = content.replace(
+            task_tag + "\n", task_tag + "\n" + entry
+        )
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(updated_content)
+    else:
+        # New task → append with gap
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write("\n\n\n\n" + task_tag + "\n")
+            f.write(entry)
+            f.write(closing_tag + "\n")

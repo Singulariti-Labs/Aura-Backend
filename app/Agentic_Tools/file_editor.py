@@ -4,7 +4,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from app.LLM.memory import Memory, Message
 from app.API.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
-from app.helper import update_memory
+from app.helper import update_memory, save_tool_response
 from openai import AsyncOpenAI
 
 
@@ -70,7 +70,7 @@ class FileEditor():
                 else:
                     final_result = {
                         "success": False,
-                        "output": payload.get("message", "Unknown error while creating file."),
+                        "output": result.get("message", "Unknown error while creating file."),
                     }
                 
                 # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
@@ -78,6 +78,19 @@ class FileEditor():
                 assistant_message = f"lets create a file using create_file tool args {json.dumps(arguments)}"
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="create_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
+
+                # Save tool response
+                save_tool_response(
+                    task_id=self.task_id,
+                    tool_name="create_file",
+                    response={
+                    "input": {
+                        "path": path,
+                        "content": content,
+                        "permissions": permissions
+                    },
+                    "result": final_result
+                })
 
                 return final_result
 
@@ -127,7 +140,7 @@ class FileEditor():
                 else:
                     final_result = {
                         "success": False,
-                        "output": payload.get("message", f"Unknown error while replacing string in a file '{path}'."),
+                        "output": result.get("message", f"Unknown error while replacing string in a file '{path}'."),
                     }
                 
                 # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
@@ -135,6 +148,19 @@ class FileEditor():
                 assistant_message = f"Replace a string in file using str_replace tool args {json.dumps(arguments)}"
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="str_replace", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
+
+                # Save tool response
+                save_tool_response(
+                    task_id=self.task_id,
+                    tool_name="str_replace",
+                    response={
+                    "input": {
+                        "path": path,
+                        "new_str": new_str,
+                        "old_str": old_str
+                    },
+                    "result": final_result
+                })
 
                 return final_result
 
@@ -184,7 +210,7 @@ class FileEditor():
                 else:
                     final_result = {
                         "success": False,
-                        "output": payload.get("message", f"Unknown error while rewriting file '{path}'."),
+                        "output": result.get("message", f"Unknown error while rewriting file '{path}'."),
                     }
                 
                 # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
@@ -193,6 +219,19 @@ class FileEditor():
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="rewrite_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
+                # Save tool response
+                save_tool_response(
+                    task_id=self.task_id,
+                    tool_name="rewrite_file",
+                    response={
+                    "input": {
+                        "path": path,
+                        "content": content,
+                        "permissions": permissions
+                    },
+                    "result": final_result
+                })
+                
                 return final_result
 
             # If response type not correct
@@ -239,7 +278,7 @@ class FileEditor():
                 else:
                     final_result = {
                         "success": False,
-                        "output": payload.get("message", f"Unknown error while deleting file '{path}'."),
+                        "output": result.get("message", f"Unknown error while deleting file '{path}'."),
                     }
                 
                 # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
@@ -247,6 +286,17 @@ class FileEditor():
                 assistant_message = f"deleating file using delete_file tool args {json.dumps(arguments)}"
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="delete_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
+
+                # Save tool response
+                save_tool_response(
+                    task_id=self.task_id,
+                    tool_name="delete_file",
+                    response={
+                    "input": {
+                        "path": path
+                    },
+                    "result": final_result
+                })
 
                 return final_result
 
@@ -296,7 +346,7 @@ class FileEditor():
                 else:
                     final_result = {
                         "success": False,
-                        "output": payload.get("message", f"Unknown error while inserting string in '{path}'."),
+                        "output": result.get("message", f"Unknown error while inserting string in '{path}'."),
                     }
                 
                 # Update local memory with the conversation - WIP** store Message Neatly in memory to track previous task properly
@@ -305,6 +355,20 @@ class FileEditor():
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="insert_str", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
+                # Save tool response
+                save_tool_response(
+                    task_id=self.task_id,
+                    tool_name="insert_str",
+                    response={
+                    "input": {
+                        "path": path,
+                        "insert_line_no": insert_line_no,
+                        "new_str": new_str
+                    },        
+                    "result": final_result
+                    }
+                )
+                
                 return final_result
 
             # If response type not correct
@@ -319,7 +383,9 @@ class FileEditor():
 
     async def edit_file(self, target_file: str, instructions: str, code_edit: str, tool_call_id: Optional[str] = None):
         """Edit a file by sending edit instructions to client via websocket"""
-
+        
+        new_content = None
+        error_message = None
         try:
             original_content = await self.get_file_content(target_file= target_file)
 
@@ -418,6 +484,20 @@ class FileEditor():
             update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
             update_memory(role="tool", name="edit_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
+            # Save tool response
+            save_tool_response(
+                task_id=self.task_id,
+                tool_name="edit_file",
+                response={
+                    "input": {
+                    "path": target_file,
+                    "original_content": original_content,
+                    "updated_content": new_content
+                },     
+                "result": final_result
+                }
+            )
+            
             return final_result
         
         except Exception as e:

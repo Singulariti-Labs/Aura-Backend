@@ -20,6 +20,8 @@ from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.handler import AgentCallbackHandler
+from datetime import datetime
+
 
 load_dotenv()
 
@@ -65,6 +67,14 @@ class LLMFactory():
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
                 return ChatAnthropic(model=llm_config.model_name)
+            
+            elif llm_config.provider == "open_router":
+                api_key = os.environ.get("OPENROUTER_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("OPENROUTER_API_KEY environment variable is not set")
+                if(llm_config.model_name == "kimi-k2"):
+                    return ChatOpenAI(model="moonshotai/kimi-k2:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:
@@ -439,10 +449,13 @@ class LLMFactory():
             system_info_str = system_info
             if system_info and isinstance(system_info, SystemInfo):
                 system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
+
+            today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             formated_input = (
                 f"query: {query}\n"
                 f"system_info: {system_info_str}\n"
+                f"today: {today}\n"
             )
             
             

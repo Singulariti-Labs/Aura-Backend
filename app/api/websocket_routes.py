@@ -21,7 +21,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
+llm_config = LLMConfig(provider="open_router", model_name="kimi-k2")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
@@ -55,7 +55,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 os_info = payload.get("os", "windows")
                 version_info = message.get("os_version", "11")
-                workspace_path = message.get("workspace")  # WIP** -> Workspace Path need to add in the AURA Prompt.
+                # workspace_path = message.get("workspace")  # WIP** -> Workspace Path need to add in the AURA Prompt.
                 # id_ = message.get("id")  # Optional identifier for tracking response         
 
                 # Prepare agent with system and LLM configuration
