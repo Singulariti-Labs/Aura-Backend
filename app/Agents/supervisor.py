@@ -360,7 +360,7 @@ class SupervisorAgent(BaseAgent):
                         "content": {
                             "role": "assistant",
                             "tool": "aura",
-                            "message": result
+                            "message": final_result
                         }
                     }
                 )

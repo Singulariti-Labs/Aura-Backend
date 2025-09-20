@@ -9,7 +9,7 @@ class SystemInfo(BaseModel) :
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high']
 AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
-OpenRouterModels = Literal['kimi-k2']
+OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai']
 
 class LLMConfig(BaseModel) :
     provider: Literal['openai', 'anthropic', 'open_router']
@@ -94,6 +94,31 @@ class WebScraperInput(BaseModel):
     urls_string: str
     workspace_path: str
     chat_name: str
+
+class CompleteToolInput(BaseModel):
+    text: str = Field(
+        ...,
+        description=(
+            "Completion message describing the final status of the task or project. "
+            "Should summarize what was accomplished, key deliverables, and any "
+            "important notes for the user. Example: "
+            "'I have successfully completed all tasks for your project. Here's what was accomplished: "
+            "1. Created the web application with modern UI components "
+            "2. Implemented user authentication and database integration "
+            "3. Deployed the application to production "
+            "4. Created comprehensive documentation'."
+        )
+    )
+    attachments: Optional[Union[str, List[str]]] = Field(
+        None,
+        description=(
+            "List of files or URLs that represent final deliverables or supporting materials. "
+            "Examples: 'app/src/main.js, docs/README.md, deployment-config.yaml'. "
+            "Always use relative paths to the /workspace directory. "
+            "Use this field to share source code, configuration files, documentation, "
+            "or any other relevant outputs."
+        )
+    )
 
 class AskToolInput(BaseModel):
     text: str = Field(

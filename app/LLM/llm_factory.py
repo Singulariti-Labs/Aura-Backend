@@ -73,8 +73,8 @@ class LLMFactory():
                 
                 if not api_key:
                     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
-                if(llm_config.model_name == "kimi-k2"):
-                    return ChatOpenAI(model="moonshotai/kimi-k2:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "z-ai"):
+                    return ChatOpenAI(model="z-ai/glm-4.5-air:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:
@@ -467,7 +467,9 @@ class LLMFactory():
                 tools=tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                callbacks=[AgentCallbackHandler(self.memory)]
+                callbacks=[AgentCallbackHandler(self.memory)],
+                max_iterations=100,
+                early_stopping_method="generate"
             )
 
             # Invoking LLM

@@ -177,6 +177,7 @@ def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, A
     </>
     """
     file_path = Path(__file__).parent.parent / "tools_output.txt"
+
     # Format the response: if it's not a string, convert it to JSON
     if not isinstance(response, str):
         try:
@@ -198,14 +199,14 @@ def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, A
     closing_tag = '</>'
 
     if task_tag in content:
-        # Task already exists → insert before the closing tag
+        # Append before the closing tag instead of after the task tag
         updated_content = content.replace(
-            task_tag + "\n", task_tag + "\n" + entry
+            closing_tag, entry + closing_tag
         )
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
     else:
-        # New task → append with gap
+        # New task → append at the end
         with open(file_path, "a", encoding="utf-8") as f:
             f.write("\n\n\n\n" + task_tag + "\n")
             f.write(entry)

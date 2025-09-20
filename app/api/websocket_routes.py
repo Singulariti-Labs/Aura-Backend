@@ -21,7 +21,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="open_router", model_name="kimi-k2")
+llm_config = LLMConfig(provider="open_router", model_name="z-ai")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
