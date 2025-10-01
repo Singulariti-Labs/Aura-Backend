@@ -46,7 +46,7 @@ class FileEditor():
                         "path": path,
                         "content": content,
                         "permissions": permissions
-                    } 
+                    }
                 }
             )
 

@@ -206,8 +206,10 @@ def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, A
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
     else:
-        # New task → append at the end
+        # New task → append at the end with spacing and marker
         with open(file_path, "a", encoding="utf-8") as f:
-            f.write("\n\n\n\n" + task_tag + "\n")
+            f.write("\n\n\n\n\n\n")  # 6 newlines for separation
+            f.write("<------------- NEW TASK STARTS HERE --------------->\n")
+            f.write(task_tag + "\n")
             f.write(entry)
             f.write(closing_tag + "\n")
