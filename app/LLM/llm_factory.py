@@ -3,11 +3,11 @@ from typing import Optional, List, Union, Dict, Any
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_community.chat_models.anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_classic.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
-from langchain.tools import Tool
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.tools import Tool
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableLambda
 import os
 import re

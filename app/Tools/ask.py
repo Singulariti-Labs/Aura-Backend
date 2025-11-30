@@ -6,7 +6,7 @@ from app.Types.agent_types import AskToolInput
 from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
 from app.helper import send_last_assistant_message, save_tool_response, update_memory
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 
 

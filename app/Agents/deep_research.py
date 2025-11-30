@@ -10,7 +10,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.Types.agent_types import DeepSearchInputQueries, DeepResearchActionInput, GapDetectionToolInput
 from datetime import datetime
 from app.Task.task_manager import task_manager
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 
 
 import asyncio

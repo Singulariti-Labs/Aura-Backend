@@ -2,10 +2,10 @@ from app.LLM.llm_factory import LLMFactory
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_community.chat_models.anthropic import ChatAnthropic
-from langchain.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
+from langchain_classic.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables import Runnable
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from typing import Optional
 
 from app.Prompts.planner import PLANNER_PROMPT

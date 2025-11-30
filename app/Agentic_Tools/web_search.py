@@ -13,7 +13,7 @@ import httpx
 from app.LLM.memory import Memory
 from app.helper import update_memory, save_tool_response
 from app.Task.task_manager import task_manager
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 
 
 

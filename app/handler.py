@@ -1,5 +1,5 @@
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.schema.agent import AgentAction, AgentFinish
+from langchain_core.callbacks.base import BaseCallbackHandler
+from langchain_classic.schema.agent import AgentAction, AgentFinish
 from app.LLM.memory import Message, Memory
 from app.helper import update_memory
 

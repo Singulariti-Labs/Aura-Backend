@@ -7,7 +7,7 @@ from app.LLM.memory import Memory
 from app.helper import send_last_assistant_message, save_tool_response, update_memory
 from app.Task.task_manager import task_manager
 from app.Types.agent_types import CompleteToolInput
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 
 
 class CompleteTool(BaseTool):

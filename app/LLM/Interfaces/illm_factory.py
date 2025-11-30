@@ -1,8 +1,8 @@
 from typing import Optional, List, Union, Dict, Any
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
-from langchain.tools import Tool
+from langchain_core.tools import Tool
 
 from app.Types.agent_types import LLMConfig, SystemInfo
 from app.LLM.memory import Message

@@ -8,7 +8,7 @@ from app.helper import update_memory
 from app.Prompts.interaction import INTERACTION_AGENT_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.Task.task_manager import task_manager
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 from app.Adapters.screenshot_parser import get_parsed_screen, get_parsed_screen_xml
 
 

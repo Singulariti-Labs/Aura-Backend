@@ -1,5 +1,5 @@
 from fastapi import WebSocket
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 
 import asyncio
 

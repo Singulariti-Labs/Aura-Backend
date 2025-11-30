@@ -2,7 +2,7 @@ from typing import Optional, List, Any, Union, Dict
 from app.LLM.memory import Message, Memory
 from app.Types.agent_types import ROLE_TYPE
 from app.Task.task_manager import task_manager
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 from pathlib import Path
 
 

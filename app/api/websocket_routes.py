@@ -9,7 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
 from app.Types.agent_types import LLMConfig, SystemInfo
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 import asyncio
 import uuid

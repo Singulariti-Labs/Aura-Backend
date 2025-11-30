@@ -2,7 +2,7 @@ from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.LLM.memory import Memory, Message
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.helper import update_memory, save_tool_response
 from openai import AsyncOpenAI

@@ -7,7 +7,7 @@ from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
-from app.API.websocket_utils import send_ws_message
+from app.api.websocket_utils import send_ws_message
 
 import asyncio
 
