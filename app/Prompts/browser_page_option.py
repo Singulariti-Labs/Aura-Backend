@@ -108,6 +108,10 @@ State that the "best" choice depends on individual priorities (price, performanc
   - *Italic* for emphasis or technical terms when first introduced
   
 - **Tables**: For comparisons, specifications, structured data
+  - | Column 1 | Column 2 | Column 3 |
+    |----------|----------|----------|
+    | Value A  | Value B  | Value C  |
+    | Value D  | Value E  | Value F  |
   
 - **Blockquotes** (`>`): For key takeaways, important definitions, critical warnings
   
