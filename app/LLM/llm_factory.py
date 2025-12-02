@@ -9,6 +9,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import Tool
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import HumanMessage, SystemMessage
 import os
 import re
 import json
@@ -19,6 +20,7 @@ from app.LLM.memory import Message
 from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
+from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler
 from datetime import datetime
 
@@ -75,6 +77,8 @@ class LLMFactory():
                     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
                 if(llm_config.model_name == "z-ai"):
                     return ChatOpenAI(model="z-ai/glm-4.5-air:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "x-ai"):
+                    return ChatOpenAI(model="x-ai/grok-4.1-fast:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:
@@ -480,3 +484,16 @@ class LLMFactory():
 
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
+
+
+    # def decide_source(self, llm: BaseChatModel, query: str, page_content: str) -> Dict[str, Any]:
+    #     system_content = CLASSIFIER_PROMPT.format(page_content=page_content)
+    #     messages = [
+    #         SystemMessage(content=system_content),
+    #         HumanMessage(content=query),
+    #     ]
+    #     response = llm.invoke(messages)
+    #     try:
+    #         return json.loads(response.content)
+    #     except json.JSONDecodeError as exc:
+    #         raise ValueError(f"Classifier returned invalid JSON: {response.content}") from exc

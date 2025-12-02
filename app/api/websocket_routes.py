@@ -21,7 +21,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="open_router", model_name="z-ai")
+llm_config = LLMConfig(provider="open_router", model_name="x-ai")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
@@ -47,6 +47,7 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         try:
             payload = message.get("payload")
+            print(f"payload: {payload}")
             if payload:
                 query = payload.get("query")
 
@@ -60,7 +61,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Prepare agent with system and LLM configuration
                 system_info = SystemInfo(os=os_info, version=version_info)
-                agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id, chat_id=chat_id)
+                agent = Agent(llm=llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id)
 
                 # Notify client that processing has started
                 await send_ws_message(
