@@ -10,6 +10,7 @@ from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.Prompts.browser_page_option import BROWSER_PAGE_PROMPT
+from app.Prompts.recall_memory import RECALL_MEMORY_PROMPT
 from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
@@ -113,7 +114,7 @@ class Agent(BaseAgent):
                 result = None
 
                 if self.payload.get("option") == "browser_page":
-                    print("BROWSER_PAGE: running browserr page agent")
+                    print("BROWSER_PAGE: Running Browser Page Agent")
                     result = await self.run_browser_page_agent(
                         websocket=self.websocket,
                         query=self.query,
@@ -123,6 +124,11 @@ class Agent(BaseAgent):
                         task_id=self.task_id,
                         chat_id=self.chat_id
                     )
+
+                elif self.payload.get("option") == "history":
+                    print("SEARCH HISTORY: Running Recall Memeory Agent")
+                    result = await self.run_recall_memory_agent()
+
                 else:
                     result = await self.llm_factory.agent_executor(
                         llm=self.llm,
@@ -150,6 +156,10 @@ class Agent(BaseAgent):
                 f"Error creating LLM instance for provider '{self.llm_config.provider}' "
                 f"with model '{self.llm_config.model_name}': {str(e)}"
             )
+
+# ------------------------------------------------------------------------- #
+# ---------------  Functions To run Browser Agent ------------------------- #
+# ------------------------------------------------------------------------- #
 
     # TODO: NO need to send parameters which are initialised.
     async def run_browser_page_agent(self, websocket: WebSocket, query: str, payload: dict, screenshot: List[str], llm: BaseChatModel, task_id: str, chat_id: str):
@@ -341,6 +351,68 @@ class Agent(BaseAgent):
             )
         return "\n".join(formatted)
 
+# ------------------------------------------------------------------------- #
+# ---------------  Functions To run Browser Agent ------------------------- #
+# ------------------------------------------------------------------------- #
+
+    async def run_recall_memory_agent(self):
+        """This function runs the recall memory agent to give content you have seen in past """
+        try:
+            history = self.payload.get("history", [])
+            content = "We dont have any history"
+            if history:
+                history = json.loads(history)
+                content = format_history(history)
+            
+            await self.stream_recall_memory_agent_response(context=content)
+
+            return
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Error while running recall memory agent: Error -> {str(e)}"
+            )
+
+    async def stream_recall_memory_agent_response(self, context: str):
+        """
+        Streams the LLM response for recall_memory_agent to the websocket client chunk by chunk.
+        """
+        # Avoid using `.format()` on RECALL_MEMORY_PROMPT because it contains many `{}` braces
+        # for JSON examples (e.g. `"url": ...`), which would be interpreted as format fields
+        # and cause KeyError like ('"url"',). Instead, safely replace only the `{context}` token.
+        prompt = RECALL_MEMORY_PROMPT.replace("{context}", context.strip())
+
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=self.query),
+        ]
+
+        collected: List[str] = []
+
+        for chunk in self.llm.stream(messages):
+            text = extract_text(chunk.content)
+            if not text:
+                continue
+
+            collected.append(text)
+            print(text, end="", flush=True)  # Print to console as chunks stream
+            await send_ws_message(
+                websocket=self.websocket,
+                type="aura_message",
+                task_id=self.task_id,
+                chat_id=self.chat_id,
+                payload={
+                    "content": {
+                        "role": "assistant",
+                        "tool": "recall_memory",
+                        "message": text,
+                    }
+                },
+            )
+
+        print()  # Newline after streaming completes
+        return "".join(collected)
+
 
 def extract_text(chunk_content: Any) -> str:
     if isinstance(chunk_content, str):
@@ -355,3 +427,32 @@ def extract_text(chunk_content: Any) -> str:
 
     return ""
 
+def format_history(history):
+    """
+    Format browsing history list/JSON into readable LLM-ready plain text.
+
+    Example output:
+    (url: ..., title: ..., last_visited_time: ..., favicon: ...)
+    (url: ..., title: ..., last_visited_time: ..., favicon: ...)
+    """
+
+    # If history was passed as JSON string, convert to list
+    if isinstance(history, str):
+        try:
+            history = json.loads(history)
+        except json.JSONDecodeError:
+            return "History parsing failed."
+
+    if not history:
+        return "No browsing history found in the last two days."
+
+    formatted_lines = []
+    for item in history:
+        formatted_lines.append(
+            f"(url: {item.get('url', 'N/A')}, "
+            f"title: {item.get('title', 'N/A')}, "
+            f"last_visited_time: {item.get('last_visited_time', 'N/A')}, "
+            f"favicon: {item.get('favicon', 'N/A')})"
+        )
+
+    return "\n".join(formatted_lines)
