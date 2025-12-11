@@ -79,6 +79,8 @@ class LLMFactory():
                     return ChatOpenAI(model="z-ai/glm-4.5-air:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 if(llm_config.model_name == "x-ai"):
                     return ChatOpenAI(model="x-ai/grok-4.1-fast:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "openai"):
+                    return ChatOpenAI(model="openai/gpt-oss-20b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:

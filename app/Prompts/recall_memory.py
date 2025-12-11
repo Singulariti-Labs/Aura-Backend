@@ -104,7 +104,7 @@ Is there another topic I can help you find?
 **Good Response**:
 ```markdown
 I found 5 articles related to prompt engineering that you visited/engaged/interacted in last x days. These include tutorials, best practices guides, and documentation. (here could also memtione name /title of those pages)
-
+(also prove the info about the each article or content in short).
 <JSON_STARTED>
 [
   {

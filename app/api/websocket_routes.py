@@ -21,7 +21,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
+llm_config = LLMConfig(provider="openai", model_name="gpt-4o-mini")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")

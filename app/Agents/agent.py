@@ -1,3 +1,4 @@
+from email import message
 from typing import Optional, List, Any, Dict
 from fastapi import WebSocket
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -387,31 +388,53 @@ class Agent(BaseAgent):
             HumanMessage(content=self.query),
         ]
 
-        collected: List[str] = []
+        result = self.llm.invoke(messages)
 
-        for chunk in self.llm.stream(messages):
-            text = extract_text(chunk.content)
-            if not text:
-                continue
+        content = result.content
 
-            collected.append(text)
-            print(text, end="", flush=True)  # Print to console as chunks stream
-            await send_ws_message(
-                websocket=self.websocket,
-                type="aura_message",
-                task_id=self.task_id,
-                chat_id=self.chat_id,
-                payload={
-                    "content": {
-                        "role": "assistant",
-                        "tool": "recall_memory",
-                        "message": text,
-                    }
-                },
-            )
+        await send_ws_message(
+            websocket=self.websocket,
+            type="aura_message",
+            task_id=self.task_id,
+            chat_id=self.chat_id,
+            payload={
+                "content": {
+                    "role": "assistant",
+                    "tool": "recall_memory",
+                    "message": content,
+                }
+            },
+        )
 
-        print()  # Newline after streaming completes
-        return "".join(collected)
+        print(f"CONTENT: {content}")
+
+        return content
+
+        # collected: List[str] = []
+
+        # for chunk in self.llm.stream(messages):
+        #     text = extract_text(chunk.content)
+        #     if not text:
+        #         continue
+
+        #     collected.append(text)
+        #     print(text, end="", flush=True)  # Print to console as chunks stream
+        #     await send_ws_message(
+        #         websocket=self.websocket,
+        #         type="aura_message",
+        #         task_id=self.task_id,
+        #         chat_id=self.chat_id,
+        #         payload={
+        #             "content": {
+        #                 "role": "assistant",
+        #                 "tool": "recall_memory",
+        #                 "message": text,
+        #             }
+        #         },
+        #     )
+
+        # print()  # Newline after streaming completes
+        # return "".join(collected)
 
 
 def extract_text(chunk_content: Any) -> str:
