@@ -44,6 +44,7 @@ class InteractionAgent():
             # Get web socket from task manager
             task_state = task_manager.get_state(self.task_id)
             self.websocket = task_state.websocket
+            self.dbpool = task_state.dbpool
             self.query = query
 
             # send WS message to client - (inside interaction agent)
@@ -228,6 +229,22 @@ class InteractionAgent():
                         }
                     )
 
+                    # Insert AURA complex agent event in the DB 
+                    await create_agent_event(
+                        pool=self.dbpool,
+                        task_id=self.task_id,
+                        role="tool",
+                        message_type="server_tool_response",
+                        tool="interaction",
+                        payload= {
+                            "content": {
+                                "message": message,
+                                "status": "success"
+                            }
+                        },
+                        seq = task_state.get_next_seq()
+                    )
+
                     return response
                 
                 # WIP** - Just provide the actions array to the client tool
@@ -294,7 +311,6 @@ class InteractionAgent():
                     chat_id=self.chat_id,
                     payload={
                         "tool": "screenshot",
-                        # "input": get_current_state_screenshot
                     }
                 )
 

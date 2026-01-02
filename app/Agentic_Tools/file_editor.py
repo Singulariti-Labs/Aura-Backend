@@ -5,6 +5,7 @@ from app.LLM.memory import Memory, Message
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.helper import update_memory, save_tool_response
+from app.DB.Queries.agent_event import create_agent_event
 from openai import AsyncOpenAI
 
 
@@ -31,6 +32,7 @@ class FileEditor():
         self.shared_memory = memory
         self.task_state = task_manager.get_state(self.task_id)
         self.websocket = self.task_state.websocket
+        self.dbpool = self.task_state.dbpool
     
     async def create_file(self, path: str, content: str, permissions: str = "644", tool_call_id: Optional[str] = None):
         """Create File Tool which creates file at the given path"""
@@ -50,7 +52,24 @@ class FileEditor():
                 }
             )
 
-            # Wait for client tool response
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="create_file",
+                payload= {
+                  "input": {
+                        "path": path,
+                        "content": content,
+                        "permissions": permissions
+                },
+            },
+                seq = self.task_state.get_next_seq()
+            )
+
+            # Wait for client tool response 
             tool_resp = await task_manager.wait_for_input(self.task_id)
 
             response_type = tool_resp.get("type")
@@ -118,6 +137,23 @@ class FileEditor():
                         "old_str": old_str
                     } 
                 }
+            )
+
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="str_replace",
+                payload= {
+                  "input": {
+                        "path": path,
+                        "new_str": new_str,
+                        "old_str": old_str
+                },
+            },
+                seq = self.task_state.get_next_seq()
             )
 
             # Wait for client tool response
@@ -190,6 +226,23 @@ class FileEditor():
                 }
             )
 
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="rewrite_file",
+                payload= {
+                  "input": {
+                        "path": path,
+                        "content": content,
+                        "permissions": permissions
+                    }
+                },
+                seq = self.task_state.get_next_seq()
+            )
+
             # Wait for client tool response
             tool_resp = await task_manager.wait_for_input(self.task_id)
 
@@ -256,6 +309,21 @@ class FileEditor():
                         "path": path
                     } 
                 }
+            )
+
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="delete_file",
+                payload= {
+                  "input": {
+                        "path": path
+                },
+            },
+                seq = self.task_state.get_next_seq()
             )
 
             # Wait for client tool response
@@ -325,6 +393,25 @@ class FileEditor():
                     } 
                 }
             )
+
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="insert_tool",
+                payload= {
+                  "input": {
+                        "path": path,
+                        "insert_line_no": insert_line_no,
+                        "new_str": new_str
+                },
+            },
+                seq = self.task_state.get_next_seq()
+            )
+
+            
 
             # Wait for client tool response
             tool_resp = await task_manager.wait_for_input(self.task_id)
@@ -437,6 +524,25 @@ class FileEditor():
                             } 
                         }
                     )
+
+                    # Insert AURA complex agent event in the DB 
+                    await create_agent_event(
+                        pool=self.dbpool,
+                        task_id=self.task_id,
+                        role="tool",
+                        message_type="client_tool_request",
+                        tool="edit_file",
+                        payload= {
+                            "input": {
+                                "path": target_file,
+                                "orignal_content": original_content,
+                                "updated_content": new_content
+                            }
+                        },
+                        seq = self.task_state.get_next_seq()
+                    )
+
+                    
                 
                     # Wait for client tool response
                     tool_resp = await task_manager.wait_for_input(self.task_id)
@@ -518,6 +624,23 @@ class FileEditor():
                     } 
                 }
             )
+
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="get_file_content",
+                payload= {
+                    "input": {
+                        "path": target_file
+                    }
+                },
+                seq = self.task_state.get_next_seq()
+            )
+
+            
 
             # Wait for client tool response
             tool_resp = await task_manager.wait_for_input(self.task_id)

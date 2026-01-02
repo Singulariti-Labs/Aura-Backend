@@ -3,6 +3,7 @@ from app.LLM.memory import Message, Memory
 from app.Types.agent_types import ROLE_TYPE
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
+from app.DB.Queries.agent_event import create_agent_event
 from pathlib import Path
 
 
@@ -120,6 +121,7 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         task_state = task_manager.get_state(task_id)
         websocket = task_state.websocket
+        dbpool = task_state.dbpool
 
         messages = memory.messages
 
@@ -134,7 +136,7 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         if last_assistant_msg:
 
-            # this message to send the assistant message and to tell which tool we are going to call next in perticular step
+            # this message to send the assistant message and to tell which tool we are going to call next in perticular step or thinking message
             if tool_name:
                 await send_ws_message(
                     websocket=websocket,
@@ -148,7 +150,22 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                             "message": last_assistant_msg
                         }
                     }
-            )
+                )
+
+                # Insert AURA complex agent event in the DB 
+                await create_agent_event(
+                    pool=dbpool,
+                    task_id=task_id,
+                    role="assistant",
+                    message_type="aura_message",
+                    tool=tool_name,
+                    payload= {
+                        "content": {
+                            "message": last_assistant_msg
+                        }
+                    },
+                    seq = task_state.get_next_seq()
+                )
             
             else:
                 await send_ws_message(
@@ -163,6 +180,21 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                         }
                     }
                 )
+                
+                # Insert AURA complex agent event in the DB 
+                await create_agent_event(
+                    pool=dbpool,
+                    task_id=task_id,
+                    role="assistant",
+                    message_type="aura_message",
+                    payload= {
+                        "content": {
+                            "message": last_assistant_msg
+                        }
+                    },
+                    seq = task_state.get_next_seq()
+                )
+
     except Exception as e:
         print(f"Error while sending assistant message to the client: {e}")
         

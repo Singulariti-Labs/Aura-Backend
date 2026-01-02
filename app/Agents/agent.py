@@ -3,6 +3,8 @@ from typing import Optional, List, Any, Dict
 from fastapi import WebSocket
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
+from asyncpg import Pool
+
 
 from app.Agents.base_agent import BaseAgent
 from app.Types.agent_types import LLMConfig, SystemInfo
@@ -16,6 +18,7 @@ from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.Option_Helper.web_scraper import simple_web_scraper
+from app.DB.Queries.agent_event import create_agent_event
 
 import asyncio
 import json
@@ -41,11 +44,13 @@ class Agent(BaseAgent):
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
-        screenshot:  Optional[List[str]] = None
+        screenshot:  Optional[List[str]] = None,
+        pool: Pool | None = None
     ):
         self.query = query
         self.task_id = task_id
         self.chat_id = chat_id
+        self.dbpool = pool
         self.llm_config = llm
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
@@ -60,10 +65,10 @@ class Agent(BaseAgent):
         self.payload = payload
         # self.task_manager = TaskManager()
         
-
+    # Runs the Aura Agent.
     async def invoke(self):
         """
-        Executes the main agent by sending a user query and optional screenshot to the LLM with the configured tools.
+        Executes the Aura Agent by sending a user query and optional screenshot to the LLM with the configured tools.
 
         This method performs the following:
         - Constructs a user message from the query and optional screenshot.
@@ -239,6 +244,7 @@ class Agent(BaseAgent):
                     )
                     return
 
+                #TODO: in the search with query also give the page details to search and get results to query and page.
                 if source == "search":
                     print("BROWSER_PAGE: 🔎 Page content insufficient. Fetching Tavily results...")
                     tavily_results = self.fetch_tavily_results(query)
@@ -260,8 +266,11 @@ class Agent(BaseAgent):
                 f"Error while running browser page agent: Error -> {str(e)}"
             )
     
-    # TODO: Move this to LLM Factory 
+    # TODO: Move this to LLM Factory
     def decide_source(self, llm: BaseChatModel, query: str, page_content: str) -> Dict[str, Any]:
+        """
+        Decides whether to use the page content or web search for the answer.
+        """
         system_content = CLASSIFIER_PROMPT.format(page_content=page_content)
         messages = [
             SystemMessage(content=system_content),
@@ -314,6 +323,22 @@ class Agent(BaseAgent):
                     }
                 },
             )
+        
+        final_answer = "".join(collected)
+
+        #Storing thr agent response inside DB.
+        await create_agent_event(
+            pool=self.dbpool,
+            task_id=task_id,
+            role="assistant",
+            message_type="aura_message",
+            tool=tool,
+            payload={
+                "content": {
+                    "message": final_answer
+                },
+            },
+        )
 
         print()  # Newline after streaming completes
         return "".join(collected)
@@ -406,10 +431,24 @@ class Agent(BaseAgent):
             },
         )
 
+        await create_agent_event(
+            pool=self.dbpool,
+            task_id=self.task_id,
+            role="assistant",
+            message_type="aura_message",
+            tool="recall_memory",
+            payload={
+                "content": {
+                    "message": content,
+                },
+            },
+        )
+
         print(f"CONTENT: {content}")
 
         return content
-
+        
+        # ** IF WANT TO STREAM THE RESPONSE THEN UNCOMMENT THE BELOW CODE ABD COMMENT ABOVE CODE  **
         # collected: List[str] = []
 
         # for chunk in self.llm.stream(messages):
