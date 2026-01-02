@@ -47,3 +47,17 @@ async def create_agent_event(
         print("   traceback:")
         traceback.print_exc()
         return None
+
+# Get all events for a specific task
+async def get_events_by_task(pool: Pool, task_id: str):
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM agent_events WHERE task_id = $1 ORDER BY seq ASC",
+                task_id
+            )
+            return [dict(row) for row in rows]
+    except Exception as e:
+        print("❌ FETCH EVENTS FAILED")
+        print("   error:", e)
+        return []
