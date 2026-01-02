@@ -4,14 +4,22 @@ from app.api.websocket_utils import send_ws_message
 import asyncio
 
 
+from asyncpg import Pool
+
 class TaskControlState:
-    def __init__(self, websocket: WebSocket):
+    def __init__(self, websocket: WebSocket, dbpool: Pool):
         self.websocket = websocket
+        self.dbpool = dbpool
+        self._seq = 0
         self.paused = asyncio.Event()
         self.cancelled = False
         self.input_queue = asyncio.Queue()
         self.paused.set()  # initially not paused
     
+    def get_next_seq(self) -> int:
+        self._seq += 1
+        return self._seq
+
 class TaskManager:
     def __init__(self):
         self.tasks = {}  # task_id -> TaskControlState
@@ -22,8 +30,8 @@ class TaskManager:
         if state.task:
             state.task.cancel()  # forcefully cancel
 
-    def create_task(self, task_id: str, websocket: WebSocket):
-        self.tasks[task_id] = TaskControlState(websocket=websocket)
+    def create_task(self, task_id: str, websocket: WebSocket, pool: Pool):
+        self.tasks[task_id] = TaskControlState(websocket=websocket, dbpool=pool)
 
     def set_task(self, task_id: str, task: asyncio.Task):
         self.tasks[task_id].task = task

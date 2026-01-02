@@ -11,6 +11,10 @@ from app.Agents.agent import Agent
 from app.Types.agent_types import LLMConfig, SystemInfo
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
+from app.DB.pool import get_pool
+from app.DB.Queries.task import create_task
+from app.DB.Queries.agent_event import create_agent_event
+
 import asyncio
 import uuid
 
@@ -21,7 +25,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="open_router", model_name="z-ai")
+llm_config = LLMConfig(provider="openai", model_name="gpt-4o")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
@@ -35,6 +39,9 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await manager.connect(websocket)
 
+    # Initialize database pool
+    pool = await get_pool()
+
     async def handle_query(message: dict, task_id: str, chat_id: str):
         """
         Handle an individual query message from the client.
@@ -47,12 +54,16 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         try:
             payload = message.get("payload")
+            print(f"payload: {payload}")
             if payload:
                 query = payload.get("query")
 
                 if query is None:
                     raise ValueError("Missing required field: 'query'")
                 
+                # Create task in the database
+                await create_task(pool, task_id, chat_id, query)
+
                 os_info = payload.get("os", "windows")
                 version_info = message.get("os_version", "11")
                 # workspace_path = message.get("workspace")  # WIP** -> Workspace Path need to add in the AURA Prompt.
@@ -60,7 +71,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Prepare agent with system and LLM configuration
                 system_info = SystemInfo(os=os_info, version=version_info)
-                agent = Agent(llm=llm_config, query=query, system_info=system_info, task_id=task_id, chat_id=chat_id)
+                agent = Agent(llm=llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
 
                 # Notify client that processing has started
                 await send_ws_message(
@@ -115,6 +126,23 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
                     }
                 )
+                
+                # Insert AURA complex agent event in the DB - FInal Answer
+                await create_agent_event(
+                    pool=dbpool,
+                    task_id=task_id,
+                    role="tool",
+                    message_type="server_tool_response",
+                    tool="aura",
+                    payload= {
+                        "content": {
+                            "message": final_result["output"],
+                            "status": "success"
+                        }
+                    },
+                    seq = task_state.get_next_seq()
+                )
+
             else:
                 await send_ws_message(
                     websocket,
@@ -177,8 +205,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 chat_id = message.get("chat_id")
 
                 if msg_type == "task_request":
-                    # Create task state with WebSocket
-                    task_manager.create_task(task_id, websocket)
+
+                    # Create task state with WebSocket and DB Pool
+                    task_manager.create_task(task_id, websocket, pool)
                     # Handle each message in its own asynchronous task
                     task = asyncio.create_task(handle_query(message, task_id, chat_id))
                     task_manager.set_task(task_id, task)

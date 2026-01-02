@@ -43,6 +43,7 @@ class CompleteTool(BaseTool):
 
             task_state = task_manager.get_state(self.task_id)
             websocket = task_state.websocket
+            dbpool = task_state.dbpool
 
             result = {"text": text, "attachments": attachments}
             await send_ws_message(
@@ -59,6 +60,23 @@ class CompleteTool(BaseTool):
                     }
                 }
             )
+            
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="server_tool_response",
+                tool="complete",
+                payload= {
+                  "content": {
+                    "message": json.dumps(result),
+                    "status": "success"
+                }
+            },
+            seq = task_state.get_next_seq()
+        )
+            
 
             update_memory(role="tool", name="complete", tool_call_id=tool_call_id, content=json.dumps(result), memory=self.memory)
 
