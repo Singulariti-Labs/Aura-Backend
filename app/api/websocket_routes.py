@@ -5,15 +5,17 @@ This module sets up a WebSocket endpoint (`/ws`) to receive messages from client
 invoke the agent asynchronously, and send back standardized responses and status updates.
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
 from app.Types.agent_types import LLMConfig, SystemInfo
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.DB.pool import get_pool
+from app.api.auth_utils import token_verifier
 from app.DB.Queries.task import create_task
 from app.DB.Queries.agent_event import create_agent_event
+from app.DB.Queries.user import get_user_by_auth0_id
 
 import asyncio
 import uuid
@@ -39,8 +41,27 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await manager.connect(websocket)
 
+    # Auth0 Token Validation
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
+    try:
+        user_payload = token_verifier.verify(token)
+    except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     # Initialize database pool
     pool = await get_pool()
+
+    auth0_id = user_payload.get("sub")
+    user = await get_user_by_auth0_id(pool, auth0_id)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    user_id = user["id"]
 
     async def handle_query(message: dict, task_id: str, chat_id: str):
         """
@@ -62,7 +83,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     raise ValueError("Missing required field: 'query'")
                 
                 # Create task in the database
-                await create_task(pool, task_id, chat_id, query)
+                await create_task(pool, task_id, chat_id, query, user_id)
 
                 os_info = payload.get("os", "windows")
                 version_info = message.get("os_version", "11")

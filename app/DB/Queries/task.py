@@ -3,16 +3,12 @@ from datetime import datetime
 
 import uuid
 
-# For now, using dummy user_id
-DUMMY_USER_ID = "00000000-0000-0000-0000-000000000000"
-
-
 async def create_task(
     pool: Pool,
     task_id: str,
     chat_id: str,
     query: str,
-    user_id: str = DUMMY_USER_ID,
+    user_id: str,
 ):
     # Generate a random ID for the task
     id = str(uuid.uuid4())

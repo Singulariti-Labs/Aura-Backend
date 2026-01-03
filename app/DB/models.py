@@ -49,14 +49,17 @@ class User(TypedDict, total=False):
     Represents a registered user.
 
     Required fields:
-    - user_id, email, name, hashed_password, created_at
+    - user_id, email, name, created_at
 
     Optional fields:
     - updated_at: may be None if user never updated their profile
+    - auth0_id: may be None if user never logged in
+    - hashed_password: may be None if user never logged in
     """
     id: str  # UUID (primary key)
     email: str  # User email (unique)
     name: str  # User display name
-    hashed_password: str  # Hashed password
+    auth0_id: Optional[str]  # Auth0 user identifier
+    hashed_password: Optional[str]  # Hashed password (optional for Auth0 users)
     created_at: datetime  # User creation timestamp
     updated_at: Optional[datetime]  # Last update timestamp
