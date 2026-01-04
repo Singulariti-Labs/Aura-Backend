@@ -50,13 +50,6 @@ async def sync_user(pool: Pool, user_data: dict) -> dict:
     try:
         async with pool.acquire() as conn:
             if existing_user:
-                # Only update if the email or name has changed
-                if existing_user.get("email") != email or existing_user.get("name") != name:
-                    await conn.execute(
-                        "UPDATE users SET email=$1, name=$2, updated_at=$3 WHERE auth0_id=$4",
-                        email, name, datetime.utcnow(), auth0_id
-                    )
-                    return await get_user_by_auth0_id(pool, auth0_id)
                 return existing_user
             else:
                 # Create new user
