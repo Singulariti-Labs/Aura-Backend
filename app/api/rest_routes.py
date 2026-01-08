@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.DB.pool import get_pool
 from app.DB.Queries.user import get_user_by_auth0_id, get_user
-from app.DB.Queries.task import get_tasks_by_user, get_task_by_id
+from app.DB.Queries.task import get_tasks_by_user, get_task_by_id, delete_task_db, star_task_db, unstar_task_db
 from app.DB.Queries.agent_event import get_events_by_task
 from app.api.auth_utils import get_current_user
 from asyncpg import Pool
@@ -17,7 +17,7 @@ async def fetch_user_profile(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User record not found. Please sync first.")
     return user
 
-@rest_router.get("/tasks")
+@rest_router.get("/get_tasks")
 async def fetch_my_tasks(current_user: dict = Depends(get_current_user)):
     pool = await get_pool()
     auth0_id = current_user.get("sub")
@@ -29,21 +29,79 @@ async def fetch_my_tasks(current_user: dict = Depends(get_current_user)):
     return tasks
 
 @rest_router.get("/task/{task_id}")
-async def fetch_task(task_id: str, current_user: dict = Depends(get_current_user)):
+async def fetch_task_by_task_id(task_id: str, current_user: dict = Depends(get_current_user)):
     pool = await get_pool()
     auth0_id = current_user.get("sub")
     
     # 1. Get task
-    task = await get_task_by_id(pool, task_id)
+    task = await get_task_by_id(pool=pool, id=task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
     # 2. Verify ownership
-    user = await get_user_by_auth0_id(pool, auth0_id)
+    user = await get_user_by_auth0_id(pool=pool, auth0_id=auth0_id)
     if not user or task["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized to view this task")
         
     return task
+    
+@rest_router.post("/delete_task/{task_id}")
+async def delete_task(task_id: str, current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    
+    # 1. Verify ownership (simple approach as requested)
+    task = await get_task_by_id(pool=pool, id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    user = await get_user_by_auth0_id(pool=pool, auth0_id=auth0_id)
+    if not user or task["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this task")
+    
+    success = await delete_task_db(pool=pool, id=task_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete task")
+        
+    return {"status": "success", "message": "Task deleted successfully"}
+
+@rest_router.post("/starred_task/{task_id}")
+async def star_task(task_id: str, current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    
+    task = await get_task_by_id(pool=pool, id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    user = await get_user_by_auth0_id(pool=pool, auth0_id=auth0_id)
+    if not user or task["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to star this task")
+    
+    success = await star_task_db(pool=pool, id=task_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to star task")
+        
+    return {"status": "success", "message": "Task starred successfully"}
+
+@rest_router.post("/unstarred_task/{task_id}")
+async def unstar_task(task_id: str, current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    
+    task = await get_task_by_id(pool=pool, id=task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    user = await get_user_by_auth0_id(pool=pool, auth0_id=auth0_id)
+    if not user or task["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to unstar this task")
+    
+    success = await unstar_task_db(pool=pool, id=task_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to unstar task")
+        
+    return {"status": "success", "message": "Task unstarred successfully"}
 
 @rest_router.get("/events/{task_id}")
 async def fetch_events(task_id: str, current_user: dict = Depends(get_current_user)):
@@ -51,13 +109,13 @@ async def fetch_events(task_id: str, current_user: dict = Depends(get_current_us
     auth0_id = current_user.get("sub")
 
     # 1. Verify task ownership before returning events
-    task = await get_task_by_id(pool, task_id)
+    task = await get_task_by_id(pool=pool, id=task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    user = await get_user_by_auth0_id(pool, auth0_id)
+    user = await get_user_by_auth0_id(pool=pool, auth0_id=auth0_id)
     if not user or task["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized to view these events")
 
-    events = await get_events_by_task(pool, task_id)
+    events = await get_events_by_task(pool=pool, task_id=task_id)
     return events

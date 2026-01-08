@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_community.chat_models.anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_classic.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -81,6 +82,17 @@ class LLMFactory():
                     return ChatOpenAI(model="x-ai/grok-4.1-fast:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 if(llm_config.model_name == "openai"):
                     return ChatOpenAI(model="openai/gpt-oss-120b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "xiaomi"):
+                    return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+            
+            elif llm_config.provider == "google":
+                api_key = os.environ.get("GOOGLE_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("GOOGLE_API_KEY environment variable is not set")
+                
+                return ChatGoogleGenerativeAI(model=llm_config.model_name, api_key=api_key)
+            
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:

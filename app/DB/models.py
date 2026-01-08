@@ -20,6 +20,8 @@ class Task(TypedDict, total=False):
     status: str   # 'running' | 'completed' | 'failed'
     started_at: datetime  # When the task started
     finished_at: Optional[datetime]  # When the task finished (None if running)
+    is_star: bool  # Whether the user star that task
+    is_delete: bool  # Whether the user delete that task
 
 
 # ---------- Agent Event ----------
