@@ -13,7 +13,7 @@ from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.DB.pool import get_pool
 from app.api.auth_utils import token_verifier
-from app.DB.Queries.task import create_task
+from app.DB.Queries.task import create_task, update_task_status
 from app.DB.Queries.agent_event import create_agent_event
 from app.DB.Queries.user import get_user_by_auth0_id
 
@@ -127,42 +127,65 @@ async def websocket_endpoint(websocket: WebSocket):
                 #                     "confidence": 1.0
                 # }]}
 
-                final_result = {
-                    "input": response["input"],
-                    "output": response["output"]
-                }
-
-                # Send back the final response
-                await send_ws_message(
-                    websocket,
-                    type="server_tool_response",
-                    task_id=task_id,
-                    chat_id=chat_id,
-                    payload={
-                        "tool": "aura",
-                        "content": {
-                            "role": "assistant",
-                            "message": final_result["output"],
-                            "status": "success"
-                        }
+                # Robust response handling
+                if response is None:
+                    final_result = {
+                        "input": query,
+                        "output": ""
                     }
-                )
+                elif isinstance(response, str):
+                    final_result = {
+                        "input": query,
+                        "output": response
+                    }
+                elif isinstance(response, dict):
+                    final_result = {
+                        "input": response.get("input", query),
+                        "output": response.get("output", "")
+                    }
+                else:
+                    final_result = {
+                        "input": query,
+                        "output": str(response)
+                    }
                 
-                # Insert AURA complex agent event in the DB - FInal Answer
-                await create_agent_event(
-                    pool=dbpool,
-                    task_id=task_id,
-                    role="tool",
-                    message_type="server_tool_response",
-                    tool="aura",
-                    payload= {
-                        "content": {
-                            "message": final_result["output"],
-                            "status": "success"
-                        }
-                    },
-                    seq = task_state.get_next_seq()
-                )
+                # Send back the final response [NO NEED TO SEND THE FINAL RESPONSE AS THE RESPONSE IS ALREADY STREAMED]
+                # await send_ws_message(
+                #     websocket,
+                #     type="server_tool_response",
+                #     task_id=task_id,
+                #     chat_id=chat_id,
+                #     payload={
+                #         "tool": "aura",
+                #         "content": {
+                #             "role": "assistant",
+                #             "message": final_result["output"],
+                #             "status": "success"
+                #         }
+                #     }
+                # )
+                
+                # Retrieve task state for event logging
+                # task_state = task_manager.get_state(task_id)
+
+                # Insert AURA complex agent event in the DB - FINAL ANSWER
+                # await create_agent_event(
+                #     pool=pool,
+                #     task_id=task_id,
+                #     role="tool",
+                #     message_type="server_tool_response",
+                #     tool="aura",
+                #     payload= {
+                #         "content": {
+                #             "message": final_result["output"],
+                #             "status": "success"
+                #         }
+                #     },
+                #     seq = task_state.get_next_seq() if task_state else 1
+                # )
+
+                # UPDATE TASK STATUS TO COMPLETED
+                await update_task_status(pool=pool, task_id=task_id, status="completed")
 
             else:
                 await send_ws_message(

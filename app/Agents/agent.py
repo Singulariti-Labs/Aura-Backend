@@ -1,4 +1,3 @@
-from email import message
 from typing import Optional, List, Any, Dict
 from fastapi import WebSocket
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -19,6 +18,7 @@ from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.Option_Helper.web_scraper import simple_web_scraper
 from app.DB.Queries.agent_event import create_agent_event
+from app.Agents.context_agent import ContextAgent
 
 import asyncio
 import json
@@ -52,6 +52,7 @@ class Agent(BaseAgent):
         self.chat_id = chat_id
         self.dbpool = pool
         self.llm_config = llm
+        self.llm_provider = llm.provider
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
         self.llm = LLMFactory.create_llm(llm)
@@ -119,6 +120,21 @@ class Agent(BaseAgent):
                 await task_manager.wait_if_paused(self.task_id)
                 result = None
 
+                # If the option is not complex_task or smart then run the main agent
+                if self.payload.get('option') not in ["complex_task", "smart"]:
+                    context_agent = ContextAgent(
+                        query=self.query,
+                        payload=self.payload,
+                        task_id=self.task_id,
+                        chat_id=self.chat_id,
+                        llm=self.llm,
+                        screenshot=self.screenshot,
+                        websocket=self.websocket,
+                        llm_provider=self.llm_provider,
+                        memory= self.memory,
+                        dbpool=self.dbpool
+                    )
+
                 if self.payload.get("option") == "browser_page":
                     print("BROWSER_PAGE: Running Browser Page Agent")
                     result = await self.run_browser_page_agent(
@@ -134,6 +150,10 @@ class Agent(BaseAgent):
                 elif self.payload.get("option") == "history":
                     print("SEARCH HISTORY: Running Recall Memeory Agent")
                     result = await self.run_recall_memory_agent()
+                
+                elif self.payload.get("option") == "foreground_app":
+                    print("FOREGROUND APP: Running Foreground App Agent")
+                    result = await context_agent.run_foreground_app_agent()
 
                 else:
                     result = await self.llm_factory.agent_executor(
@@ -144,12 +164,12 @@ class Agent(BaseAgent):
                         chat_history=chat_history,
                         tools=available_tools,
                         system_info=self.system_info,
+                        llm_provider=self.llm_provider,
                         agent_type="main"
                     )
 
                 # SEND_RESPONSE_TO_CLIENT - Agent output
-
-                print(f"RESULT OF AGENT: {result}")
+                print(f"\n\nRESULT OF AGENT RECIVED IN MAIN AGENT\n\n")
                 return result
             
             except Exception as e:
@@ -378,7 +398,7 @@ class Agent(BaseAgent):
         return "\n".join(formatted)
 
 # ------------------------------------------------------------------------- #
-# ---------------  Functions To run Browser Agent ------------------------- #
+# ---------------  Functions To run Recall Agent ------------------------- #
 # ------------------------------------------------------------------------- #
 
     async def run_recall_memory_agent(self):
@@ -518,3 +538,6 @@ def format_history(history):
         )
 
     return "\n".join(formatted_lines)
+
+
+
