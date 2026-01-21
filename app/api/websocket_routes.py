@@ -27,13 +27,13 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="google", model_name="gemini-2.5-flash")
+llm_config = LLMConfig(provider="open_router", model_name="xiaomi")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    Handle WebSocket connections at /ws.
+    Handle WebSocket connections at /ws.`
 
     Accepts JSON messages from the client containing a query and optional system info.
     Each message triggers an asynchronous agent invocation, with status updates sent

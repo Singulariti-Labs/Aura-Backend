@@ -140,7 +140,7 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
             if tool_name:
                 await send_ws_message(
                     websocket=websocket,
-                    type="aura_message",
+                    type="aura_thinking",
                     task_id=task_id,
                     chat_id=chat_id,
                     payload = {
@@ -157,7 +157,7 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                     pool=dbpool,
                     task_id=task_id,
                     role="assistant",
-                    message_type="aura_message",
+                    message_type="aura_thinking",
                     tool=tool_name,
                     payload= {
                         "content": {
@@ -170,7 +170,7 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
             else:
                 await send_ws_message(
                     websocket=websocket,
-                    type="aura_message",
+                    type="aura_thinking",
                     task_id=task_id,
                     chat_id=chat_id,
                     payload = {
@@ -181,12 +181,12 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                     }
                 )
                 
-                # Insert AURA complex agent event in the DB 
+                # Insert AURA complex agent thinking event in the DB 
                 await create_agent_event(
                     pool=dbpool,
                     task_id=task_id,
                     role="assistant",
-                    message_type="aura_message",
+                    message_type="aura_thinking",
                     payload= {
                         "content": {
                             "message": last_assistant_msg

@@ -169,7 +169,7 @@ class Agent(BaseAgent):
                     )
 
                 # SEND_RESPONSE_TO_CLIENT - Agent output
-                print(f"\n\nRESULT OF AGENT RECIVED IN MAIN AGENT\n\n")
+                print(f"\n\n----- AGENT RUN FINISHED -----\n\n")
                 return result
             
             except Exception as e:

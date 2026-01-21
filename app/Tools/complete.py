@@ -8,6 +8,7 @@ from app.helper import send_last_assistant_message, save_tool_response, update_m
 from app.Task.task_manager import task_manager
 from app.Types.agent_types import CompleteToolInput
 from app.api.websocket_utils import send_ws_message
+from app.DB.Queries.agent_event import create_agent_event
 
 
 class CompleteTool(BaseTool):
@@ -48,7 +49,7 @@ class CompleteTool(BaseTool):
             result = {"text": text, "attachments": attachments}
             await send_ws_message(
                 websocket=websocket,
-                type="server_tool_response",
+                type="aura_message",
                 task_id=self.task_id,
                 chat_id=self.chat_id,
                 payload={
@@ -66,16 +67,16 @@ class CompleteTool(BaseTool):
                 pool=dbpool,
                 task_id=self.task_id,
                 role="tool",
-                message_type="server_tool_response",
+                message_type="aura_message",
                 tool="complete",
                 payload= {
-                  "content": {
-                    "message": json.dumps(result),
-                    "status": "success"
-                }
-            },
-            seq = task_state.get_next_seq()
-        )
+                    "content": {
+                        "message": json.dumps(result),
+                        "status": "success"
+                    }
+                },
+                seq = task_state.get_next_seq()
+            )
             
 
             update_memory(role="tool", name="complete", tool_call_id=tool_call_id, content=json.dumps(result), memory=self.memory)

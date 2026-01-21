@@ -84,6 +84,8 @@ class LLMFactory():
                     return ChatOpenAI(model="openai/gpt-oss-120b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 if(llm_config.model_name == "xiaomi"):
                     return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "google"):
+                    return ChatOpenAI(model="google/gemini-2.0-flash-exp:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             
             elif llm_config.provider == "google":
                 api_key = os.environ.get("GOOGLE_API_KEY")
@@ -487,13 +489,18 @@ class LLMFactory():
             
             agent = create_openai_tools_agent(llm, tools, prompt)
 
+            # Create callbacks list with rate limiting
+            callbacks = [
+                AgentCallbackHandler(self.memory),
+            ]
+
             # Creating agent executor.
             executor = AgentExecutor(
                 agent=agent,
                 tools=tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                callbacks=[AgentCallbackHandler(self.memory)],
+                callbacks=callbacks,
                 max_iterations=100,
                 early_stopping_method="generate"
             )

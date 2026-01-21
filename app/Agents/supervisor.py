@@ -359,7 +359,7 @@ class SupervisorAgent(BaseAgent):
                     payload = {
                         "content": {
                             "role": "assistant",
-                            "tool": "aura",
+                            "tool": "aura-agent",
                             "message": final_result
                         }
                     }
