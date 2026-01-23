@@ -11,7 +11,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
-from app.Prompts.browser_page_option import BROWSER_PAGE_PROMPT
+from app.Prompts.browser_page_option import BROWSER_APP_PROMPT
 from app.Prompts.recall_memory import RECALL_MEMORY_PROMPT
 from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
@@ -317,7 +317,7 @@ class Agent(BaseAgent):
         Streams the LLM response to the websocket client chunk by chunk.
         """
         messages = [
-            SystemMessage(content=BROWSER_PAGE_PROMPT.format(context=context.strip())),
+            SystemMessage(content=BROWSER_APP_PROMPT.format(context=context.strip())),
             HumanMessage(content=query),
         ]
 
