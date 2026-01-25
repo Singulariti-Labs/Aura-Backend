@@ -77,11 +77,11 @@ async def web_search_tool(
             "results": final_results
         }
         
-        return response
+        return json.dumps(response)
 
     except Exception as e:
         response = {
             "status": "failed",
             "error": str(e)
         }
-        return response
+        return json.dumps(response)

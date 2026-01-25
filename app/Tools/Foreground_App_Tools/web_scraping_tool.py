@@ -86,7 +86,8 @@ async def web_scraping_tool(urls: str) -> dict:
                 "content": content
             })
 
-    return {
+    response = {
         "status": "success",
         "results": results
     }
+    return json.dumps(response)

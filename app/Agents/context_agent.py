@@ -3,9 +3,10 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_agent
 from asyncpg import Pool
-from typing import Optional
-
+from typing import Optional, Dict, Any
+from langchain_core.runnables import Runnable
 from app.LLM.memory import Memory
+
 from app.Types.context_type import IDEContextState
 from app.api.websocket_utils import send_ws_message
 from app.DB.Queries.agent_event import create_agent_event
@@ -14,6 +15,8 @@ from app.Prompts.ide_app_prompt import IDE_AGENT_PROMPT
 from app.Prompts.browser_page_option import BROWSER_APP_PROMPT
 from app.Tools.Foreground_App_Tools.web_search_tool import web_search_tool
 from app.Tools.Foreground_App_Tools.web_scraping_tool import web_scraping_tool
+from app.Task.task_manager import task_manager
+
 
 
 import asyncpg
@@ -52,6 +55,7 @@ class ContextAgent():
         Run the foreground app agent to extract information from the foreground app and answer the user query
         """
         try:
+            self.task_state = task_manager.get_state(self.task_id)
             app_context = None
             app_type = self.payload.get("app_type")
 
@@ -98,54 +102,29 @@ class ContextAgent():
                 system_prompt=formatted_system_prompt
             )
 
-            input = {
+            inputs = {
                 "messages": [
                     ("user", self.query)
                 ]
             }
 
-            # response = agent.invoke(input)
-            # print("IDE_AGENT_RESULT: ", response)
-            # return response
+            full_response = await self.stream_agent_response(agent, inputs)
 
-             # Use astream with stream_mode="messages" for token-by-token streaming
-             # This returns a generator of (message_chunk, metadata)
-            full_response = ""
-            async for chunk, metadata in agent.astream(input, stream_mode="messages"):
-                # Check if the chunk is an AIMessageChunk (actual LLM content)
-                if chunk.content:
-                    print(chunk.content, end="", flush=True)
-                    full_response += chunk.content
-                    
-                    # Stream to your websocket if available
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        type="aura_message",
-                        task_id=self.task_id,
-                        chat_id=self.chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "tool": "foreground_app",
-                                "message": chunk.content,
-                            }
-                        },
-                    )
-
-            print("\nIDE_AGENT_RESULT: ", full_response)
+            print(f"\n\n✅ FINAL RESPONSE: {full_response}")
             
             # creating the agent event to store the response in db
             await create_agent_event(
                 pool=self.dbpool,
                 task_id=self.task_id,
                 role="assistant",
-                message_type="aura_message",
+                message_type="aura_context_message",
                 tool="foreground_app",
                 payload={
                     "content": {
                         "message": full_response
                     },
                 },
+                seq=self.task_state.get_next_seq()
             )
 
             # updating the task status to completed
@@ -184,118 +163,16 @@ class ContextAgent():
                 system_prompt=formatted_system_prompt
             )
 
-            input = {
+            inputs = {
                 "messages": [
                     ("user", self.query)
                 ]
             }
 
-            # response = agent.invoke(input)
-            # print("IDE_AGENT_RESULT: ", response)
-            # return response
-
-            ### --------------------  Streaming Response Token by Token without events ------------------------
+            full_response = await self.stream_agent_response(agent, inputs)
             
-            # Use astream with stream_mode="messages" for token-by-token streaming
-            # This returns a generator of (message_chunk, metadata)
-            full_response = ""
-            # async for chunk, metadata in agent.astream(input, stream_mode="messages"):
-            #     # Check if the chunk is an AIMessageChunk (actual LLM content)
-            #     if chunk.content:
-            #         print(chunk.content, end="", flush=True)
-            #         full_response += chunk.content
-                    
-            #         # Stream to your websocket if available
-            #         await send_ws_message(
-            #             websocket=self.websocket,
-            #             type="aura_message",
-            #             task_id=self.task_id,
-            #             chat_id=self.chat_id,
-            #             payload={
-            #                 "content": {
-            #                     "role": "assistant",
-            #                     "tool": "foreground_app",
-            #                     "message": chunk.content,
-            #                 }
-            #             },
-            #         )
+            print(f"\n\n✅ FINAL RESPONSE: {full_response}")
 
-
-            ### ------------------------  Streaming Response With Events ------------------------
-            active_tool_calls = {} 
-            async for chunk in agent.astream(input, stream_mode="updates"):
-
-                for node_name, data in chunk.items():
-                    last_message = data['messages'][-1]
-            
-                # === TOOL CALL PHASE ===
-                if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-                    for tc in last_message.tool_calls:
-
-                        tool_call_id = tc["id"]
-                        tool_name = tc["name"]
-                        tool_input = tc["args"]
-
-                        # Store mapping for later lookup
-                        active_tool_calls[tool_call_id] = {
-                            "tool_name": tool_name,
-                            "input": tool_input,
-                        }
-
-                        print(f"🔧 Tool: {tool_name}")
-                        print(f"📝 Input: {tool_input}")
-                        
-                        await send_ws_message(
-                        websocket=self.websocket,
-                        type="aura_context_tool_request",
-                        task_id=self.task_id,
-                        chat_id=self.chat_id,
-                        payload={
-                            "tool": tool_name,
-                            "input": tool_input,
-                        }
-                    )
-            
-                # === TOOL RESULT PHASE ===
-                elif last_message.type == "tool":
-                    print(f"✅ Result: {last_message.content}")
-
-                    tool_call_id = last_message.tool_call_id
-                    tool_info = active_tool_calls.get(tool_call_id, {})
-                    tool_name = tool_info.get("tool_name", "unknown")
-
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        type="aura_context_tool_response",
-                        task_id=self.task_id,
-                        chat_id=self.chat_id,
-                        payload={
-                            "tool": tool_name,
-                            "content":{
-                                "role": "tool",
-                                "output": last_message.content,
-                            }
-                        }
-                    )
-            
-                # === FINAL RESPONSE PHASE ===
-                elif last_message.type == "ai" and last_message.content:
-                    print(f"💬 Response: {last_message.content}")
-                    full_response = last_message.content
-                    
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        type="aura_context_message",
-                        task_id=self.task_id,
-                        chat_id=self.chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "message": last_message.content,
-                            }
-                        }
-                    )
-            
             # creating the agent event to store the response in db
             await create_agent_event(
                 pool=self.dbpool,
@@ -308,6 +185,7 @@ class ContextAgent():
                         "message": full_response
                     },
                 },
+                seq=self.task_state.get_next_seq()
             )
 
             # updating the task status to completed
@@ -318,3 +196,115 @@ class ContextAgent():
         except Exception as e:
             raise RuntimeError(f"Error running BROWSER agent: {str(e)}")
             return None
+
+    async def stream_agent_response(self, agent: Runnable, inputs: Dict[str, Any] ):
+        """Streams the Context-Agent-Response to the client with tool call and response events
+        
+        Streams Events ->
+            [on_tool_start]: TOOL_NAME + TOOL_INPUT
+            [on_tool_end]: TOOL_NAME + TOOL_RESPONSE
+
+            [on_chat_model_stream]: Stream Response Token By Token.
+        
+        Returns -> 
+            [current_response]: Full Response from the agent.
+        """ 
+
+        current_response = ""
+
+        async for event in agent.astream_events(inputs, version="v2"):
+            event_type = event["event"]
+
+            # 1. TOOL CALL START
+            if event_type == "on_tool_start":
+                tool_name = event["name"]
+                tool_input = event["data"].get("input")
+
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_context_tool_request",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "tool": tool_name,
+                        "input": tool_input,
+                    },
+                )
+
+                # creating the agent event to store the tool request in db
+                await create_agent_event(
+                    pool=self.dbpool,
+                    task_id=self.task_id,
+                    role="assistant",
+                    message_type="aura_context_tool_request",
+                    tool=tool_name,
+                    payload={
+                        "tool": tool_name,
+                        "input": tool_input,
+                    },
+                    seq=self.task_state.get_next_seq()
+                )
+
+                print(f"\n\n✅ TOOL REQUEST: {tool_name}")
+                print(f"\n\n✅ TOOL INPUT: {tool_input}")
+
+            # 2. TOOL CALL END
+            elif event_type == "on_tool_end":
+                tool_name = event["name"]
+                tool_output = event["data"].get("output")
+
+                print(f"\n\n✅ TOOL NAME: {tool_name}")
+                print(f"\n\n✅ TOOL RESPONSE: {tool_output.content}")
+
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_context_tool_response",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "tool": tool_name,
+                        "content": {
+                            "role": "tool",
+                            "output": tool_output.content,
+                        },
+                    },
+                )
+
+                # creating the agent event to store the tool response in db
+                await create_agent_event(
+                    pool=self.dbpool,
+                    task_id=self.task_id,
+                    role="tool",
+                    message_type="aura_context_tool_response",
+                    tool=tool_name,
+                    payload={
+                        "tool": tool_name,
+                        "content": {
+                            "role": "tool",
+                            "output": tool_output.content,
+                        },
+                    },
+                    seq=self.task_state.get_next_seq()
+                )
+
+            # 3. ASSISTANT TOKEN STREAM
+            elif event_type == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+
+                if chunk.content:
+                    current_response += chunk.content
+
+                    await send_ws_message(
+                        websocket=self.websocket,
+                        type="aura_context_message",
+                        task_id=self.task_id,
+                        chat_id=self.chat_id,
+                        payload={
+                            "content": {
+                                "role": "assistant",
+                                "message": chunk.content,  # delta
+                            }
+                        },
+                    )
+
+        return current_response
