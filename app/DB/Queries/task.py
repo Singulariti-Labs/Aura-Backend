@@ -36,7 +36,7 @@ async def get_tasks_by_user(pool: Pool, user_id: str):
     try:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM tasks WHERE user_id = $1 AND is_delete = FALSE ORDER BY started_at DESC",
+                "SELECT * FROM tasks WHERE user_id = $1 AND is_delete = FALSE AND status = 'completed' ORDER BY started_at DESC",
                 user_id
             )
             return [dict(row) for row in rows]

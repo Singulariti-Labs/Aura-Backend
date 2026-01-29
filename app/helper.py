@@ -127,13 +127,6 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         last_assistant_msg = last_assistant_content = next((msg.content for msg in reversed(messages) if msg.role == "assistant"), None)
 
-        # Save tool response
-        save_tool_response(
-            task_id=task_id,
-            tool_name="assistant",
-            response= json.dumps(last_assistant_content)
-        )
-
         if last_assistant_msg:
 
             # this message to send the assistant message and to tell which tool we are going to call next in perticular step or thinking message

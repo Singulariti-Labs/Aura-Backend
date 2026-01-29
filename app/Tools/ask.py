@@ -81,11 +81,5 @@ class AskTool(BaseTool):
             "success": True,
             "output": result
         }
-
-        save_tool_response(
-            task_id=self.task_id,
-            tool_name="ask",
-            response= response
-        )
     
         return response

@@ -86,6 +86,12 @@ class LLMFactory():
                     return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 if(llm_config.model_name == "google"):
                     return ChatOpenAI(model="google/gemini-2.0-flash-exp:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "qwen"):
+                    return ChatOpenAI(model="qwen/qwen3-next-80b-a3b-instruct:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "nvidia"):
+                    return ChatOpenAI(model="nvidia/nemotron-3-nano-30b-a3b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "upstage"):
+                    return ChatOpenAI(model="upstage/solar-pro-3:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             
             elif llm_config.provider == "google":
                 api_key = os.environ.get("GOOGLE_API_KEY")

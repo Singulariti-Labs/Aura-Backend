@@ -81,13 +81,6 @@ async def web_search(query: str, task_id: str, chat_id: str,num_results: Optiona
             "result": result
         }
 
-        # Save tool response
-        save_tool_response(
-            task_id=task_id,
-            tool_name="web_search",
-            response= response
-        )
-
         return json.dumps(response)
     except Exception as e:
         response = {
@@ -248,13 +241,6 @@ async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, tas
             }
         },
         seq = task_state.get_next_seq()
-    )
-
-    # Save tool response
-    save_tool_response(
-        task_id=task_id,
-        tool_name="web_scraper",
-        response= message
     )
 
     response = {"status": "success", "result": message}

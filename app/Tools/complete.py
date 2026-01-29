@@ -83,12 +83,6 @@ class CompleteTool(BaseTool):
 
             response = {"success": True, "output": result}
 
-            save_tool_response(
-                task_id=self.task_id,
-                tool_name="complete",
-                response= response
-            )
-
             return response
         except Exception as e:
             return {"success": False, "output":f"Error entering complete state: {str(e)}"}

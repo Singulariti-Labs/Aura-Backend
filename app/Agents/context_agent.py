@@ -6,6 +6,8 @@ from asyncpg import Pool
 from typing import Optional, Dict, Any
 from langchain_core.runnables import Runnable
 from app.LLM.memory import Memory
+from datetime import datetime, timezone
+
 
 from app.Types.context_type import IDEContextState
 from app.api.websocket_utils import send_ws_message
@@ -13,6 +15,7 @@ from app.DB.Queries.agent_event import create_agent_event
 from app.DB.Queries.task import update_task_status
 from app.Prompts.ide_app_prompt import IDE_AGENT_PROMPT
 from app.Prompts.browser_page_option import BROWSER_APP_PROMPT
+from app.Prompts.general_agent_prompt import GENERAL_AGENT_PROMPT
 from app.Tools.Foreground_App_Tools.web_search_tool import web_search_tool
 from app.Tools.Foreground_App_Tools.web_scraping_tool import web_scraping_tool
 from app.Task.task_manager import task_manager
@@ -49,13 +52,13 @@ class ContextAgent():
         self.max_tokens = maxTokens
         self.shared_memory = memory
         self.websocket = websocket
+        self.task_state = task_manager.get_state(self.task_id)
 
     async def run_foreground_app_agent(self):
         """
         Run the foreground app agent to extract information from the foreground app and answer the user query
         """
         try:
-            self.task_state = task_manager.get_state(self.task_id)
             app_context = None
             app_type = self.payload.get("app_type")
 
@@ -90,8 +93,6 @@ class ContextAgent():
                 active_file=active_file,
                 file_content=file_content
             )
-
-            print("LLM: ", self.llm)
             print("QUERY: ", self.query)
 
             tools = [web_search_tool]
@@ -292,7 +293,18 @@ class ContextAgent():
                 chunk = event["data"]["chunk"]
 
                 if chunk.content:
-                    current_response += chunk.content
+                    # Handle both string (OpenAI) and list (Gemini) content
+                    if isinstance(chunk.content, list):
+                        # Gemini returns a list of content blocks
+                        content_text = "".join([
+                            block.get("text", "") if isinstance(block, dict) else str(block)
+                            for block in chunk.content
+                        ])
+                    else:
+                        # OpenAI returns a string
+                        content_text = chunk.content
+                    
+                    current_response += content_text
 
                     await send_ws_message(
                         websocket=self.websocket,
@@ -302,9 +314,62 @@ class ContextAgent():
                         payload={
                             "content": {
                                 "role": "assistant",
-                                "message": chunk.content,  # delta
+                                "message": content_text       # delta
                             }
                         },
                     )
 
         return current_response
+
+    async def run_general_agent(self):
+        """
+        Run the general agent to give answer to the user query realted to general questions.
+        """
+        try:
+            current_date = datetime.now().strftime("%Y-%m-%d")
+
+            formatted_system_prompt = GENERAL_AGENT_PROMPT.format(
+                today= current_date
+            )
+
+            tools = [web_search_tool, web_scraping_tool]
+
+            agent = create_agent(
+                model=self.llm,
+                tools=tools,
+                system_prompt=formatted_system_prompt
+            )
+
+            inputs = {
+                "messages": [
+                    ("user", self.query)
+                ]
+            }
+
+            full_response = await self.stream_agent_response(agent, inputs)
+            
+            print(f"\n\n✅ FINAL RESPONSE: {full_response}")
+
+            # creating the agent event to store the response in db
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="assistant",
+                message_type="aura_context_message",
+                tool="foreground_app",
+                payload={
+                    "content": {
+                        "message": full_response
+                    },
+                },
+                seq=self.task_state.get_next_seq()
+            )
+
+            # updating the task status to completed
+            await update_task_status(self.dbpool, self.task_id, "completed")
+
+            return full_response
+            
+        except Exception as e:
+            raise RuntimeError(f"Error running general agent: {str(e)}")
+            return None

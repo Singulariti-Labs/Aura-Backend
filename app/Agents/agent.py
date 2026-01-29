@@ -154,6 +154,10 @@ class Agent(BaseAgent):
                 elif self.payload.get("option") == "foreground_app":
                     print("FOREGROUND APP: Running Foreground App Agent")
                     result = await context_agent.run_foreground_app_agent()
+                
+                elif self.payload.get("option") == "general":
+                    print("GENERAL AI: Running General Agent")
+                    result = await context_agent.run_general_agent()
 
                 else:
                     result = await self.llm_factory.agent_executor(
@@ -170,6 +174,18 @@ class Agent(BaseAgent):
 
                 # SEND_RESPONSE_TO_CLIENT - Agent output
                 print(f"\n\n----- AGENT RUN FINISHED -----\n\n")
+
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_status",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "query": self.query,
+                        "message": "<AURA> run completed",
+                        "status": "completed",
+                    }
+                )
                 return result
             
             except Exception as e:
