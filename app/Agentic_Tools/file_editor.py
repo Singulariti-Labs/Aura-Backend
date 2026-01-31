@@ -417,7 +417,7 @@ class FileEditor():
 
             if original_content:
                 new_content, error_message = await self._call_ai_editor(file_content=original_content, code_edit=code_edit, instructions=instructions, path=target_file)
-                # print(f"📂EDIT_FILE_LOG: 🎆Orignal_Content:{original_content}, 🆕New_Content:{new_content}, ❌Error_Message:{error_message}")
+                
                 if error_message:
                     final_result = {
                     "success": False,

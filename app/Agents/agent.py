@@ -209,7 +209,6 @@ class Agent(BaseAgent):
         featching its content. If the page is not a web page ie is_browser=false then will reply as per the app_info from payload."""
         try:
             is_browser = payload.get("app_details", {}).get("is_browser")
-            print("BROWSER_PAGE: inside browser page agent")
             if is_browser:
                 url = payload.get("app_details", {}).get("url")
                 web_scraper_response = await simple_web_scraper(url)
