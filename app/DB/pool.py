@@ -5,7 +5,6 @@ import os
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-print("DATABASE_URL: ", DATABASE_URL)
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL not set")
 
@@ -17,7 +16,7 @@ async def init_db_pool():
         _pool = await asyncpg.create_pool(
             DATABASE_URL,
             min_size=10,
-            max_size=50,      # tune based on load
+            max_size=50,     # tune based on load
             timeout=60,
             command_timeout=60,
             statement_cache_size=0,  # important for Neon

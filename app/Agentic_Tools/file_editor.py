@@ -80,7 +80,9 @@ class FileEditor():
             # check if correct tool responded
             if payload.get("tool") == "create_file":
                 result = payload.get("result")
-                
+
+                print("CREATE_FILE_RESULT: ", result)
+
                 if result.get("success") == True:
                     final_result = {
                         "success": True,
@@ -97,19 +99,6 @@ class FileEditor():
                 assistant_message = f"lets create a file using create_file tool args {json.dumps(arguments)}"
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="create_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
-
-                # Save tool response
-                save_tool_response(
-                    task_id=self.task_id,
-                    tool_name="create_file",
-                    response={
-                    "input": {
-                        "path": path,
-                        "content": content,
-                        "permissions": permissions
-                    },
-                    "result": final_result
-                })
 
                 return final_result
 
@@ -185,19 +174,6 @@ class FileEditor():
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="str_replace", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
-                # Save tool response
-                save_tool_response(
-                    task_id=self.task_id,
-                    tool_name="str_replace",
-                    response={
-                    "input": {
-                        "path": path,
-                        "new_str": new_str,
-                        "old_str": old_str
-                    },
-                    "result": final_result
-                })
-
                 return final_result
 
             # If response type not correct
@@ -271,20 +247,6 @@ class FileEditor():
                 assistant_message = f"Rewriting full file using rewrite_file tool args {json.dumps(arguments)}"
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="rewrite_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
-
-                # Save tool response
-                save_tool_response(
-                    task_id=self.task_id,
-                    tool_name="rewrite_file",
-                    response={
-                    "input": {
-                        "path": path,
-                        "content": content,
-                        "permissions": permissions
-                    },
-                    "result": final_result
-                })
-                
                 return final_result
 
             # If response type not correct
@@ -355,16 +317,6 @@ class FileEditor():
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="delete_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
-                # Save tool response
-                save_tool_response(
-                    task_id=self.task_id,
-                    tool_name="delete_file",
-                    response={
-                    "input": {
-                        "path": path
-                    },
-                    "result": final_result
-                })
 
                 return final_result
 
@@ -442,19 +394,6 @@ class FileEditor():
                 update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
                 update_memory(role="tool", name="insert_str", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
 
-                # Save tool response
-                save_tool_response(
-                    task_id=self.task_id,
-                    tool_name="insert_str",
-                    response={
-                    "input": {
-                        "path": path,
-                        "insert_line_no": insert_line_no,
-                        "new_str": new_str
-                    },        
-                    "result": final_result
-                    }
-                )
                 
                 return final_result
 
@@ -478,7 +417,7 @@ class FileEditor():
 
             if original_content:
                 new_content, error_message = await self._call_ai_editor(file_content=original_content, code_edit=code_edit, instructions=instructions, path=target_file)
-                # print(f"📂EDIT_FILE_LOG: 🎆Orignal_Content:{original_content}, 🆕New_Content:{new_content}, ❌Error_Message:{error_message}")
+                
                 if error_message:
                     final_result = {
                     "success": False,
@@ -589,20 +528,6 @@ class FileEditor():
             assistant_message = f"Editing the File '{target_file}' using edit_file args {json.dumps(arguments)}"
             update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
             update_memory(role="tool", name="edit_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
-
-            # Save tool response
-            save_tool_response(
-                task_id=self.task_id,
-                tool_name="edit_file",
-                response={
-                    "input": {
-                    "path": target_file,
-                    "original_content": original_content,
-                    "updated_content": new_content
-                },     
-                "result": final_result
-                }
-            )
             
             return final_result
         

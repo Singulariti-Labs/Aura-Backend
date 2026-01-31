@@ -10,6 +10,7 @@ from app.LLM.llm_factory import LLMFactory
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.Adapters.screenshot_parser import get_parsed_screen, get_parsed_screen_xml
+from app.DB.Queries.agent_event import create_agent_event
 
 
 class InteractionAgent():

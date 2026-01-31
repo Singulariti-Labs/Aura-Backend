@@ -84,6 +84,14 @@ class LLMFactory():
                     return ChatOpenAI(model="openai/gpt-oss-120b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
                 if(llm_config.model_name == "xiaomi"):
                     return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "google"):
+                    return ChatOpenAI(model="google/gemini-2.0-flash-exp:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "qwen"):
+                    return ChatOpenAI(model="qwen/qwen3-next-80b-a3b-instruct:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "nvidia"):
+                    return ChatOpenAI(model="nvidia/nemotron-3-nano-30b-a3b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+                if(llm_config.model_name == "upstage"):
+                    return ChatOpenAI(model="upstage/solar-pro-3:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             
             elif llm_config.provider == "google":
                 api_key = os.environ.get("GOOGLE_API_KEY")
@@ -207,6 +215,7 @@ class LLMFactory():
         tools: Optional[List[Tool]] = None,
         chat_history: Optional[List[Message]] = None,
         screenshot:  Optional[List[str]] = None,
+        llm_provider: Optional[str] = None,
         max_tokens: int = 128000,
     ):
         """
@@ -221,6 +230,7 @@ class LLMFactory():
         - tools: Optional list of tools the agent can use.
         - chat_history: Optional list of previous messages to maintain continuity.
         - screenshot: Optional image input in base64 or URL.
+        - llm_provider: Optional LLM provider to use.
         - max_tokens: Maximum token limit for the LLM response.
 
         Returns:
@@ -252,12 +262,13 @@ class LLMFactory():
                     MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
         
-            
+            # Format system info
             system_info_str = system_info
             if system_info and isinstance(system_info, SystemInfo):
                 system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
 
             
+            # Format input
             formated_input = (
                 f"query: {query}\n"
                 f"system_info: {system_info_str}\n"
@@ -266,7 +277,12 @@ class LLMFactory():
             # If tools are provided, use create_openai_tools_agent
             if tools:
                 # agent = self.get_agent_type(llm=llm, prompt=prompt, tools=tools)
-                agent = create_openai_tools_agent(llm, tools, prompt)
+                agent = self.create_agent_for_provider(
+                    llm=llm,
+                    prompt=prompt,
+                    tools=tools,
+                    llm_provider=llm_provider
+                )
 
                 executor = AgentExecutor(
                     agent=agent,
@@ -479,13 +495,18 @@ class LLMFactory():
             
             agent = create_openai_tools_agent(llm, tools, prompt)
 
+            # Create callbacks list with rate limiting
+            callbacks = [
+                AgentCallbackHandler(self.memory),
+            ]
+
             # Creating agent executor.
             executor = AgentExecutor(
                 agent=agent,
                 tools=tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                callbacks=[AgentCallbackHandler(self.memory)],
+                callbacks=callbacks,
                 max_iterations=100,
                 early_stopping_method="generate"
             )
@@ -511,3 +532,89 @@ class LLMFactory():
     #         return json.loads(response.content)
     #     except json.JSONDecodeError as exc:
     #         raise ValueError(f"Classifier returned invalid JSON: {response.content}") from exc
+
+
+    def create_agent_for_provider(
+        self,
+        llm: BaseChatModel,
+        prompt: ChatPromptTemplate,
+        tools: List[Tool],
+        llm_provider: Optional[str] = None
+    ):
+        """
+        Creates an appropriate agent based on the LLM provider.
+
+        Args:
+            llm: The language model instance
+            prompt: The chat prompt template
+            tools: List of tools available to the agent
+            llm_provider: Name of the LLM provider
+
+        Returns:
+            Agent instance compatible with the specified provider
+        """
+        # Detect provider from LLM class name if not explicitly provided
+        if not llm_provider:
+            llm_provider = self.detect_provider_from_llm(llm)
+
+        llm_provider = llm_provider.lower()
+
+        # Create agent based on provider
+        if llm_provider in ['openai', 'azure_openai', 'azure', 'open_router']:
+            # OpenAI-specific tool calling agent
+            return create_openai_tools_agent(llm, tools, prompt)
+    
+        elif llm_provider in ['anthropic', 'claude']:
+            # Anthropic supports tool calling through the generic create_tool_calling_agent
+            # Ensure the LLM is bound with tools properly for Anthropic
+            return create_tool_calling_agent(llm, tools, prompt)
+    
+        elif llm_provider in ['google', 'gemini', 'vertexai', 'vertex_ai']:
+            # Google/Gemini also supports the generic tool calling agent
+            return create_tool_calling_agent(llm, tools, prompt)
+    
+        elif llm_provider in ['cohere']:
+            # Cohere supports tool calling
+            return create_tool_calling_agent(llm, tools, prompt)
+    
+        elif llm_provider in ['mistral']:
+            # Mistral AI supports tool calling
+            return create_tool_calling_agent(llm, tools, prompt)
+    
+        else:
+            # Default to generic tool calling agent for other providers
+            # This should work for most modern LLMs that support function calling
+            try:
+                return create_tool_calling_agent(llm, tools, prompt)
+            except Exception as e:
+                raise ValueError(
+                    f"Unsupported LLM provider: {llm_provider}. "
+                    f"Provider does not support tool calling or is not recognized. "
+                    f"Error: {str(e)}"
+                )
+    
+    def detect_provider_from_llm(self, llm: BaseChatModel) -> str:
+        """
+        Attempts to detect the LLM provider from the LLM instance class name.
+
+        Args:
+            llm: The language model instance
+
+        Returns:
+            Detected provider name as a string
+        """
+        llm_class_name = llm.__class__.__name__.lower()
+
+        if 'openai' in llm_class_name or 'azurechatopenai' in llm_class_name or 'openrouter' in llm_class_name:
+            return 'openai'
+        elif 'anthropic' in llm_class_name or 'claude' in llm_class_name:
+            return 'anthropic'
+        elif 'google' in llm_class_name or 'gemini' in llm_class_name or 'vertex' in llm_class_name:
+            return 'google'
+        elif 'cohere' in llm_class_name:
+            return 'cohere'
+        elif 'mistral' in llm_class_name:
+            return 'mistral'
+        else:
+            # Default to generic
+            return 'generic'

@@ -14,6 +14,5 @@ async def main():
     llm=llm_config
     agent = Agent(llm=llm, query=query, system_info=system_info)
     response = await agent.invoke()
-    print(f"FINAL_RESPONSE: {response}")
 
 asyncio.run(main())

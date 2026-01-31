@@ -1,4 +1,3 @@
-from email import message
 from typing import Optional, List, Any, Dict
 from fastapi import WebSocket
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -12,13 +11,14 @@ from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
-from app.Prompts.browser_page_option import BROWSER_PAGE_PROMPT
+from app.Prompts.browser_page_option import BROWSER_APP_PROMPT
 from app.Prompts.recall_memory import RECALL_MEMORY_PROMPT
 from app.Tools.tool_calling import Tools
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.Option_Helper.web_scraper import simple_web_scraper
 from app.DB.Queries.agent_event import create_agent_event
+from app.Agents.context_agent import ContextAgent
 
 import asyncio
 import json
@@ -52,6 +52,7 @@ class Agent(BaseAgent):
         self.chat_id = chat_id
         self.dbpool = pool
         self.llm_config = llm
+        self.llm_provider = llm.provider
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
         self.llm = LLMFactory.create_llm(llm)
@@ -119,6 +120,21 @@ class Agent(BaseAgent):
                 await task_manager.wait_if_paused(self.task_id)
                 result = None
 
+                # If the option is not complex_task or smart then run the main agent
+                if self.payload.get('option') not in ["complex_task", "smart"]:
+                    context_agent = ContextAgent(
+                        query=self.query,
+                        payload=self.payload,
+                        task_id=self.task_id,
+                        chat_id=self.chat_id,
+                        llm=self.llm,
+                        screenshot=self.screenshot,
+                        websocket=self.websocket,
+                        llm_provider=self.llm_provider,
+                        memory= self.memory,
+                        dbpool=self.dbpool
+                    )
+
                 if self.payload.get("option") == "browser_page":
                     print("BROWSER_PAGE: Running Browser Page Agent")
                     result = await self.run_browser_page_agent(
@@ -134,6 +150,14 @@ class Agent(BaseAgent):
                 elif self.payload.get("option") == "history":
                     print("SEARCH HISTORY: Running Recall Memeory Agent")
                     result = await self.run_recall_memory_agent()
+                
+                elif self.payload.get("option") == "foreground_app":
+                    print("FOREGROUND APP: Running Foreground App Agent")
+                    result = await context_agent.run_foreground_app_agent()
+                
+                elif self.payload.get("option") == "general":
+                    print("GENERAL AI: Running General Agent")
+                    result = await context_agent.run_general_agent()
 
                 else:
                     result = await self.llm_factory.agent_executor(
@@ -144,12 +168,24 @@ class Agent(BaseAgent):
                         chat_history=chat_history,
                         tools=available_tools,
                         system_info=self.system_info,
+                        llm_provider=self.llm_provider,
                         agent_type="main"
                     )
 
                 # SEND_RESPONSE_TO_CLIENT - Agent output
+                print(f"\n\n----- AGENT RUN FINISHED -----\n\n")
 
-                print(f"RESULT OF AGENT: {result}")
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_status",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "query": self.query,
+                        "message": "<AURA> run completed",
+                        "status": "completed",
+                    }
+                )
                 return result
             
             except Exception as e:
@@ -173,7 +209,6 @@ class Agent(BaseAgent):
         featching its content. If the page is not a web page ie is_browser=false then will reply as per the app_info from payload."""
         try:
             is_browser = payload.get("app_details", {}).get("is_browser")
-            print("BROWSER_PAGE: inside browser page agent")
             if is_browser:
                 url = payload.get("app_details", {}).get("url")
                 web_scraper_response = await simple_web_scraper(url)
@@ -297,7 +332,7 @@ class Agent(BaseAgent):
         Streams the LLM response to the websocket client chunk by chunk.
         """
         messages = [
-            SystemMessage(content=BROWSER_PAGE_PROMPT.format(context=context.strip())),
+            SystemMessage(content=BROWSER_APP_PROMPT.format(context=context.strip())),
             HumanMessage(content=query),
         ]
 
@@ -378,7 +413,7 @@ class Agent(BaseAgent):
         return "\n".join(formatted)
 
 # ------------------------------------------------------------------------- #
-# ---------------  Functions To run Browser Agent ------------------------- #
+# ---------------  Functions To run Recall Agent ------------------------- #
 # ------------------------------------------------------------------------- #
 
     async def run_recall_memory_agent(self):
@@ -518,3 +553,6 @@ def format_history(history):
         )
 
     return "\n".join(formatted_lines)
+
+
+

@@ -8,6 +8,7 @@ from app.LLM.memory import Memory
 from app.helper import send_last_assistant_message, save_tool_response, update_memory
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
+from app.DB.Queries.agent_event import create_agent_event
 
 
 
@@ -45,7 +46,7 @@ class AskTool(BaseTool):
         result = {"text": text, "attachments": attachments}
         await send_ws_message(
             websocket=websocket,
-            type="server_tool_response",
+            type="aura_message",
             task_id=self.task_id,
             chat_id=self.chat_id,
             payload={
@@ -63,7 +64,7 @@ class AskTool(BaseTool):
             pool=dbpool,
             task_id=self.task_id,
             role="tool",
-            message_type="server_tool_response",
+            message_type="aura_message",
             tool="ask",
             payload= {
                   "content": {
@@ -80,11 +81,5 @@ class AskTool(BaseTool):
             "success": True,
             "output": result
         }
-
-        save_tool_response(
-            task_id=self.task_id,
-            tool_name="ask",
-            response= response
-        )
     
         return response

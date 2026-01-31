@@ -131,6 +131,8 @@ env.bak/
 venv.bak/
 test_env/
 
+# Tools Output
+.tools_output.txt
 
 # Spyder project settings
 .spyderproject
