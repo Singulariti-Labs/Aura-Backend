@@ -27,7 +27,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="google", model_name="gemini-2.5-flash")
+llm_config = LLMConfig(provider="agent_router", model_name="deepseek-r1-0528")
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
