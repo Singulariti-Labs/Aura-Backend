@@ -11,10 +11,11 @@ OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4
 AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
 GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
+AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
 
 class LLMConfig(BaseModel) :
-    provider: Literal['openai', 'anthropic', 'open_router', 'google']
-    model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels]
+    provider: Literal['openai', 'anthropic', 'open_router', 'google', 'agent_router']
+    model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels, AgentRouterModels]
 
     @model_validator(mode="after")
     def validate_model_for_provider(self) -> 'LLMConfig':

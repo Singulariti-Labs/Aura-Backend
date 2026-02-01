@@ -101,6 +101,14 @@ class LLMFactory():
                 
                 return ChatGoogleGenerativeAI(model=llm_config.model_name, api_key=api_key)
             
+            elif llm_config.provider == "agent_router":
+                api_key = os.environ.get("AGENTROUTER_API_KEY")
+                
+                if not api_key:
+                    raise ValueError("AGENT_ROUTER_API_KEY environment variable is not set")
+
+                return ChatOpenAI(model=llm_config.model_name, api_key=api_key, base_url="https://api.agentrouter.com/v1")
+            
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
         except Exception as e:
