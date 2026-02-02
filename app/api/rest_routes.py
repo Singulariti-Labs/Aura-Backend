@@ -4,6 +4,7 @@ from app.DB.Queries.user import get_user_by_auth0_id, get_user
 from app.DB.Queries.task import get_tasks_by_user, get_task_by_id, delete_task_db, star_task_db, unstar_task_db
 from app.DB.Queries.agent_event import get_events_by_task
 from app.api.auth_utils import get_current_user
+from app.DB.Queries.user_settings import upsert_user_settings, get_user_settings
 from asyncpg import Pool
 
 rest_router = APIRouter(prefix="/api")
@@ -119,3 +120,30 @@ async def fetch_events(task_id: str, current_user: dict = Depends(get_current_us
 
     events = await get_events_by_task(pool=pool, task_id=task_id)
     return events
+
+@rest_router.post("/settings")
+async def save_settings(settings: dict, current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    
+    user = await get_user_by_auth0_id(pool, auth0_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User record not found. Please sync first.")
+    
+    success = await upsert_user_settings(pool, user["id"], settings)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save settings")
+        
+    return {"status": "success", "message": "Settings saved successfully"}
+
+@rest_router.get("/settings")
+async def fetch_settings(current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    
+    user = await get_user_by_auth0_id(pool, auth0_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User record not found")
+        
+    settings = await get_user_settings(pool, user["id"])
+    return settings or {}

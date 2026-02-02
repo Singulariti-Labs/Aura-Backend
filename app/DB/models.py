@@ -65,3 +65,14 @@ class User(TypedDict, total=False):
     hashed_password: Optional[str]  # Hashed password (optional for Auth0 users)
     created_at: datetime  # User creation timestamp
     updated_at: Optional[datetime]  # Last update timestamp
+
+# ---------- User Settings ----------
+class UserSettings(TypedDict, total=False):
+    """
+    Represents user-specific settings.
+    """
+    id: str  # UUID (primary key)
+    user_id: str  # Foreign key to User
+    user_settings: str  # JSON String
+    created_at: datetime
+    updated_at: datetime
