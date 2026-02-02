@@ -8,7 +8,7 @@ invoke the agent asynchronously, and send back standardized responses and status
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
-from app.Types.agent_types import LLMConfig, SystemInfo
+from app.Types.agent_types import LLMConfig, SystemInfo, DEFAULT_MODELS, PROVIDER_MAPPING
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.DB.pool import get_pool
@@ -16,6 +16,7 @@ from app.api.auth_utils import token_verifier
 from app.DB.Queries.task import create_task, update_task_status
 from app.DB.Queries.agent_event import create_agent_event
 from app.DB.Queries.user import get_user_by_auth0_id
+from app.DB.Queries.user_settings import get_user_settings
 
 import asyncio
 import uuid
@@ -28,6 +29,7 @@ manager = ConnectionManager()
 
 # Default configuration for the LLM agent
 llm_config = LLMConfig(provider="agent_router", model_name="deepseek-r1-0528")
+
 # task_manager = TaskManager()
 
 @ws_router.websocket("/ws")
@@ -62,6 +64,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     user_id = user["id"]
+    user_settings = await get_user_settings(pool, user_id)
 
     async def handle_query(message: dict, task_id: str, chat_id: str):
         """
@@ -92,7 +95,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Prepare agent with system and LLM configuration
                 system_info = SystemInfo(os=os_info, version=version_info)
-                agent = Agent(llm=llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
+                
+                # Check for LLM config override from user settings
+                current_llm_config = llm_config
+                if user_settings and "api_creds" in user_settings:
+                    api_creds = user_settings.get("api_creds", {})
+                    raw_provider = api_creds.get("provider")
+                    custom_api_key = api_creds.get("key")
+                    
+                    if raw_provider and custom_api_key:
+                        target_provider = PROVIDER_MAPPING.get(raw_provider)
+                        if target_provider:
+                            default_model = DEFAULT_MODELS.get(target_provider)
+                            try:
+                                current_llm_config = LLMConfig(
+                                    provider=target_provider,
+                                    model_name=default_model,
+                                    api_key=custom_api_key
+                                )
+                                print(f"Using custom LLM config for user {user_id}: {target_provider}/{default_model}")
+                            except Exception as e:
+                                print(f"Failed to create custom LLM config: {e}. Falling back to default.")
+
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
 
                 # Notify client that processing has started
                 await send_ws_message(

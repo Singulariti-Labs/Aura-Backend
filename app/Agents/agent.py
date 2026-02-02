@@ -55,7 +55,7 @@ class Agent(BaseAgent):
         self.llm_provider = llm.provider
         self.memory = Memory()
         self.llm_factory = LLMFactory(self.memory)
-        self.llm = LLMFactory.create_llm(llm)
+        self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
         self.system_info = None
         self.screenshot = screenshot

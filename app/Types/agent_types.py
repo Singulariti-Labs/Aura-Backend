@@ -16,6 +16,7 @@ AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
 class LLMConfig(BaseModel) :
     provider: Literal['openai', 'anthropic', 'open_router', 'google', 'agent_router']
     model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels, AgentRouterModels]
+    api_key: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_model_for_provider(self) -> 'LLMConfig':
@@ -36,6 +37,22 @@ class Role(str, Enum):
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
 AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
+
+# Provider mapping for user settings
+PROVIDER_MAPPING = {
+    "Open AI": "openai",
+    "Anthropic": "anthropic",
+    "Open Router": "open_router",
+    "Gemini": "google"
+}
+
+# Default models for each provider when user overrides
+DEFAULT_MODELS = {
+    "openai": "gpt-4.1",
+    "anthropic": "claude-4.5-opus",
+    "open_router": "z-ai",
+    "google": "gemini-2.5-flash"
+}
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server
 #   "client_tool_request",     // Server → Client: Request to run tools on client

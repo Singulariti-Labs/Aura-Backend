@@ -44,7 +44,7 @@ class LLMFactory():
         self.memory = memory
 
     @staticmethod
-    def create_llm(llm_config: LLMConfig):
+    def create_llm(llm_config: LLMConfig, user_api_key: str = None):
         """
         Creates a language model instance based on the given provider and model name.
 
@@ -56,7 +56,7 @@ class LLMFactory():
         """
         try:
             if llm_config.provider == "openai":
-                api_key = os.environ.get("OPENAI_API_KEY")
+                api_key = user_api_key or os.environ.get("OPENAI_API_KEY")
                 
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY environment variable is not set")
@@ -64,7 +64,7 @@ class LLMFactory():
                 return ChatOpenAI(model=llm_config.model_name, api_key=api_key)
             
             elif llm_config.provider == "anthropic":
-                api_key = os.environ.get("ANTHROPIC_API_KEY")
+                api_key = user_api_key or os.environ.get("ANTHROPIC_API_KEY")
                 
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
@@ -72,7 +72,7 @@ class LLMFactory():
                 return ChatAnthropic(model=llm_config.model_name)
             
             elif llm_config.provider == "open_router":
-                api_key = os.environ.get("OPENROUTER_API_KEY")
+                api_key = user_api_key or os.environ.get("OPENROUTER_API_KEY")
                 
                 if not api_key:
                     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
@@ -94,7 +94,7 @@ class LLMFactory():
                     return ChatOpenAI(model="upstage/solar-pro-3:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
             
             elif llm_config.provider == "google":
-                api_key = os.environ.get("GOOGLE_API_KEY")
+                api_key = user_api_key or os.environ.get("GOOGLE_API_KEY")
                 
                 if not api_key:
                     raise ValueError("GOOGLE_API_KEY environment variable is not set")
@@ -102,7 +102,7 @@ class LLMFactory():
                 return ChatGoogleGenerativeAI(model=llm_config.model_name, api_key=api_key)
             
             elif llm_config.provider == "agent_router":
-                api_key = os.environ.get("AGENTROUTER_API_KEY")
+                api_key = user_api_key or os.environ.get("AGENTROUTER_API_KEY")
                 
                 if not api_key:
                     raise ValueError("AGENT_ROUTER_API_KEY environment variable is not set")
