@@ -20,6 +20,10 @@ from app.DB.Queries.user_settings import get_user_settings
 
 import asyncio
 import uuid
+import logging
+
+# Configure logger for WebSocket routes
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI router for WebSocket routes
 ws_router = APIRouter()
@@ -41,17 +45,26 @@ async def websocket_endpoint(websocket: WebSocket):
     Each message triggers an asynchronous agent invocation, with status updates sent
     back to the client throughout the lifecycle of the request.
     """
+    client_host = websocket.client.host if websocket.client else "unknown"
+    client_port = websocket.client.port if websocket.client else "unknown"
+    logger.info(f"🔌 WebSocket connection attempt from {client_host}:{client_port}")
+    
     await manager.connect(websocket)
+    logger.info(f"✅ WebSocket connection established for {client_host}:{client_port}")
 
     # Auth0 Token Validation
     token = websocket.query_params.get("token")
     if not token:
+        logger.warning(f"❌ Auth failed: No token provided from {client_host}:{client_port}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     
+    logger.info(f"🔐 Verifying Auth0 token for {client_host}:{client_port}")
     try:
         user_payload = token_verifier.verify(token)
-    except Exception:
+        logger.info(f"✅ Token verified successfully for user: {user_payload.get('sub', 'unknown')}")
+    except Exception as e:
+        logger.error(f"❌ Token verification failed from {client_host}:{client_port}: {str(e)}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -59,12 +72,22 @@ async def websocket_endpoint(websocket: WebSocket):
     pool = await get_pool()
 
     auth0_id = user_payload.get("sub")
+    logger.info(f"🔍 Looking up user in database: {auth0_id}")
+    
     user = await get_user_by_auth0_id(pool, auth0_id)
     if not user:
+        logger.error(f"❌ User not found in database: {auth0_id} from {client_host}:{client_port}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
+    
     user_id = user["id"]
+    logger.info(f"✅ User authenticated successfully: {user.get('email', 'unknown')} (ID: {user_id})")
+    
     user_settings = await get_user_settings(pool, user_id)
+    if user_settings:
+        logger.info(f"📋 Loaded user settings for user_id: {user_id}")
+    else:
+        logger.info(f"📋 No custom settings found for user_id: {user_id}, using defaults")
 
     async def handle_query(message: dict, task_id: str, chat_id: str):
         """
@@ -313,4 +336,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         # Cleanly remove disconnected WebSocket from the manager
+        logger.info(f"🔌 WebSocket disconnected: {client_host}:{client_port}")
         manager.disconnect(websocket)
