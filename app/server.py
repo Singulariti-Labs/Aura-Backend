@@ -6,6 +6,12 @@ from app.DB.pool import init_db_pool, close_db_pool
 
 def create_app() -> FastAPI:
     app = FastAPI()
+
+    # Add health check endpoint for Render
+    @app.get("/")
+    async def health_check():
+        return {"status": "healthy", "message": "Server is running"}
+
     app.include_router(ws_router)
     app.include_router(rest_router)
     app.include_router(auth_router)
