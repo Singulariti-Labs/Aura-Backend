@@ -7,8 +7,8 @@ from app.DB.pool import init_db_pool, close_db_pool
 def create_app() -> FastAPI:
     app = FastAPI()
 
-    # Add health check endpoint for Render
-    @app.get("/")
+    # Health check supporting both GET and HEAD
+    @app.api_route("/", methods=["GET", "HEAD"])
     async def health_check():
         return {"status": "healthy", "message": "Server is running"}
 
