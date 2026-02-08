@@ -32,7 +32,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="agent_router", model_name="deepseek-r1-0528")
+llm_config = LLMConfig(provider="google", model_name="gemini-2.5-flash")
 
 # task_manager = TaskManager()
 
@@ -121,6 +121,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 # Check for LLM config override from user settings
                 current_llm_config = llm_config
+                using_custom = False
                 if user_settings and "api_creds" in user_settings:
                     api_creds = user_settings.get("api_creds", {})
                     raw_provider = api_creds.get("provider")
@@ -136,10 +137,14 @@ async def websocket_endpoint(websocket: WebSocket):
                                     model_name=default_model,
                                     api_key=custom_api_key
                                 )
-                                print(f"Using custom LLM config for user {user_id}: {target_provider}/{default_model}")
+                                using_custom = True
+                                logger.info(f"Using custom LLM config for user using, {target_provider}")
                             except Exception as e:
-                                print(f"Failed to create custom LLM config: {e}. Falling back to default.")
-
+                                logger.error(f"Failed to create custom LLM config: {e}. Falling back to default.")
+                
+                if not using_custom:
+                    logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
+                
                 agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
 
                 # Notify client that processing has started
