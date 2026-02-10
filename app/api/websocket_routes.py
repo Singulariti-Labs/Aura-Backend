@@ -152,6 +152,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         task_id=task_id,
                         chat_id=chat_id,
                         payload={
+                            "role": "assistant",
+                            "tool": "aura",
                             "message": "Please use your own API keys to access smart mode. You can use gemini or open-ai model"
                         }
                     )
