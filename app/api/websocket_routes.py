@@ -160,7 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             }
                         }
                     )
-                    await update_task_status(pool=pool, task_id=task_id, status="Failed")
+                    await update_task_status(pool=pool, task_id=task_id, status="failed")
                     return
                 
                 agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
