@@ -83,12 +83,6 @@ async def websocket_endpoint(websocket: WebSocket):
     user_id = user["id"]
     logger.info(f"✅ User authenticated successfully: {user.get('email', 'unknown')} (ID: {user_id})")
     
-    user_settings = await get_user_settings(pool, user_id)
-    if user_settings:
-        logger.info(f"📋 Loaded user settings for user_id: {user_id}")
-    else:
-        logger.info(f"📋 No custom settings found for user_id: {user_id}, using defaults")
-
     async def handle_query(message: dict, task_id: str, chat_id: str):
         """
         Handle an individual query message from the client.
@@ -99,6 +93,13 @@ async def websocket_endpoint(websocket: WebSocket):
         Args:
             message (dict): The incoming JSON message from the WebSocket client.
         """
+        # Refresh user settings for each query to ensure latest API keys are used
+        user_settings = await get_user_settings(pool, user_id)
+        if user_settings:
+            logger.info(f"📋 Loaded fresh user settings for user_id: {user_id}")
+        else:
+            logger.info(f"📋 No custom settings found for user_id: {user_id}, using defaults")
+
         try:
             payload = message.get("payload")
             print(f"payload: {payload}")
@@ -152,12 +153,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         task_id=task_id,
                         chat_id=chat_id,
                         payload={
-                            "role": "assistant",
-                            "tool": "aura",
-                            "message": "Please use your own API keys to access smart mode. You can use gemini or open-ai model"
+                            "content": {
+                                "role": "assistant",
+                                "tool": "aura",
+                                "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
+                            }
                         }
                     )
-                    await update_task_status(pool=pool, task_id=task_id, status="completed")
+                    await update_task_status(pool=pool, task_id=task_id, status="Failed")
                     return
                 
                 agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
