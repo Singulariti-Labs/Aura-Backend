@@ -35,7 +35,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -188,3 +188,16 @@ class EditFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     instructions: str = Field(..., description="A single sentence written in the first person describing what you're changing")
     code_edit: str = Field(..., description="Only the precise lines of code to edit. Use // ... existing code ... for unchanged sections")
+
+class ExecuteCommandToolInput(BaseModel):
+    command: str = Field(..., description="The shell command to execute")
+    description: str = Field(..., description="Human readable label for approval messages")
+    system: Literal["windows", "macos", "linux"] = Field(default="windows", description="OS to target. auto detects automatically")
+    currentWorkdir: str = Field(..., description="Directory to run the command / Dir where I will run the given command.")
+    env: Optional[dict] = Field(None, description="Key-value pairs of environment variables to set for the process")
+    yieldMs: Optional[int] = Field(15000, description="Milliseconds to wait before backgrounding the process (default is 15000). If the process finishes within this time, the output is returned directly; otherwise, it returns a sessionId.")
+    background: Optional[bool] = Field(False, description="If true, the process is moved to the background immediately without waiting, returning a sessionId.")
+    timeout: Optional[int] = Field(300, description="Maximum time in seconds to allow the command to run before it is automatically killed")
+    pty: Optional[bool] = Field(False, description="If true, runs the command in a pseudo-terminal (PTY). Required for interactive CLI tools (like vim, nano) or commands that detect TTY")
+    security: Literal["low", "high"] = Field(default="low", description="It is the level of the command how secure is it running on the machine.")
+    ask: bool = Field(default=True, description="It checks that if the code/command is not so secure to run on the computer then provides true. which we use to ask the permission of the user.")
