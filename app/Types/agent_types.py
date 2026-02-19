@@ -192,8 +192,8 @@ class EditFileToolInput(BaseModel):
 class ExecuteCommandToolInput(BaseModel):
     command: str = Field(..., description="The shell command to execute")
     description: str = Field(..., description="Human readable label for approval messages")
-    system: Literal["windows", "macos", "linux"] = Field(default="windows", description="OS to target. auto detects automatically")
-    currentWorkdir: str = Field(..., description="Directory to run the command / Dir where I will run the given command.")
+    system: Literal["windows", "macos", "linux"] = Field(default="windows", description="users OS to target")
+    currentWorkDir: str = Field(..., description="Directory to run the command / Directory where I will run the given command.")
     env: Optional[dict] = Field(None, description="Key-value pairs of environment variables to set for the process")
     yieldMs: Optional[int] = Field(15000, description="Milliseconds to wait before backgrounding the process (default is 15000). If the process finishes within this time, the output is returned directly; otherwise, it returns a sessionId.")
     background: Optional[bool] = Field(False, description="If true, the process is moved to the background immediately without waiting, returning a sessionId.")

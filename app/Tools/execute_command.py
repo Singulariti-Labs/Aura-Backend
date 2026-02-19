@@ -21,7 +21,7 @@ class ExecuteCommandTool(BaseTool):
         """
         super().__init__(
             name="execute_command",
-            description="""Execute a shell command on the target system in the current working directory currentWorkdir""",
+            description="""Execute a shell command on the target system in the current working directory currentWorkDir""",
             memory=memory,
             args_schema=ExecuteCommandToolInput
         )
@@ -39,7 +39,7 @@ class ExecuteCommandTool(BaseTool):
             command=inputs.command,
             description=inputs.description,
             system=inputs.system,
-            currentWorkdir=inputs.currentWorkdir,
+            currentWorkDir=inputs.currentWorkDir,
             env=inputs.env,
             yieldMs=inputs.yieldMs,
             background=inputs.background,
