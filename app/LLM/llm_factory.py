@@ -273,7 +273,7 @@ class LLMFactory():
             # Format system info
             system_info_str = system_info
             if system_info and isinstance(system_info, SystemInfo):
-                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
+                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}, Workspace: {system_info.workspace}, CWD: {system_info.cwd}"
 
             
             # Format input
@@ -490,7 +490,7 @@ class LLMFactory():
             
             system_info_str = system_info
             if system_info and isinstance(system_info, SystemInfo):
-                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}"
+                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}, Workspace: {system_info.workspace}, CWD: {system_info.cwd}"
 
             today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             

@@ -114,11 +114,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 os_info = payload.get("os", "windows")
                 version_info = message.get("os_version", "11")
-                # workspace_path = message.get("workspace")  # WIP** -> Workspace Path need to add in the AURA Prompt.
-                # id_ = message.get("id")  # Optional identifier for tracking response         
+                workspace_path = payload.get("workspace", "")
+                cwd_path = payload.get("cwd", "")
 
                 # Prepare agent with system and LLM configuration
-                system_info = SystemInfo(os=os_info, version=version_info)
+                system_info = SystemInfo(
+                    os=os_info, 
+                    version=version_info,
+                    workspace=workspace_path,
+                    cwd=cwd_path
+                )
                 
                 # Check for LLM config override from user settings
                 current_llm_config = llm_config
