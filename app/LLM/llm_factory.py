@@ -490,8 +490,8 @@ class LLMFactory():
             
             system_info_str = system_info
             if system_info and isinstance(system_info, SystemInfo):
-                system_info_str = f"OS: {system_info.os}, Version: {system_info.version}, Workspace: {system_info.workspace}, CWD: {system_info.cwd}"
-
+                system_info_str = f"OS: {system_info.os}\n, Version: {system_info.version}\n, Workspace: {system_info.workspace}\n, CWD: {system_info.cwd}\n"
+            
             today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             formated_input = (

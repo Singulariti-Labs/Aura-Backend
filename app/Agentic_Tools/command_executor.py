@@ -40,7 +40,7 @@ class CommandExecutor():
             "command": command,
             "description": description,
             "system": system,
-            "currentWorkDir": currentWorkDir,
+            "currentWorkdir": currentWorkDir,
             "env": env,
             "yieldMs": yieldMs,
             "background": background,
@@ -83,12 +83,12 @@ class CommandExecutor():
                 if payload.get("tool") == "execute_command":
                     result = payload.get("result", {})
                     
-                    content_text = result.get("message", "")
+                    content = result.get("content", [{"type": "text", "text": result.get("message", "")}])
                     details = result.get("details", {})
                     
                     # Tool output structure for the LLM
                     tool_output = {
-                        "content": [{"type": "text", "text": content_text}],
+                        "content": content,
                         "details": details
                     }
 

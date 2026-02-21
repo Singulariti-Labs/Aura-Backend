@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.LLM.memory import Memory
+from app.Types.agent_types import SystemInfo
 from app.Tools.supervisor import SupervisorTool
 from app.Tools.interaction import InteractionTool
 from app.Tools.deep_research import DeepResearchTool
@@ -25,7 +26,7 @@ class Tools():
     This class encapsulates tool setup logic and exposes them in a format compatible
     with LangChain's tool interface.
     """
-    def __init__(self, llm: BaseChatModel, memory: Memory, task_id: str, chat_id: str):
+    def __init__(self, llm: BaseChatModel, memory: Memory, task_id: str, chat_id: str, system_info: Optional[SystemInfo] = None):
         """
         Initializes the Tools manager with an LLM and memory.
 
@@ -40,12 +41,13 @@ class Tools():
         self.llm = llm
         self.task_id = task_id
         self.chat_id = chat_id
+        self.system_info = system_info
 
          # Import at runtime to break the cycle
         from app.Agents.supervisor import SupervisorAgent
         self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(llm=self.llm, memory=self.memory, tools=self, task_id=self.task_id, chat_id=self.chat_id)
 
-        self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info)
         self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.deep_research_tool = DeepResearchTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.web_search_tool = WebSearchTool(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)

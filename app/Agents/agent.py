@@ -57,14 +57,11 @@ class Agent(BaseAgent):
         self.llm_factory = LLMFactory(self.memory)
         self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
-        self.system_info = None
+        self.system_info = system_info
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
-        self.max_tokens = maxTokens
-        self.system_info = system_info
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info)
         self.payload = payload
-        # self.task_manager = TaskManager()
         
     # Runs the Aura Agent.
     async def invoke(self):

@@ -112,10 +112,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Create task in the database
                 await create_task(pool, task_id, chat_id, query, user_id)
 
-                os_info = payload.get("os", "windows")
-                version_info = message.get("os_version", "11")
-                workspace_path = payload.get("workspace", "")
-                cwd_path = payload.get("cwd", "")
+                # Extract system info from nested payload.system_info
+                sys_info_data = payload.get("system_info", {})
+                os_info = sys_info_data.get("os", "windows")
+                version_info = sys_info_data.get("os_version", "11")
+                workspace_path = sys_info_data.get("workspace", "")
+                cwd_path = sys_info_data.get("cwd", "")
 
                 # Prepare agent with system and LLM configuration
                 system_info = SystemInfo(
