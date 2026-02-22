@@ -37,7 +37,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -203,3 +203,8 @@ class ExecuteCommandToolInput(BaseModel):
     pty: Optional[bool] = Field(False, description="If true, runs the command in a pseudo-terminal (PTY). Required for interactive CLI tools (like vim, nano) or commands that detect TTY")
     security: Literal["low", "high"] = Field(default="low", description="It is the level of the command how secure is it running on the machine.")
     ask: bool = Field(default=True, description="It checks that if the code/command is not so secure to run on the computer then provides true. which we use to ask the permission of the user.")
+
+class GrepToolInput(BaseModel):
+    pattern: str = Field(..., description="regex string to search for (e.g. \"function foo\")")
+    path: Optional[str] = Field(None, description="directory to search in, defaults to project root/currentWorkdir/workspace (root>currentWorkDir>workspace for priority)")
+    include: Optional[str] = Field(None, description="file glob filter (e.g. \"*.ts\", \"*.{ts,tsx}\")")
