@@ -37,7 +37,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -206,5 +206,12 @@ class ExecuteCommandToolInput(BaseModel):
 
 class GrepToolInput(BaseModel):
     pattern: str = Field(..., description="regex string to search for (e.g. \"function foo\")")
-    path: Optional[str] = Field(None, description="directory to search in, defaults to project root/currentWorkdir/workspace (root>currentWorkDir>workspace for priority)")
+    path: Optional[str] = Field(None, description="directory to search in, defaults to project root/currentWorkDir/workspace (root>currentWorkDir>workspace for priority), absolute path")
+    currentWorkDir: str = Field(..., description="The current working directory where we are finding the pattern (could be the root directory of thr project), absolute path")
     include: Optional[str] = Field(None, description="file glob filter (e.g. \"*.ts\", \"*.{ts,tsx}\")")
+
+class LSToolInput(BaseModel):
+    path: Optional[str] = Field(None, description="The path to list files and directories for. Must be an absolute path. Omit it to use the current workspace directory.")
+    ignore: Optional[List[str]] = Field(None, description="Optional: List of global/ignore patterns to skip. eg: ['*.log', 'tmp/*']")
+    currentWorkDir: str = Field(..., description="The current working directory or the directory of the project or root, where path is in more detail path inside currentWorkDir, it is an absolute path.")
+    

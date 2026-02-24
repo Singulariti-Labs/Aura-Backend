@@ -40,7 +40,7 @@ class CommandExecutor():
             "command": command,
             "description": description,
             "system": system,
-            "currentWorkdir": currentWorkDir,
+            "currentWorkDir": currentWorkDir,
             "env": env,
             "yieldMs": yieldMs,
             "background": background,

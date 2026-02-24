@@ -45,6 +45,7 @@ class GrepTool(BaseTool):
         response = await self.coading_tools.grep(
             pattern=inputs.pattern,
             path=inputs.path,
+            currentWorkDir=inputs.currentWorkDir,
             include=inputs.include,
             tool_call_id=tool_call_id
         )
