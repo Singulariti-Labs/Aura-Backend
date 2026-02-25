@@ -19,6 +19,7 @@ from app.Tools.str_replace import StrReplaceTool
 from app.Tools.execute_command import ExecuteCommandTool
 from app.Tools.grep import GrepTool
 from app.Tools.ls import LSTool
+from app.Tools.globe import GlobeTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -65,6 +66,7 @@ class Tools():
         self.execute_command_tool = ExecuteCommandTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.grep_tool = GrepTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ls_tool = LSTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.globe_tool = GlobeTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -101,6 +103,7 @@ class Tools():
                  self.str_replace_tool.to_tool(),
                  self.execute_command_tool.to_tool(),
                  self.grep_tool.to_tool(),
-                 self.ls_tool.to_tool()
+                 self.ls_tool.to_tool(),
+                 self.globe_tool.to_tool()
                 ]
         return tools

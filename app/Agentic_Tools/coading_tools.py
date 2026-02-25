@@ -179,3 +179,82 @@ class CoadingTools():
                 "output": f"Error executing ls: {str(e)}"
             }
 
+    async def globe(self, pattern: List[str], path: str, currentWorkDir: str, tool_call_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Search for files using glob patterns.
+        """
+        input_params = {
+            "pattern": pattern,
+            "path": path,
+            "currentWorkDir": currentWorkDir
+        }
+
+        try:
+            # 1. Send websocket request to client
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "globe",
+                    "input": input_params
+                }
+            )
+
+            # 2. Insert agent event in the DB
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="globe",
+                payload={"input": input_params},
+                seq=self.task_state.get_next_seq()
+            )
+
+            # 3. Wait for client tool response
+            tool_resp = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_resp.get("type")
+
+            if response_type == "client_tool_response":
+                payload = tool_resp.get("payload", {})
+                if payload.get("tool") == "globe":
+                    result = payload.get("result", {})
+                    
+                    # Grouping title, metadata, and message as tool_output
+                    tool_output = {
+                        "title": result.get("title", ""),
+                        "metadata": result.get("metadata", {}),
+                        "message": result.get("message", "")
+                    }
+                    
+                    final_result = {
+                        "success": result.get("success", False),
+                        "output": tool_output
+                    }
+
+                    # 4. Update memory
+                    assistant_message = f"Searching for files with patterns {pattern} in {path}"
+                    update_memory(role="assistant", content=assistant_message, memory=self.memory)
+                    update_memory(
+                        role="tool",
+                        name="globe",
+                        tool_call_id=tool_call_id,
+                        content=json.dumps(final_result),
+                        memory=self.memory
+                    )
+
+                    return final_result
+
+            return {
+                "success": False,
+                "output": f"Unexpected response type: {response_type}"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "output": f"Error executing globe: {str(e)}"
+            }
+

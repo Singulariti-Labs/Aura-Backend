@@ -213,5 +213,10 @@ class GrepToolInput(BaseModel):
 class LSToolInput(BaseModel):
     path: Optional[str] = Field(None, description="The path to list files and directories for. Must be an absolute path. Omit it to use the current workspace directory.")
     ignore: Optional[List[str]] = Field(None, description="Optional: List of global/ignore patterns to skip. eg: ['*.log', 'tmp/*']")
-    currentWorkDir: str = Field(..., description="The current working directory or the directory of the project or root, where path is in more detail path inside currentWorkDir, it is an absolute path.")
+    currentWorkDir: str = Field(..., description="The current working directory or the directory of the project or root, where path is subdirectory(absolute path) inside currentWorkDir, it is an absolute path.")
+
+class GlobeToolInput(BaseModel):
+    pattern: List[str] = Field(..., description="Glob pattern for matching filenames. It is a list of strings and could be one or multiple patterns. e.g.: pattern: ['**/*.ts'] or pattern: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js']")
+    path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the same as or a subdirectory of currentWorkDir.")
+    currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. It is the root of the project.")
     
