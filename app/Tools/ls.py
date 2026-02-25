@@ -21,10 +21,10 @@ class LSTool(BaseTool):
         """
         super().__init__(
             name="ls",
-            description="""Lists files and directories in a given path. The path parameter must be absolute; 
-            omit it to use the current workspace directory. You can optionally provide an array of glob patterns 
-            to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, if you know 
-            which directories to search.""",
+            description="""Lists files and directories in a given path. Use this to explore and understand the directory 
+            layout before reading or modifying files. The path parameter must be absolute.You can optionally provide an 
+            array of glob patterns to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, 
+            if you know which directories to search.""",
             memory=memory,
             args_schema=LSToolInput
         )

@@ -205,10 +205,10 @@ class ExecuteCommandToolInput(BaseModel):
     ask: bool = Field(default=True, description="It checks that if the code/command is not so secure to run on the computer then provides true. which we use to ask the permission of the user.")
 
 class GrepToolInput(BaseModel):
-    pattern: str = Field(..., description="regex string to search for (e.g. \"function foo\")")
-    path: Optional[str] = Field(None, description="directory to search in, defaults to project root/currentWorkDir/workspace (root>currentWorkDir>workspace for priority), absolute path")
-    currentWorkDir: str = Field(..., description="The current working directory where we are finding the pattern (could be the root directory of thr project), absolute path")
-    include: Optional[str] = Field(None, description="file glob filter (e.g. \"*.ts\", \"*.{ts,tsx}\")")
+    pattern: str = Field(..., description="regex string to search for (e.g. \"function foo\") within file contents")
+    path: Optional[str] = Field(None, description="The file or directory to search in, defaults to currentWorkDir, always be the absolute path")
+    currentWorkDir: str = Field(..., description="The current working directory where we are finding the pattern (could be the root directory of thr project), always be the absolute path")
+    include: Optional[str] = Field(None, description="Filter files by name or extension using a glob pattern (e.g. \"*.ts\", \"*.{ts,tsx}\", \"*.css\"), If not provided, searches all files.")
 
 class LSToolInput(BaseModel):
     path: Optional[str] = Field(None, description="The path to list files and directories for. Must be an absolute path. Omit it to use the current workspace directory.")
@@ -217,6 +217,6 @@ class LSToolInput(BaseModel):
 
 class GlobeToolInput(BaseModel):
     pattern: List[str] = Field(..., description="Glob pattern for matching filenames. It is a list of strings and could be one or multiple patterns. e.g.: pattern: ['**/*.ts'] or pattern: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js']")
-    path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the same as or a subdirectory of currentWorkDir.")
-    currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. It is the root of the project.")
+    path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the subdirectory of currentWorkDir or same as currentWorkDir.")
+    currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. consider it is the root of the project.")
     

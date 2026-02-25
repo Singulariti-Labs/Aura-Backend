@@ -21,14 +21,9 @@ class GlobeTool(BaseTool):
         """
         super().__init__(
             name="globe",
-            description="""Search for files using glob patterns. 
-            It takes a list of glob patterns, a path where the search begins, and the current working directory.
-            Useful for finding files matching specific patterns across the codebase.
-            - Fast file pattern matching tool that works with any codebase size.
-            - Returns matching file paths sorted by modification time.
-            - Use this tool when you need to find files by name patterns.
-            - Supports glob patterns like "**/*.js" or "src/**/*.ts".
-            """,
+            description="""Finds files and directories matching a given path pattern (e.g., "**/*.tsx", "src/**/*.css")
+            within the specified current working directory. Returns matching file paths sorted by modification time. 
+            Prefer this over ls when you know the file type or naming pattern you're looking for. Does not read file contents.""",
             memory=memory,
             args_schema=GlobeToolInput
         )
