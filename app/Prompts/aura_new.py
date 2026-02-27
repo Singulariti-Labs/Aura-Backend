@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 class SystemInfo(BaseModel):
@@ -14,6 +16,11 @@ class ConsciousFiles(BaseModel):
     id: Optional[str] = Field(None, description="ID.md content — identity")
     soul: Optional[str] = Field(None, description="SOUL.md content — soul/personality")
     user: Optional[str] = Field(None, description="USER.md content — user knowledge")
+
+
+class OpenApplications(BaseModel):
+    active_apps: list[str] = Field(default_factory=list, description="List of all running applications on screen")
+    focused_app: Optional[str] = Field(None, description="Name of the focused application")
 
 
 TOOL_NAME_MAP = {
@@ -32,14 +39,72 @@ TOOL_NAME_MAP = {
     "globe_tool":           ("glob",             "Find files matching a glob pattern"),
 }
 
+COMPRESSION_PROMPT = """
+## Context Compression
+
+You are compressing previous conversation messages into a compact, lossless summary.
+This summary will replace the previous messages in the context window to reduce token usage.
+
+### What to Preserve
+- Tasks completed and their outcomes
+- Tasks in progress or incomplete (include exact state/progress)
+- Files created, edited, or deleted (include absolute paths)
+- Commands executed and their results
+- User's original queries and intent
+- Decisions made and reasoning behind them
+- Errors encountered and how they were resolved
+- Any data, values, configs, or outputs the next messages may need to reference
+
+### What to Drop
+- Full tool outputs and large command results — just note what was done and whether it succeeded or failed
+- Entire file contents — just note the filename, path, and what change was made
+- Assistant thinking, reasoning steps, or internal monologue — only keep the final outcome
+- Repetitive or redundant exchanges — summarize in one line
+- Any verbose output that has no future relevance (e.g., dependency install logs, full stack traces unless unresolved)
+
+### Format
+Return the summary in this structure:
+
+**Session Summary**
+[2-3 line overview of what this session is about]
+
+**Completed**
+[What was fully done]
+
+**In Progress**
+[What is currently being worked on, exact state]
+
+**Pending / Incomplete**
+[What is not done yet, what comes next]
+
+**Key Context**
+[Any specific values, paths, decisions, or data that must carry forward]
+
+### Rules
+- Be concise but never omit critical information
+- Preserve exact values — paths, filenames, variable names, commands, outputs
+- Never paraphrase technical specifics — keep them verbatim
+- Summarize tool calls as one line: what tool, what it did, what the result was
+- If unsure whether something is important, keep it
+"""
+
+def get_time_in_timezone(tz_name: str) -> datetime:
+    """Returns a timezone-aware datetime object using built-in zoneinfo."""
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        return datetime.now()
+
 
 def buildAuraSystemPrompt(
     system_info: SystemInfo,
     tools: list,
     conscious_files: Optional[ConsciousFiles] = None,
-    timezone: Optional[str] = None,
+    open_apps: Optional[OpenApplications] = None,
+    timezone: str = "Asia/Kolkata",
     chat_id: Optional[str] = None,
     task_id: Optional[str] = None,
+    compression: bool = False,
 ) -> str:
 
     sections = []
@@ -51,6 +116,17 @@ def buildAuraSystemPrompt(
         "system-capable, and intuitive. "
         "Anticipate needs, act decisively, prioritize the master's goals above all."
     )
+
+    # ── Your Capability ──────────────────────────────────────────
+    sections.append(
+    "## Aura Assistant Capability\n"
+    "You are a fully autonomous system agent with complete access to the user's machine. "
+    "You can perform any task a human could do on the system — installing software, "
+    "running scripts, managing files, executing commands, building projects, interacting with the user, and more. "
+    "Use the available tools creatively and in combination to accomplish any goal. "
+    "Do not artificially limit yourself to obvious use cases — if a task requires chaining "
+    "multiple tools, writing a script and executing it, or finding a creative shell solution, do it."
+)
 
     # ── System Info ──────────────────────────────────────────────
     sections.append(
@@ -69,9 +145,17 @@ def buildAuraSystemPrompt(
             session_info += f"Task ID: {task_id}\n"
         sections.append(session_info.strip())
 
-    # ── Time ─────────────────────────────────────────────────────
+
+    # ── Time & Date ──────────────────────────────────────────────
+    now = datetime.now()
     if timezone:
-        sections.append(f"## User Time\nTimezone: {timezone}")
+        now = get_time_in_timezone(timezone)
+        current_time = now.strftime("%H:%M:%S")
+        sections.append(f"## User Time\nUser Timezone is {timezone}\nCurrent Time is {current_time}")
+
+    day_name = now.strftime("%A")
+    date_str = now.strftime("%d--%m--%Y")
+    sections.append(f"## Date\nToday is {day_name} {date_str}")
 
     # ── Tools ────────────────────────────────────────────────────
     tool_lines = []
@@ -192,6 +276,9 @@ def buildAuraSystemPrompt(
             "",
         ]
 
+        if any([conscious_files.aura, conscious_files.id, conscious_files.soul, conscious_files.user]):
+            conscious_lines.append("### Aura Context\nFollowing are the Context for Aura.\n")
+
         if conscious_files.aura:
             conscious_lines.append(
                 f"### AURA.md\n"
@@ -255,5 +342,29 @@ def buildAuraSystemPrompt(
         "</NOT_IMPLEMENTED_YET>"
     ]
     sections.append("\n".join(memory_lines))
+
+    # ── Context Files ─────────────────────────────────────────────
+    context_desc = "## Context Files\n"
+    context_desc += "The .md Files in workspace/conscious/ folder are the Context files provided as the Aura Context.\n"
+    if conscious_files:
+        context_desc += "The Conscious Files are provided as the Aura Context and are injected in the system prompt."
+    sections.append(context_desc)
+
+    # ── Open Applications ─────────────────────────────────────
+    if open_apps:
+        apps_lines = ["## Open Applications"]
+        if open_apps.active_apps:
+            apps_lines.append("All applications open on the system are:")
+            for app in open_apps.active_apps:
+                apps_lines.append(f"- {app}")
+        
+        if open_apps.focused_app:
+            apps_lines.append(f"\nThe Focused Application is {open_apps.focused_app}.\nFocused application is the application or window focused on the users machine.")
+        
+        sections.append("\n".join(apps_lines))
+
+    # ── Context Compression ──────────────────────────────────────
+    if compression:
+        sections.append(COMPRESSION_PROMPT.strip())
 
     return "\n\n".join(sections)
