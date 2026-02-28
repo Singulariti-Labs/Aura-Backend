@@ -1,27 +1,8 @@
-from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.Prompts.Templates.bootMe import BOOTME_TEMPLATE
-
-
-class SystemInfo(BaseModel):
-    os: str = Field(..., description="Operating system name")
-    version: str = Field(..., description="OS version")
-    workspace: str = Field(..., description="The workspace path")
-    cwd: str = Field(..., description="The current working directory")
-
-
-class ConsciousFiles(BaseModel):
-    aura: Optional[str] = Field(None, description="AURA.md content — rulebook")
-    id: Optional[str] = Field(None, description="ID.md content — identity")
-    soul: Optional[str] = Field(None, description="SOUL.md content — soul/personality")
-    user: Optional[str] = Field(None, description="USER.md content — user knowledge")
-
-
-class OpenApplications(BaseModel):
-    active_apps: list[str] = Field(default_factory=list, description="List of all running applications on screen")
-    focused_app: Optional[str] = Field(None, description="Name of the focused application")
+from app.Types.agent_types import SystemInfo, ConsciousFiles, OpenApplications, AuraConfig
 
 
 TOOL_NAME_MAP = {
@@ -100,14 +81,19 @@ def get_time_in_timezone(tz_name: str) -> datetime:
 def buildAuraSystemPrompt(
     system_info: SystemInfo,
     tools: list,
-    conscious_files: Optional[ConsciousFiles] = None,
-    open_apps: Optional[OpenApplications] = None,
-    timezone: str = "Asia/Kolkata",
     chat_id: Optional[str] = None,
     task_id: Optional[str] = None,
-    compression: bool = False,
-    bootMe: bool = False,
+    config: Optional[AuraConfig] = None,
 ) -> str:
+
+    if config is None:
+        config = AuraConfig()
+
+    conscious_files = config.conscious_files
+    open_apps = config.open_apps
+    timezone = config.timezone
+    compression = config.compression
+    boot_me = config.boot_me
 
     sections = []
 
@@ -380,7 +366,7 @@ def buildAuraSystemPrompt(
         sections.append("\n".join(apps_lines))
 
     # ── Boot Me ───────────────────────────────────────────────────
-    if bootMe:
+    if boot_me:
         sections.append(BOOTME_TEMPLATE.strip())
 
     # ── Context Compression ──────────────────────────────────────
