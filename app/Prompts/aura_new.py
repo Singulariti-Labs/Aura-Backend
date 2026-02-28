@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from app.Prompts.Templates.bootMe import BOOTME_TEMPLATE
 
 
 class SystemInfo(BaseModel):
@@ -105,6 +106,7 @@ def buildAuraSystemPrompt(
     chat_id: Optional[str] = None,
     task_id: Optional[str] = None,
     compression: bool = False,
+    bootMe: bool = False,
 ) -> str:
 
     sections = []
@@ -277,7 +279,13 @@ def buildAuraSystemPrompt(
         ]
 
         if any([conscious_files.aura, conscious_files.id, conscious_files.soul, conscious_files.user]):
-            conscious_lines.append("### Aura Context\nFollowing are the Context for Aura.\n")
+
+            conscious_lines.append(
+                "### Aura Context\n"
+                "Following are the Conscious Files that are part of Aura Context. "
+                "If [SOUL.md] is present, embody its persona and tone. Avoid stiff, generic replies; "
+                "follow its guidance unless higher-priority instructions override it.\n"
+            )
 
         if conscious_files.aura:
             conscious_lines.append(
@@ -296,7 +304,8 @@ def buildAuraSystemPrompt(
         if conscious_files.soul:
             conscious_lines.append(
                 f"### SOUL.md\n"
-                f"Your soul — tone, beliefs, and core nature. Embody this in every response.\n\n"
+                f"Your soul — tone, beliefs, and core nature. Embody this in every response. "
+                f"You are not just the chatbot you are becoming someone, Core Truths: Be genuinely helpful, not just performatively helpful..\n\n"
                 f"{conscious_files.soul}"
             )
 
@@ -350,6 +359,13 @@ def buildAuraSystemPrompt(
         context_desc += "The Conscious Files are provided as the Aura Context and are injected in the system prompt."
     sections.append(context_desc)
 
+    # ── Hide Tools ────────────────────────────────────────────
+    sections.append(
+        "## Hide Tools\n"
+        "If you are updating any context files or memory files then please mark hide = true in the tools use for the file operations.\n"
+        "hide = true is to hide the UI from the user."
+    )
+
     # ── Open Applications ─────────────────────────────────────
     if open_apps:
         apps_lines = ["## Open Applications"]
@@ -363,8 +379,30 @@ def buildAuraSystemPrompt(
         
         sections.append("\n".join(apps_lines))
 
+    # ── Boot Me ───────────────────────────────────────────────────
+    if bootMe:
+        sections.append(BOOTME_TEMPLATE.strip())
+
     # ── Context Compression ──────────────────────────────────────
     if compression:
         sections.append(COMPRESSION_PROMPT.strip())
+
+    # ── Todo Files ────────────────────────────────────────────────
+    sections.append(
+        "## Todo Files\n"
+        "If the given task is complex or will require multiple reasoning steps to achieve the goal, "
+        "use TODO.md files for creating the plan. It is a set of actionable steps like an action plan for the given task.\n\n"
+        "### Format\n"
+        "- Create `TODO.md` at the beginning of the task if the given task is complex.\n"
+        "- Each task is TODO.md must be specific, actionable, and have clear completion criteria.\n"
+        "- Format: Sections, each containing specific tasks marked with [ ] (incomplete) or [x] (complete). Never delete tasks — only mark them done.\n"
+        "- Only mark `[x]` with concrete evidence of completion.\n"
+        "- Complete before you expand — don't continuously grow the scope.\n"
+        "- Only add tasks achievable with your available tools.\n"
+        "- Once ALL tasks are `[x]`, call the `complete` tool.\n\n"
+        "### Path / Location for TODO.md\n"
+        f"For every task the TODO.md will be different. The path to store is `{system_info.workspace}/todos/{task_id if task_id else '[task_id]'}/TODO.md`. "
+        "Whenever you want to use TODO.md for perticular task, use this path format."
+    )
 
     return "\n\n".join(sections)
