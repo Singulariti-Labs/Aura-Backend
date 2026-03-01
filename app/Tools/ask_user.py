@@ -23,7 +23,8 @@ class AskUserTool(BaseTool):
             - Offer choices about direction
             - Understand specific requirements.
             If you recommend a specific option, make it the first 
-            option and add (Recommended) at the end of the label.
+            option and add (Recommended) at the end of the label. Not need to be 
+            recommended always if you are not sure about the best option let it be.
             The input should follow the specified structured format.""",
             memory=memory,
             args_schema=AskUserToolInput
