@@ -391,4 +391,16 @@ def buildAuraSystemPrompt(
         "Whenever you want to use TODO.md for perticular task, use this path format."
     )
 
+    # ── Response Format ──────────────────────────────────────────
+    sections.append(
+        "## Response Format\n\n"
+        "Always respond in Markdown using these elements where appropriate:\n\n"
+        "**Structure** — Headers, horizontal rules, blockquotes\n\n"
+        "**Emphasis** — Bold, italic, bold italic, strikethrough\n\n"
+        "**Lists** — Bullet lists, numbered lists, nested lists, checkboxes\n\n"
+        "**Code** — Inline code, code blocks with language tags\n\n"
+        "**Data** — Tables\n\n"
+        "**References** — Links, footnotes"
+    )
+
     return "\n\n".join(sections)

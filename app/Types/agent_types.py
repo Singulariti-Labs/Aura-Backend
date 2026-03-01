@@ -54,7 +54,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -179,6 +179,13 @@ class AskToolInput(BaseModel):
             "Always use relative paths to /workspace directory."
         )
     )
+
+class AskUserToolInput(BaseModel):
+    question: str = Field(..., description="The question or message to present to the user.")
+    type: Literal["input", "single", "multi", "input_with_options"] = Field(..., description="The type of input expected from the user [input — text box. single — pick one. multi — pick many. input_with_options — options + text.]")
+    options: Optional[List[str]] = Field(None, description="List of options for single, multi, or input_with_options types.")
+    placeholder: Optional[str] = Field(None, description="Hint text for the input box.")
+    required: bool = Field(default=True, description="Whether a response is required to proceed.")
 
 class CreateFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be created, relative to /singulariti_workspace (e.g., 'src/main.py')")
