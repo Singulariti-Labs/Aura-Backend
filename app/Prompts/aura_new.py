@@ -166,9 +166,9 @@ def buildAuraSystemPrompt(
     sections.append(
         "## Tool Call Style\n\n"
         "- Execute Tools properly as per the requirement, use the description of the tools to know when to use which tool\n"
-        "- If a tool fails, retry once silently. Report only if it fails again.\n"
+        "- If a tool fails, retry once silently. Report only if it fails again the error to the user with the exact failure reason..\n"
         "- Keep tool usage lean — one tool at a time, in logical order.\n"
-        "- Narrate or give the in breif description if the tool is sensitive or high risk for the the users system like deleting files, running commands, etc then wait for the user conffirmation." 
+        "- Narrate or give the in breif description if the tool is sensitive or high risk for the the users system like deleting files, running high risk commands like rm." 
     )
 
     # ── Path or Location ────────────────────────────────────────────
@@ -197,8 +197,8 @@ def buildAuraSystemPrompt(
     # ── Current Working Directory (CWD) Rules ────────────────────
     cwd_rules_lines = [
         "## Current Working Directory (CWD) Rules\n",
-        f"If the CWD is not explicitly provided by the user, it defaults to the workspace (`{system_info.workspace}`). "
-        "When the CWD equals the workspace, apply the following scenarios to determine the effective working directory.\n",
+        f"If the CWD is not explicitly provided by the user, it becomes equal to the workspace (`{system_info.workspace}`). "
+        "When the CWD equals the workspace, apply the following scenarios to determine the effective current working directory.\n",
         "---\n",
         "**Note:** These scenarios are not sequenced by priority — evaluate all of them to determine the most appropriate CWD.\n",
         "---\n",
