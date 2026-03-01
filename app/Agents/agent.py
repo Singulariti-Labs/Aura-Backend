@@ -6,7 +6,7 @@ from asyncpg import Pool
 
 
 from app.Agents.base_agent import BaseAgent
-from app.Types.agent_types import LLMConfig, SystemInfo
+from app.Types.agent_types import LLMConfig, SystemInfo, AuraConfig
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
 from app.Prompts.agent import AGENT_PROMPT
@@ -45,7 +45,8 @@ class Agent(BaseAgent):
         llm: LLMConfig,
         maxTokens: int = 128000,
         screenshot:  Optional[List[str]] = None,
-        pool: Pool | None = None
+        pool: Pool | None = None,
+        aura_config: Optional[AuraConfig] = None
     ):
         self.query = query
         self.task_id = task_id
@@ -60,7 +61,7 @@ class Agent(BaseAgent):
         self.system_info = system_info
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config)
         self.payload = payload
         
     # Runs the Aura Agent.

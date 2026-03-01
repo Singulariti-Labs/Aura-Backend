@@ -8,7 +8,7 @@ invoke the agent asynchronously, and send back standardized responses and status
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
-from app.Types.agent_types import LLMConfig, SystemInfo, DEFAULT_MODELS, PROVIDER_MAPPING
+from app.Types.agent_types import LLMConfig, SystemInfo, DEFAULT_MODELS, PROVIDER_MAPPING, AuraConfig, ConsciousFiles, OpenApplications
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.DB.pool import get_pool
@@ -170,7 +170,17 @@ async def websocket_endpoint(websocket: WebSocket):
                     await update_task_status(pool=pool, task_id=task_id, status="failed")
                     return
                 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool)
+                # Extract aura_config from payload
+                aura_config_data = payload.get("aura_config", {})
+                aura_config = AuraConfig(
+                    conscious_files=ConsciousFiles(**aura_config_data["conscious_files"]) if aura_config_data.get("conscious_files") else None,
+                    open_apps=OpenApplications(**aura_config_data["open_apps"]) if aura_config_data.get("open_apps") else None,
+                    timezone=aura_config_data.get("timezone", "Asia/Kolkata"),
+                    compression=aura_config_data.get("compression", False),
+                    boot_me=aura_config_data.get("boot_me", False),
+                )
+
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config)
 
                 # Notify client that processing has started
                 await send_ws_message(
