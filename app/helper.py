@@ -12,7 +12,7 @@ import json
 # MEMORY - WIP
 def update_memory(
         role: ROLE_TYPE,  # type: ignore
-        content: str,
+        content: Union[str, List[Any]],
         memory: Memory,
         base64_images: Optional[List[str]] = None,
         **kwargs,
@@ -40,8 +40,8 @@ def update_memory(
             raise ValueError(f"Unsupported message role: {role}")
 
         # Create message with appropriate parameters based on role
-        kwargs = {"base64_images": base64_images, **(kwargs if role == "tool" else {})}
-        memory.add_message(message_map[role](content, **kwargs))
+        full_kwargs = {"base64_images": base64_images, **kwargs}
+        memory.add_message(message_map[role](content, **full_kwargs))
     
 def update_input_messages_with_screenshot_and_context(
     input_message: List[dict],
@@ -65,10 +65,8 @@ def update_input_messages_with_screenshot_and_context(
     # Construct the updated message parts
     image_part = (
         {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}"  # JPEG format make png
-            }
+            "type": "image",
+            "image_url": f"data:image/jpeg;base64,{base64_image}"  # JPEG format make png
         } if base64_image else None
     )
 
@@ -82,9 +80,10 @@ def update_input_messages_with_screenshot_and_context(
 
         # Ensure content is a list
         if isinstance(content, list):
-            # Update the first text block (assuming it's the query)
-            if content and content[0]["type"] == "text" and "query:" in content[0]["text"]:
-                content[0]["text"] += f"\nscreen_context: {parsed_screen_context}" if parsed_screen_context else ""
+            # Find and update the text block that contains the query
+            text_block = next((block for block in content if block.get("type") == "text" and "query:" in block.get("text", "")), None)
+            if text_block:
+                text_block["text"] += f"\nscreen_context: {parsed_screen_context}" if parsed_screen_context else ""
 
             # Append the image if provided
             if image_part:
@@ -125,7 +124,8 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         messages = memory.messages
 
-        last_assistant_msg = last_assistant_content = next((msg.content for msg in reversed(messages) if msg.role == "assistant"), None)
+        # Retrieve the serialized content (as a list of blocks) for the last assistant message
+        last_assistant_msg = next((msg.to_dict()["content"] for msg in reversed(messages) if msg.role == "assistant"), None)
 
         if last_assistant_msg:
 
