@@ -8,7 +8,7 @@ from app.Agents.planner import PlannerAgent
 from app.Prompts.supervisor import SUPERVISOR_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
-from app.helper import update_memory
+from app.helper import update_memory, send_last_assistant_message
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.Prompts.aura_new import buildAuraSystemPrompt
@@ -115,14 +115,6 @@ class SupervisorAgent(BaseAgent):
                 # logger.info("Processing as complex task")
                 result = await self.handle_complex_task(plan)
 
-            # Store final result in memory
-            if "output" in result:
-                final_result = result["output"]
-                update_memory(role="assistant", content=final_result, memory=self.memory)
-            elif isinstance(result, str):
-                update_memory(role="assistant", content=result, memory=self.memory)
-            else:
-                update_memory(role="assistant", content="No response recived", memory=self.memory)
             return result
 
         except Exception as e:
@@ -358,22 +350,13 @@ class SupervisorAgent(BaseAgent):
                 else:
                     final_result = "Aura LLM run failed, task failed to complete successfull."
 
-                await send_ws_message(
-                    websocket=self.websocket,
-                    type="aura_message",
+                await send_last_assistant_message(
                     task_id=self.task_id,
                     chat_id=self.chat_id,
-                    payload = {
-                        "content": {
-                            "role": "assistant",
-                            "tool": "aura-agent",
-                            "message": final_result
-                        },
-                        "coming_from": "supervisor/server"
-                    }
+                    memory=self.memory,
+                    message_type="aura_message",
+                    coming_from="supervisor/server"
                 )
-
-                update_memory(role="assistant", content=final_result, memory=self.memory)
 
                 return final_result
 
