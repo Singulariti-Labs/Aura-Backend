@@ -83,6 +83,7 @@ class InteractionAgent():
                 chat_id=self.chat_id,
                 payload={
                     "tool": "screenshot",
+                    "tool_call_id": tool_call_id,
                     "input": {}
                 }
             )

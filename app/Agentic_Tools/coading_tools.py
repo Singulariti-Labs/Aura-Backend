@@ -39,7 +39,9 @@ class CoadingTools():
                 task_id=self.task_id,
                 payload={
                     "tool": "grep",
-                    "input": input_params
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "grep_tool_func/server"
                 }
             )
 
@@ -119,7 +121,9 @@ class CoadingTools():
                 task_id=self.task_id,
                 payload={
                     "tool": "ls",
-                    "input": input_params
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "ls_tool_func/server"
                 }
             )
 
@@ -198,7 +202,9 @@ class CoadingTools():
                 task_id=self.task_id,
                 payload={
                     "tool": "globe",
-                    "input": input_params
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "globe_tool_func/server"
                 }
             )
 

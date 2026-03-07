@@ -59,7 +59,9 @@ class CommandExecutor():
                 task_id=self.task_id,
                 payload={
                     "tool": "execute_command",
-                    "input": input_params
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "execute_command_tool_func/server"
                 }
             )
 

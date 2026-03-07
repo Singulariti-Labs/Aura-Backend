@@ -21,6 +21,9 @@ class Message(BaseModel):
     audio_urls: Optional[List[str]] = Field(default=None)
     file_urls: Optional[List[str]] = Field(default=None)
 
+    usage: Optional[dict] = Field(default=None)
+    details: Optional[dict] = Field(default=None)
+
     def __add__(self, other) -> List["Message"]:
         """
         Allows adding a Message to another Message or a list of Messages, returning a new list.
@@ -119,6 +122,11 @@ class Message(BaseModel):
             message["name"] = self.name
         if self.tool_call_id:
             message["tool_call_id"] = self.tool_call_id
+        
+        if self.usage:
+            message["usage"] = self.usage
+        if self.details:
+            message["details"] = self.details
 
         # Keep tool_calls for OpenAI compatibility if not assistant (assistant handles them in content)
         if self.role != Role.ASSISTANT and self.tool_calls:
@@ -165,6 +173,8 @@ class Message(BaseModel):
         base64_images: Optional[List[str]] = None,
         audio_urls: Optional[List[str]] = None,
         file_urls: Optional[List[str]] = None,
+        usage: Optional[dict] = None,
+        details: Optional[dict] = None,
     ) -> "Message":
         """
         Creates a message from the assistant, optionally containing tool calls, images, audio, and files.
@@ -175,6 +185,8 @@ class Message(BaseModel):
         - base64_images: Optional image in base64 format.
         - audio_urls: Optional audio urls.
         - file_urls: Optional file urls.
+        - usage: Optional token usage data.
+        - details: Optional provider/model details.
 
         Returns:
         - A Message instance with role set to ASSISTANT.
@@ -185,7 +197,9 @@ class Message(BaseModel):
             tool_calls=tool_calls, 
             base64_images=base64_images,
             audio_urls=audio_urls,
-            file_urls=file_urls
+            file_urls=file_urls,
+            usage=usage,
+            details=details
         )
 
     @classmethod

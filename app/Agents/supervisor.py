@@ -368,7 +368,8 @@ class SupervisorAgent(BaseAgent):
                             "role": "assistant",
                             "tool": "aura-agent",
                             "message": final_result
-                        }
+                        },
+                        "coming_from": "supervisor/server"
                     }
                 )
 

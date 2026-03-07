@@ -164,7 +164,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "role": "assistant",
                                 "tool": "aura",
                                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                            }
+                            },
+                            "coming_from": "aura/server"
                         }
                     )
                     await update_task_status(pool=pool, task_id=task_id, status="failed")

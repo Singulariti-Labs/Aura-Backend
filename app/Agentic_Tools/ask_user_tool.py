@@ -56,7 +56,9 @@ class AskUser():
                 task_id=self.task_id,
                 payload={
                     "tool": "ask_user",
-                    "input": input_params
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "ask_user_tool_func/server"
                 }
             )
 

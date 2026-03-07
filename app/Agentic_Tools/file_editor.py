@@ -44,11 +44,13 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "create_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "content": content,
                         "permissions": permissions
-                    }
+                    },
+                    "coming_from": "create_file_tool_func/server"
                 }
             )
 
@@ -64,7 +66,7 @@ class FileEditor():
                         "path": path,
                         "content": content,
                         "permissions": permissions
-                },
+                }
             },
                 seq = self.task_state.get_next_seq()
             )
@@ -120,11 +122,13 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "str_replace",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "new_str": new_str,
                         "old_str": old_str
-                    } 
+                    },
+                    "coming_from": "str_replace_tool_func/server"
                 }
             )
 
@@ -194,11 +198,13 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "rewrite_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "content": content,
                         "permissions": permissions
-                    } 
+                    },
+                    "coming_from": "rewrite_file_tool_func/server"
                 }
             )
 
@@ -214,7 +220,8 @@ class FileEditor():
                         "path": path,
                         "content": content,
                         "permissions": permissions
-                    }
+                    },
+                    "coming_from": "rewrite_file_tool_func/server"
                 },
                 seq = self.task_state.get_next_seq()
             )
@@ -267,9 +274,11 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "delete_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path
-                    } 
+                    },
+                    "coming_from": "delete_file_tool_func/server"
                 }
             )
 
@@ -338,11 +347,13 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "insert_str",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "insert_line_no": insert_line_no,
                         "new_str": new_str
-                    } 
+                    },
+                    "coming_from": "insert_str_tool_func/server"
                 }
             )
 
@@ -456,11 +467,13 @@ class FileEditor():
                         task_id=self.task_id,
                         payload={
                             "tool": "edit_file",
+                            "tool_call_id": tool_call_id,
                             "input": {
                                 "path": target_file,
                                 "original_content": original_content,
                                 "updated_content": new_content
-                            } 
+                            },
+                            "coming_from": "edit_file_tool_func/server"
                         }
                     )
 
@@ -544,9 +557,11 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "get_file_content",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": target_file,
-                    } 
+                    },
+                    "coming_from": "get_file_content_tool_func/server"
                 }
             )
 
