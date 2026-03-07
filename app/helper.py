@@ -124,10 +124,13 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
 
         messages = memory.messages
 
-        # Retrieve the serialized content (as a list of blocks) for the last assistant message
-        last_assistant_msg = next((msg.to_dict()["content"] for msg in reversed(messages) if msg.role == "assistant"), None)
+        # Retrieve the serialized last assistant message
+        last_assistant = next((msg.to_dict() for msg in reversed(messages) if msg.role == "assistant"), None)
 
-        if last_assistant_msg:
+        if last_assistant:
+            last_assistant_msg = last_assistant.get("content")
+            usage = last_assistant.get("usage")
+            details = last_assistant.get("details")
 
             # this message to send the assistant message and to tell which tool we are going to call next in perticular step or thinking message
             if tool_name:
@@ -140,8 +143,11 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                         "content": {
                             "role": "assistant",
                             "tool": tool_name,
-                            "message": last_assistant_msg
-                        }
+                            "message": last_assistant_msg,
+                            "usage": usage,
+                            "details": details
+                        },
+                        "coming_from": "agent_callback_handler"
                     }
                 )
 
@@ -154,7 +160,9 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                     tool=tool_name,
                     payload= {
                         "content": {
-                            "message": last_assistant_msg
+                            "message": last_assistant_msg,
+                            "usage": usage,
+                            "details": details
                         }
                     },
                     seq = task_state.get_next_seq()
@@ -169,8 +177,11 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                     payload = {
                         "content": {
                             "role": "assistant",
-                            "message": last_assistant_msg
-                        }
+                            "message": last_assistant_msg,
+                            "usage": usage,
+                            "details": details
+                        },
+                        "coming_from": "agent_callback_handler"
                     }
                 )
                 
@@ -182,7 +193,9 @@ async def send_last_assistant_message(task_id: str, chat_id: str, memory: Option
                     message_type="aura_thinking",
                     payload= {
                         "content": {
-                            "message": last_assistant_msg
+                            "message": last_assistant_msg,
+                            "usage": usage,
+                            "details": details
                         }
                     },
                     seq = task_state.get_next_seq()
