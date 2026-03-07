@@ -123,7 +123,7 @@ async def send_last_assistant_message(
         - chat_id(str) : unique identifier for the chat,
         - tool_name(Optional[str]): name of the tool being called (if applicable),
         - message_type(str): "aura_thinking" or "aura_message",
-        - coming_from(str): sender identifier.
+        - coming_from(str): sender location identifier.
     """
     try:
         task_state = task_manager.get_state(task_id)
