@@ -168,7 +168,17 @@ def buildAuraSystemPrompt(
         "- Execute Tools properly as per the requirement, use the description of the tools to know when to use which tool\n"
         "- If a tool fails, retry once silently. Report only if it fails again the error to the user with the exact failure reason..\n"
         "- Keep tool usage lean — one tool at a time, in logical order.\n"
-        "- Narrate or give the in breif description if the tool is sensitive or high risk for the the users system like deleting files, running high risk commands like rm." 
+        "- Narrate or give the in breif description if the tool is sensitive or high risk for the the users system like deleting files, running high risk commands like rm."
+
+        "### On Tool Failure\n\n"
+        "If a tool returns `is_error: true` or failed or has any error, follow this decision tree:\n\n"
+        "1. **Retry once** — attempt the same tool call again silently.\n"
+        "2. **Try a different approach** — if the retry fails, rethink the approach: "
+        "use a different tool or a different input to achieve the same goal.\n"
+        "3. **Ask the user** — if all approaches fail, use the `ask_user` tool to request clarification or missing information.\n"
+        "4. **Report and stop** — if the task is fully blocked and asking is not possible, "
+        "explain the exact failure reason clearly and stop the agent.\n\n"
+        "Never silently swallow errors — always resolve or surface them.\n"
     )
 
     # ── Path or Location ────────────────────────────────────────────
