@@ -1,7 +1,7 @@
 BOOTME_TEMPLATE = """---
 summary: "First-run ritual for new agents"
 read_when:
-  - Booting a workspace manually
+  - Booting (boot_me = true) a workspace manually
 ---
 # BOOTME.md - Hello, World
 

@@ -6,8 +6,9 @@ from app.Types.agent_types import SystemInfo, ConsciousFiles, OpenApplications, 
 
 
 TOOL_NAME_MAP = {
-    "web_search_tool":      ("web_search",      "Search the web for current information"),
-    "ask_tool":             ("ask",              "Ask the user a question"),
+    "web_search_tool":      ("web_search",       "Search the web for current information"),
+    "ask_user_tool":        ("ask_user",         "Ask the user a question, any information, clarification, confirmation, or required input to make task more accurate or to complete the task. Use this tool only in between of running task"),
+    "ask_tool":             ("ask",              "Send your final message to the user once the task is complete or no further action will be taken with suggestions or questions. Never use mid-task."),
     "complete_tool":        ("complete",         "Mark the current task as complete"),
     "create_file_tool":     ("create_file",      "Create a new file with given content"),
     "delete_file_tool":     ("delete_file",      "Delete a file from the filesystem"),

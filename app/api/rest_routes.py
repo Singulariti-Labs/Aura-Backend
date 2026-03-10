@@ -7,6 +7,11 @@ from app.api.auth_utils import get_current_user
 from app.DB.Queries.user_settings import upsert_user_settings, get_user_settings
 from asyncpg import Pool
 
+from app.Prompts.Templates.aura_template import AURA_TEMPLATE
+from app.Prompts.Templates.id_template import ID_TEMPLATE
+from app.Prompts.Templates.soul_template import SOUL_TEMPLATE
+from app.Prompts.Templates.user_template import USER_TEMPLATE
+
 rest_router = APIRouter(prefix="/api")
 
 @rest_router.get("/user/profile")
@@ -147,3 +152,12 @@ async def fetch_settings(current_user: dict = Depends(get_current_user)):
         
     settings = await get_user_settings(pool, user["id"])
     return settings or {}
+
+@rest_router.get("/load-conscious")
+async def load_conscious():
+    return {
+        "aura": AURA_TEMPLATE,
+        "id": ID_TEMPLATE,
+        "soul": SOUL_TEMPLATE,
+        "user": USER_TEMPLATE
+    }
