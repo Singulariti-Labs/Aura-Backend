@@ -46,7 +46,8 @@ class Agent(BaseAgent):
         maxTokens: int = 128000,
         screenshot:  Optional[List[str]] = None,
         pool: Pool | None = None,
-        aura_config: Optional[AuraConfig] = None
+        aura_config: Optional[AuraConfig] = None,
+        history: List[Dict] = []
     ):
         self.query = query
         self.task_id = task_id
@@ -61,7 +62,8 @@ class Agent(BaseAgent):
         self.system_info = system_info
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config)
+        self.history = history
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history)
         self.payload = payload
         
     # Runs the Aura Agent.

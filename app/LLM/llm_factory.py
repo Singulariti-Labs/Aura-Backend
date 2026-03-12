@@ -23,6 +23,7 @@ from app.helper import update_memory, update_input_messages_with_screenshot_and_
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler
+from app.utils.format_messages import format_to_langchain
 from datetime import datetime
 
 
@@ -458,6 +459,7 @@ class LLMFactory():
             chat_history: Optional[List[Message]] = None,
             base_64_image:  Optional[List[str]] = None,
             max_tokens: int = 128000,
+            history: List[Dict] = []
         ):
         """
         Method to run the aura agent with the given task in a loop till the task is not completed.
@@ -476,14 +478,30 @@ class LLMFactory():
             - The response from the agent or LLM after processing the query.
         """
         try:
-            # Prepare chat history  WIP**- Adding chat_histroy later when we introduce memory for prev_message.
+            # Prepare chat history from memory and provided history
+            chat_history_for_llm = []
+            if history:
+                provider = self.detect_provider_from_llm(llm)
+                chat_history_for_llm.extend(format_to_langchain(history, provider=provider))
+            
+            # NO NEED OF THIS.
             # if chat_history:
-            #     chat_history_for_llm = [message.to_dict() for message in chat_history]
+            #     # Convert Message objects to LangChain BaseMessage
+            #     for msg in chat_history:
+            #         role = msg.role
+            #         content = msg.content
+            #         if role == "user":
+            #             chat_history_for_llm.append(HumanMessage(content=content))
+            #         elif role == "assistant":
+            #             chat_history_for_llm.append(AIMessage(content=content, tool_calls=msg.tool_calls or []))
+            #         elif role == "tool":
+            #             chat_history_for_llm.append(ToolMessage(content=content, tool_call_id=msg.tool_call_id, name=msg.name))
             
             # Prepare system prompt
             if system_prompt:
                 prompt = ChatPromptTemplate.from_messages([
                     ("system", system_prompt),
+                    MessagesPlaceholder(variable_name="chat_history"),
                     ("human", "{input}"),
                     MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
@@ -520,7 +538,7 @@ class LLMFactory():
             )
 
             # Invoking LLM
-            response = await executor.ainvoke({"input": formated_input})
+            response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
             # returning response bac to the aura agent.
             return response
                 

@@ -25,7 +25,7 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = []):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
@@ -42,6 +42,7 @@ class SupervisorAgent(BaseAgent):
         self.step_results = {}
         self.validate_response = False
         self.aura_config = aura_config or AuraConfig()
+        self.history = history
         # self.task_manager = TaskManager()
 
 
@@ -341,7 +342,8 @@ class SupervisorAgent(BaseAgent):
                     tools=tools,
                     system_info=system_info,
                     llm=self.llm,
-                    agent_type="aura"
+                    agent_type="aura",
+                    history=self.history
                 )
 
                 final_result = None
