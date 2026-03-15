@@ -36,9 +36,10 @@ class UserMessage(BaseModel):
     timestamp: Optional[float] = None
 
 class UsageInfo(BaseModel):
-    prompt_tokens: int
-    completion_tokens: int
+    input: int
+    output: int
     total_tokens: int
+    cost: Optional[float] = None
 
 class AssistantMessage(BaseModel):
     role: Literal["assistant"] = "assistant"

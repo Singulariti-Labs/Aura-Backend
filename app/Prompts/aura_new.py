@@ -34,6 +34,7 @@ This summary will replace the previous messages in the context window to reduce 
 - Files created, edited, or deleted (include absolute paths)
 - Commands executed and their results
 - User's original queries and intent
+- ask_user tool outputs
 - Decisions made and reasoning behind them
 - Errors encountered and how they were resolved
 - Any data, values, configs, or outputs the next messages may need to reference
@@ -51,6 +52,7 @@ Return the summary in this structure:
 **Session Summary**
 [2-3 line overview of what this session is about]
 
+**Tasks**
 **Completed**
 [What was fully done]
 
@@ -59,6 +61,21 @@ Return the summary in this structure:
 
 **Pending / Incomplete**
 [What is not done yet, what comes next]
+
+**Files/Code**
+[What files/code were created, edited, or deleted each with single line with absolute path]
+
+**Commands**
+[What commands were executed and what was the output, give the description of the output with 2-3 start and end lines]
+
+**All User Inputs**
+[all the user messages]
+
+**ask_user tool outputs**
+[What was asked to the user and what was the response (it shows users preferences)]
+
+**Errors and Fixes**
+[What errors were encountered and how they were resolved, any ongoing troubelshooting]
 
 **Key Context**
 [Any specific values, paths, decisions, or data that must carry forward]
@@ -69,6 +86,7 @@ Return the summary in this structure:
 - Never paraphrase technical specifics — keep them verbatim
 - Summarize tool calls as one line: what tool, what it did, what the result was
 - If unsure whether something is important, keep it
+- maintain the sequence of the messages
 """
 
 def get_time_in_timezone(tz_name: str) -> datetime:
@@ -259,7 +277,7 @@ def buildAuraSystemPrompt(
     # ── Conscious Files ──────────────────────────────────────────
     # Content is passed in from the client side as a ConsciousFiles object.
     # Each field holds the raw file content. None means file wasn't loaded.
-    if conscious_files:
+    if conscious_files and not compression:
         conscious_lines = [
             "## Conscious Files",
             f"path: {system_info.workspace}/conscious/",
@@ -350,11 +368,12 @@ def buildAuraSystemPrompt(
     sections.append("\n".join(memory_lines))
 
     # ── Context Files ─────────────────────────────────────────────
-    context_desc = "## Context Files\n"
-    context_desc += "The .md Files in workspace/conscious/ folder are the Context files provided as the Aura Context.\n"
-    if conscious_files:
-        context_desc += "The Conscious Files are provided as the Aura Context and are injected in the system prompt."
-    sections.append(context_desc)
+    if not compression:
+        context_desc = "## Context Files\n"
+        context_desc += "The .md Files in workspace/conscious/ folder are the Context files provided as the Aura Context.\n"
+        if conscious_files:
+            context_desc += "The Conscious Files are provided as the Aura Context and are injected in the system prompt."
+        sections.append(context_desc)
 
     # ── Hide Tools ────────────────────────────────────────────
     sections.append(

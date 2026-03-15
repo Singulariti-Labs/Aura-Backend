@@ -71,8 +71,8 @@ class AgentCallbackHandler(BaseCallbackHandler):
             'output': output_t,
             'total_tokens': input_t + output_t,
             'cost': cost,
-            'input_token_details':  llm_out.get('input_token_details',  {'audio': 0, 'cache_read': 0}),
-            'output_token_details': llm_out.get('output_token_details', {'audio': 0, 'reasoning': 0}),
+            # 'input_token_details':  llm_out.get('input_token_details',  {'audio': 0, 'cache_read': 0}),
+            # 'output_token_details': llm_out.get('output_token_details', {'audio': 0, 'reasoning': 0}),
         }
         self.current_details = {
             'provider': provider,
