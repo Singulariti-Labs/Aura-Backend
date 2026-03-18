@@ -9,9 +9,9 @@ async def create_agent_event(
     pool: Pool,
     task_id: str,
     role: str,
-    message_type: str | None,
-    tool: str | None,
-    payload: dict,
+    message_type: str | None = None,
+    tool: str | None = None,
+    payload: dict = {},
     seq: int = 1,
 ):
     print("➡️ create_agent_event called")

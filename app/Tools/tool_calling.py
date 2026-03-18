@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
-
+from typing import List, Dict
 from app.LLM.memory import Memory
 from app.Types.agent_types import SystemInfo, AuraConfig
 from app.Tools.supervisor import SupervisorTool

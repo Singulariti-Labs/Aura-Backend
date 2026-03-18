@@ -519,12 +519,16 @@ class LLMFactory():
             )
             
             
-            agent = create_openai_tools_agent(llm, tools, prompt)
+            
+
 
             # Create callbacks list with rate limiting
-            callbacks = [
-                AgentCallbackHandler(self.memory),
-            ]
+            handler = AgentCallbackHandler(self.memory)
+            callbacks = handler.as_list()
+
+            llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
+
+            agent = create_openai_tools_agent(llm_with_callbacks, tools, prompt)
 
             # Creating agent executor.
             executor = AgentExecutor(
