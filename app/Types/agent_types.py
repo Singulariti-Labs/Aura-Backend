@@ -180,12 +180,16 @@ class AskToolInput(BaseModel):
         )
     )
 
+class Question(BaseModel):
+    id: str = Field(..., description="Unique snake_case identifier.")
+    question: str = Field(..., description="The question shown to the user.")
+    options: List[str] = Field(default=[], description="Optional choices. Max 3. Leave empty [] if only text input is allowed.")
+    multi_select: bool = Field(False, description="True = checkboxes (pick many), False = radio (pick one).")
+    placeholder: str = Field("", description="Hint text shown in the text input box.")
+    required: bool = Field(False, description="if True then user must answer to given question proceed if false user can skip.")
+
 class AskUserToolInput(BaseModel):
-    question: str = Field(..., description="The question or message to present to the user.")
-    type: Literal["input", "single", "multi", "input_with_options"] = Field(..., description="The type of input expected from the user [input — text box. single — pick one. multi — pick many. input_with_options — options + text.]")
-    options: Optional[List[str]] = Field(None, description="List of options for single, multi, or input_with_options types.")
-    placeholder: Optional[str] = Field(None, description="Hint text for the input box.")
-    required: bool = Field(default=True, description="Whether a response is required to proceed.")
+    questions: List[Question] = Field(..., description="A list of questions to ask the user. minimum 1 and maximum 5 questions.")
 
 class CreateFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be created, relative to /singulariti_workspace (e.g., 'src/main.py')")

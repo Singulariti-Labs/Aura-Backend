@@ -1,18 +1,28 @@
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from app.Prompts.Templates.bootMe import BOOTME_TEMPLATE
+from app.Prompts.Templates.boot_me import BOOTME_TEMPLATE
 from app.Types.agent_types import SystemInfo, ConsciousFiles, OpenApplications, AuraConfig
 
 
 TOOL_NAME_MAP = {
     "web_search_tool":      ("web_search",       "Search the web for current information"),
-    "ask_user_tool":        ("ask_user",         "Ask the user a question, any information, clarification, confirmation, or required input to make task more accurate or to complete the task. Use this tool only in between of running task"),
+    "ask_user_tool":        ("ask_user",         """Use this tool to collect any information, clarification, or input from the user 
+                                                 that is needed to make the task more accurate or to complete it successfully.
+                                                 WHEN TO USE:
+                                                 - At the start of a task, to clarify ambiguous or incomplete requirements
+                                                 - Mid-task, when a decision point requires user input to proceed
+                                                 - When the user explicitly asks to be consulted, e.g. "ask me questions", 
+                                                 "ask me what you need", "let's ideate together", "what do you need from me?, etc"
+                                                 WHEN NOT TO USE:
+                                                 - Do NOT ask for confirmation like "Should I proceed?" or "Does this look good?" — just proceed
+                                                 - Do NOT use this tool after the task is fully completed
+                                                 - Do NOT call this tool if you already have enough information to proceed"""),
     "ask_tool":             ("ask",              "Send your final message to the user once the task is complete or no further action will be taken with suggestions or questions. Never use mid-task."),
-    "complete_tool":        ("complete",         "Mark the current task as complete"),
+    "complete_tool":        ("complete",         "Marks the current task as complete and delivers the final result to the user. Call this tool ONLY when: 1)The task is fully finished and no further actions are needed - All TODOs (if any todo.md were created) are marked as done [x]. Use this as the LAST tool call in every task. The `result` parameter is what the user receives as the final answer/result — make it complete, clear, and actionable."),
     "create_file_tool":     ("create_file",      "Create a new file with given content"),
     "delete_file_tool":     ("delete_file",      "Delete a file from the filesystem"),
-    "edit_file_tool":       ("edit_file",        "Make precise edits to an existing file"),
+    "edit_file_tool":       ("edit_file",        "Make precise edits to an already existing file"),
     "insert_str_tool":      ("insert_str",       "Insert a string at a specific line in a file"),
     "rewrite_file_tool":    ("rewrite_file",     "Fully rewrite a file with new content"),
     "str_replace_tool":     ("str_replace",      "Find and replace a string inside a file"),
@@ -188,6 +198,7 @@ def buildAuraSystemPrompt(
         "- If a tool fails, retry once silently. Report only if it fails again the error to the user with the exact failure reason..\n"
         "- Keep tool usage lean — one tool at a time, in logical order.\n"
         "- Narrate or give the in breif description if the tool is sensitive or high risk for the the users system like deleting files, running high risk commands like rm."
+        "- Please make sure that propvide proper required arguments to the tools."
 
         "### On Tool Failure\n\n"
         "If a tool returns `is_error: true` or failed or has any error, follow this decision tree:\n\n"
@@ -378,7 +389,7 @@ def buildAuraSystemPrompt(
     # ── Hide Tools ────────────────────────────────────────────
     sections.append(
         "## Hide Tools\n"
-        "If you are updating any context files or memory files then please mark hide = true in the tools use for the file operations.\n"
+        "If you are updating any context files or memory files then please pass hide = true in arguments of the tools while calling them for the file operations.\n"
         "hide = true is to hide the UI from the user."
     )
 
@@ -406,19 +417,65 @@ def buildAuraSystemPrompt(
     # ── Todo Files ────────────────────────────────────────────────
     sections.append(
         "## Todo Files\n"
-        "If the given task is complex or will require multiple reasoning steps to achieve the goal, "
+        "Use TODO.md files to create and manage a structured task list for your current task. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user. It also helps the user understand the progress of the task and overall progress of their requests.\n"
         "use TODO.md files for creating the plan. It is a set of actionable steps like an action plan for the given task.\n\n"
+        "### When to Use TODO.md\n"
+        "1) Complex multi-step tasks - When a task requires 3 or more distinct steps or multiple actions and reasoning steps to achieve the goal.\n"
+        "2) Non-trivial and complex tasks - Tasks that require careful planning or multiple operations.\n"
+        "3) User explicitly requests todo list - When the user directly asks you to use the todo list.\n"
+        "4)User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated).\n"
+        "5) After receiving new instructions from the ask_user tool - Immediately capture user requirements/inputs as todos.\n"
+        "\n"
+        "### When Not to Use TODO.md\n"
+        "- Skip using this tool when:\n"
+        "1) There is only a single, straightforward task\n"
+        "2) The task is trivial and tracking it provides no organizational benefit\n"
+        "3) The task can be completed in less than 3 to 4 trivial steps\n"
+        "4) The task is purely conversational or informational\n"
+        "\n"
+        "[NOTE] that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.\n"
+        "\n"
         "### Format\n"
-        "- Create `TODO.md` at the beginning of the task if the given task is complex.\n"
-        "- Each task is TODO.md must be specific, actionable, and have clear completion criteria.\n"
-        "- Format: Sections, each containing specific tasks marked with [ ] (incomplete) or [x] (complete). Never delete tasks — only mark them done.\n"
-        "- Only mark `[x]` with concrete evidence of completion.\n"
-        "- Complete before you expand — don't continuously grow the scope.\n"
-        "- Only add tasks achievable with your available tools.\n"
-        "- Once ALL tasks are `[x]`, call the `complete` tool.\n\n"
+        "1) Create `TODO.md` at the beginning of the task if the given task is complex.\n"
+        "2) If get any inputs from the user using ask_user tool then can create the TODO.md file if not exists. if it exists then just add the tasks in same file.\n"
+        "3) Each task in TODO.md must be specific, actionable, and have clear completion criteria.\n"
+        "4) Format: Sections, each containing specific tasks marked with [ ] (incomplete), [-] (in_progress) or [x] (complete).\n"
+        "5) Only mark `[x]` with concrete evidence of completion.\n"
+        "6) Complete before you expand — don't continuously grow the scope.\n"
+        "7) Only add tasks achievable with your available tools.\n"
+        "8) Once ALL tasks are `[x]` completed then and only then call the `complete` tool. to provide the final response to the user\n\n"
+        "### Task States and Management\n"
+        "** 1) Task States: Use these states to track progress:**\n"
+        "- [ ] Incompleted Task: pending / Task not yet started.\n"
+        "- [-] In-progress Task: Task currently being worked on.\n"
+        "- [x] Completed Task: Task finished successfully.\n\n"
+        "** IMPORTANT: Task descriptions must have two forms:**\n"
+        "- content: For the agent to store in TODO.md. The imperative form describing what needs to be done (e.g., Run tests, Build the project, Search the solution)\n"
+        "- activeForm: For the user (what they see displayed while it's executing). The present continuous form shown during execution to the user (e.g., Running tests, Building the project, Searching the solution)\n\n"
+        "** 2) Task Management:**\n"
+        "- Update task status in real-time as you work\n"
+        "- Mark tasks complete IMMEDIATELY after finishing (don't batch completions)\n"
+        "- Exactly ONE task must be in_progress at any time (not less, not more)\n"
+        "- Complete current tasks before starting new ones\n"
+        "- Remove tasks that are no longer relevant from the list entirely\n"
+        "\n"
+        "** 3) Task Completion Requirements:**\n"
+        "- ONLY mark a task as completed when you have FULLY accomplished it\n"
+        "- If you encounter errors, blockers, or cannot finish, keep the task as in_progress\n"
+        "- When blocked, create a new task describing what needs to be resolved\n"
+        "- Never mark a task as completed if:\n"
+        "  - Tests are failing\n"
+        "  - Implementation is partial\n"
+        "  - You encountered unresolved errors\n"
+        "\n"
         "### Path / Location for TODO.md\n"
-        f"For every task the TODO.md will be different. The path to store is `{system_info.workspace}/todos/{task_id if task_id else '[task_id]'}/TODO.md`. "
-        "Whenever you want to use TODO.md for perticular task, use this path format."
+        f"- For every task the TODO.md will be different.\n"
+        f"- The path to store is `{system_info.workspace}/todos/{task_id if task_id else '[task_id]'}/TODO.md`. Follow this path strictly for storing the TODO.md file for any task.\n\n"
+        "** TODO.md Naming**\n"
+        "- TODO.md ← no label (general) Most Recommended.\n"
+        "- TODO-research.md ← labeled(research), TODO-design.md ← labeled(design).\n"
+        "- Using lable is optional, lable is always according to task.\n\n"
+        "[NOTE] Whenever you want to use TODO.md for any task, use this given path format."
     )
 
     # ── Response Format ──────────────────────────────────────────
@@ -431,6 +488,23 @@ def buildAuraSystemPrompt(
         "**Code** — Inline code, code blocks with language tags\n\n"
         "**Data** — Tables\n\n"
         "**References** — Links, footnotes"
+        "\n"
+        "### What Not To Add In Response\n\n"
+        "- Avoid empty completion statements at the end of the response — Never end a response with a bare "
+        "confirmation that adds no value to the user.\n\n"
+
+        "**Never say:**\n"
+        "- 'I have completed the task.'\n"
+        "- 'Done.'\n"
+        "- 'Task finished.'\n"
+        "- 'I am done with the task.'\n"
+        "- 'All steps have been completed.'\n\n"
+        
+        "**[NOTE]:** If required then only provide the completion statement, "
+        "but if providing then keep it natural sound like human not system."
+        "Actually tell what has done and why it matters — never just announces that it is done.\n\n"
+        "**The rule:** A good final response tells the user what was accomplished, not just that it was accomplished.\n"
+        "[NOTE] Always respond in Markdown using these elements where appropriate."
     )
 
     return "\n\n".join(sections)

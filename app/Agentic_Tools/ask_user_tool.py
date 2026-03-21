@@ -1,16 +1,16 @@
-from typing import Optional, Dict, Any, List, Literal
-from langchain_core.language_models.chat_models import BaseChatModel
+from typing import Optional, Dict, Any, List
 import json
-import xml.etree.ElementTree as ET
 
 from app.LLM.memory import Memory
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.helper import update_memory
 from app.DB.Queries.agent_event import create_agent_event
+from app.Types.agent_types import Question  # your Pydantic model
+
 
 class AskUser():
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None):
+    def __init__(self, llm, task_id: str, chat_id: str, memory: Optional[Memory] = None):
         self.llm = llm
         self.task_id = task_id
         self.chat_id = chat_id
@@ -21,30 +21,13 @@ class AskUser():
 
     async def ask_user(
         self,
-        question: str,
-        type: Literal["input", "single", "multi", "input_with_options"],
-        options: Optional[List[str]] = None,
-        placeholder: Optional[str] = None,
-        required: bool = True,
+        questions: List[Question],
         tool_call_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Ask the user a question or for their thought during execution.
-        """
-        
-        # 1. Format the XML block
-        xml_input = f"<ask_user>\n  <question>{question}</question>\n  <type>{type}</type>\n"
-        if options and type != "input":
-            xml_input += "  <options>\n"
-            for opt in options:
-                xml_input += f"    <option>{opt}</option>\n"
-            xml_input += "  </options>\n"
-        if placeholder:
-            xml_input += f"  <placeholder>{placeholder}</placeholder>\n"
-        xml_input += f"  <required>{str(required).lower()}</required>\n</ask_user>"
 
+        # 1. Build JSON payload
         input_params = {
-            "message": xml_input
+            "questions": [q.model_dump(exclude_none=True) for q in questions]
         }
 
         try:
@@ -62,7 +45,7 @@ class AskUser():
                 }
             )
 
-            # 3. Insert agent event in the DB
+            # 3. Insert agent event in DB
             await create_agent_event(
                 pool=self.dbpool,
                 task_id=self.task_id,
@@ -81,63 +64,41 @@ class AskUser():
                 payload = tool_resp.get("payload", {})
                 if payload.get("tool") == "ask_user":
                     result = payload.get("result", {})
-                    # result: {success: boolean, message: string}
-                    
+
                     if not result.get("success", False):
                         return {
                             "success": False,
                             "output": result.get("message", "Error from client")
                         }
 
-                    xml_response = result.get("message", "")
-                    
-                    # 5. Parse the XML response
-                    try:
-                        root = ET.fromstring(xml_response)
-                        
-                        selected = [s.text for s in root.findall("selected")]
-                        user_input = root.find("input").text if root.find("input") is not None else None
-                        skipped = root.find("skipped").text.lower() == "true" if root.find("skipped") is not None else False
+                    # 5. answers is { id: value } — no parsing needed
+                    answers: Dict[str, Any] = result.get("answers", {})
 
-                        parsed_result = {
-                            "selected": selected,
-                            "input": user_input,
-                            "skipped": skipped
-                        }
-
-                        # Logic for required and skipped
-                        if required and skipped:
-                            # Stop the task? The tool itself returns the result, 
-                            # the agent or supervisor should decide how to "stop" the task based on this.
-                            # But I should tell the user.
+                    # 6. Check required questions were not skipped
+                    for q in questions:
+                        if q.required and (q.id not in answers or answers[q.id] is None):
                             return {
                                 "success": False,
-                                "output": "This input is required to proceed and cannot be skipped. stop the task."
+                                "output": f"Required question '{q.id}' was skipped. Stop the task and explain why you stopped."
                             }
 
-                        final_result = {
-                            "success": True,
-                            "output": parsed_result
-                        }
+                    final_result = {
+                        "success": True,
+                        "output": answers  # e.g. {"project_name": "my-app", "features": ["Auth"]}
+                    }
 
-                        # 6. Update memory
-                        assistant_message = f"Asked user: {question}"
-                        update_memory(role="assistant", content=assistant_message, memory=self.memory)
-                        update_memory(
-                            role="tool",
-                            name="ask_user",
-                            tool_call_id=tool_call_id,
-                            content=json.dumps(final_result),
-                            memory=self.memory
-                        )
+                    # 7. Update memory
+                    asked = ", ".join([q.question for q in questions])
+                    update_memory(role="assistant", content=f"Asked user: {asked}", memory=self.memory)
+                    update_memory(
+                        role="tool",
+                        name="ask_user",
+                        tool_call_id=tool_call_id,
+                        content=json.dumps(final_result),
+                        memory=self.memory
+                    )
 
-                        return final_result
-
-                    except ET.ParseError as pe:
-                        return {
-                            "success": False,
-                            "output": f"Failed to parse user response XML: {str(pe)}. Response was: {xml_response}"
-                        }
+                    return final_result
 
             return {
                 "success": False,
