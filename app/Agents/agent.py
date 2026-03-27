@@ -189,14 +189,18 @@ class Agent(BaseAgent):
                 return result
             
             except Exception as e:
+                # This catches errors that happen inside the try block (like tool execution)
                 raise RuntimeError(
-                    f"Error while calling Agent: Error -> {str(e)}"
+                    f"Error while calling Agent: {str(e)}"
                 )
 
         except Exception as e:
+            # If we already have a RuntimeError from the inner block, re-raise it
+            if isinstance(e, RuntimeError) and "Error while calling Agent" in str(e):
+                raise e
+            # Otherwise, it might actually be an LLM initialization error (if it failed in __init__)
             raise RuntimeError(
-                f"Error creating LLM instance for provider '{self.llm_config.provider}' "
-                f"with model '{self.llm_config.model_name}': {str(e)}"
+                f"Error initializing or invoking Agent: {str(e)}"
             )
 
 # ------------------------------------------------------------------------- #

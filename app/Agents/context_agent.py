@@ -219,7 +219,7 @@ class ContextAgent():
             # 1. TOOL CALL START
             if event_type == "on_tool_start":
                 tool_name = event["name"]
-                tool_call_id = event["id"]
+                tool_call_id = event.get("run_id") or event.get("id")
                 tool_input = event["data"].get("input")
 
                 await send_ws_message(
@@ -257,7 +257,7 @@ class ContextAgent():
             # 2. TOOL CALL END
             elif event_type == "on_tool_end":
                 tool_name = event["name"]
-                tool_call_id = event["id"]
+                tool_call_id = event.get("run_id") or event.get("id")
                 tool_output = event["data"].get("output")
 
                 print(f"\n\n✅ TOOL NAME: {tool_name}")
