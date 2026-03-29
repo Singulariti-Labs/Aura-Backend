@@ -101,6 +101,10 @@ def format_to_langchain(history: List[Dict[str, Any]], provider: str = "generic"
     langchain_messages = []
     
     for msg in history:
+        # Guard: skip entries that aren't dicts (e.g., stray strings in the history)
+        if not isinstance(msg, dict):
+            print(f"[format_to_langchain] WARNING: Skipping non-dict message entry: {type(msg).__name__} -> {str(msg)[:100]}")
+            continue
         role = msg.get("role")
         content = msg.get("content", [])
         
@@ -117,6 +121,9 @@ def format_to_langchain(history: List[Dict[str, Any]], provider: str = "generic"
                 filtered_content = content
             elif isinstance(content, list):
                 for block in content:
+                    if isinstance(block, str):
+                        filtered_content.append({"type": "text", "text": block})
+                        continue
                     if block.get("type") in ["tool_call", "function"]:
                         tool_calls.append({
                             "id": block.get("tool_call_id", block.get("id")),

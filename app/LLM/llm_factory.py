@@ -66,7 +66,7 @@ class LLMFactory():
             
             elif llm_config.provider == "anthropic":
                 api_key = user_api_key or os.environ.get("ANTHROPIC_API_KEY")
-                
+                 
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
@@ -100,7 +100,17 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("GOOGLE_API_KEY environment variable is not set")
                 
-                return ChatGoogleGenerativeAI(model=llm_config.model_name, api_key=api_key)
+                return ChatGoogleGenerativeAI(
+                    model=llm_config.model_name, 
+                    api_key=api_key,  
+                    model_kwargs={
+                        "tool_config": {
+                            "function_calling_config": {
+                                "mode": "ANY"
+                            }
+                        }
+                    }
+                )
             
             elif llm_config.provider == "agent_router":
                 api_key = user_api_key or os.environ.get("AGENTROUTER_API_KEY")
@@ -482,6 +492,8 @@ class LLMFactory():
             chat_history_for_llm = []
             if history:
                 provider = self.detect_provider_from_llm(llm)
+                # Debug: log history shape to detect malformed entries
+                print(f"[aura_executor] History length: {len(history)}, entry types: {[type(m).__name__ for m in history[:5]]}")
                 chat_history_for_llm.extend(format_to_langchain(history, provider=provider))
             
             # NO NEED OF THIS.

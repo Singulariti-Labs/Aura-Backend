@@ -60,5 +60,6 @@ class AskUserTool(BaseTool):
         tool_call_id = str(uuid.uuid4())
         response = await self.ask_user_agentic.ask_user(
             questions=inputs.questions,
+            tool_call_id=tool_call_id
         )
         return response
