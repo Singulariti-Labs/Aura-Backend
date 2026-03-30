@@ -222,10 +222,10 @@ class InsertStrToolInput(BaseModel):
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
 class EditFileToolInput(BaseModel):
-    path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
-    instructions: str = Field(..., description="A single sentence written in the first person describing what you're changing")
-    code_edit: str = Field(..., description="Only the precise lines of code to edit. Use // ... existing code ... for unchanged sections")
-    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+    path: str = Field(..., description="The absolute path to the file you want to edit (e.g., '/home/user/project/src/main.py')")
+    instructions: str = Field(..., description="A clear, first-person description of the changes you are making (e.g., 'I am adding a new validation check')")
+    code_edit: str = Field(..., description="The precise code changes using // ... existing code ... for unchanged parts")
+    hide: str = Field(default="false", description="If 'true', this tool call will not be shown in the UI")
      
 
 class ExecuteCommandToolInput(BaseModel):
