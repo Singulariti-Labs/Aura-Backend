@@ -41,6 +41,7 @@ class GlobeTool(BaseTool):
             pattern=inputs.pattern,
             path=inputs.path,
             currentWorkDir=inputs.currentWorkDir,
+            hide=inputs.hide,
             tool_call_id=tool_call_id
         )
         return response

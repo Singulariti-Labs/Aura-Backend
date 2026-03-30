@@ -31,6 +31,7 @@ class CommandExecutor():
         pty: bool = False,
         security: Literal["low", "high"] = "low",
         ask: bool = True,
+        hide: Optional[str] = "false",
         tool_call_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -47,7 +48,8 @@ class CommandExecutor():
             "timeout": timeout,
             "pty": pty,
             "security": security,
-            "ask": ask
+            "ask": ask,
+            "hide": hide
         }
 
         try:

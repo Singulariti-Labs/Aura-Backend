@@ -51,6 +51,7 @@ class EditFileTool(BaseTool):
             target_file=inputs.path,
             instructions=inputs.instructions,
             code_edit=inputs.code_edit,
+            hide=inputs.hide,
             tool_call_id=tool_call_id,
         )
 

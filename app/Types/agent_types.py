@@ -54,7 +54,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -195,29 +195,38 @@ class CreateFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be created, relative to /singulariti_workspace (e.g., 'src/main.py')")
     content: str = Field(..., description="The content to write to the file")
     permissions: str = Field(default="644", description="File permissions in octal string format (default: 644)")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing ie, Memory and Conscious Files")
 
 class StrReplaceToolInput(BaseModel):
     path: str = Field(..., description="Path to the target file, relative to /singulariti_workspace (e.g., 'src/main.py')")
     old_str: str = Field(..., description="Text to be replaced (must appear exactly once)")
     new_str: str = Field(..., description="Replacement text")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing ie, Memory and Conscious Files")
+
 
 class RewriteFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     content: str = Field(..., description="The new content to write to the file, replacing all existing content")
     permissions: str = Field(default="644", description="File permissions in octal string format (default: 644)")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+        
 
 class DeleteFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
-
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+    
 class InsertStrToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     insert_line_no: int = Field(..., description="number of line where string will be inserted")
     new_str: str = Field(..., description="String to be inserted")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
 class EditFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     instructions: str = Field(..., description="A single sentence written in the first person describing what you're changing")
     code_edit: str = Field(..., description="Only the precise lines of code to edit. Use // ... existing code ... for unchanged sections")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+     
 
 class ExecuteCommandToolInput(BaseModel):
     command: str = Field(..., description="The shell command to execute")
@@ -231,20 +240,24 @@ class ExecuteCommandToolInput(BaseModel):
     pty: Optional[bool] = Field(False, description="If true, runs the command in a pseudo-terminal (PTY). Required for interactive CLI tools (like vim, nano) or commands that detect TTY")
     security: Literal["low", "high"] = Field(default="low", description="It is the level of the command how secure is it running on the machine.")
     ask: bool = Field(default=True, description="It checks that if the code/command is not so secure to run on the computer then provides true. which we use to ask the permission of the user.")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
 class GrepToolInput(BaseModel):
     pattern: str = Field(..., description="regex string to search for (e.g. \"function foo\") within file contents")
     path: Optional[str] = Field(None, description="The file or directory to search in, defaults to currentWorkDir, always be the absolute path")
     currentWorkDir: str = Field(..., description="The current working directory where we are finding the pattern (could be the root directory of thr project), always be the absolute path")
     include: Optional[str] = Field(None, description="Filter files by name or extension using a glob pattern (e.g. \"*.ts\", \"*.{ts,tsx}\", \"*.css\"), If not provided, searches all files.")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+
 
 class LSToolInput(BaseModel):
     path: Optional[str] = Field(None, description="The path to list files and directories for. Must be an absolute path. Omit it to use the current workspace directory.")
     ignore: Optional[List[str]] = Field(None, description="Optional: List of global/ignore patterns to skip. eg: ['*.log', 'tmp/*']")
     currentWorkDir: str = Field(..., description="The current working directory or the directory of the project or root, where path is subdirectory(absolute path) inside currentWorkDir, it is an absolute path.")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
 class GlobeToolInput(BaseModel):
     pattern: List[str] = Field(..., description="Glob pattern for matching filenames. It is a list of strings and could be one or multiple patterns. e.g.: pattern: ['**/*.ts'] or pattern: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js']")
     path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the subdirectory of currentWorkDir or same as currentWorkDir.")
     currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. consider it is the root of the project.")
-    
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")

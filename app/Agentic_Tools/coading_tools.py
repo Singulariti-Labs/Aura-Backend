@@ -18,7 +18,7 @@ class CoadingTools():
         self.websocket = self.task_state.websocket
         self.dbpool = self.task_state.dbpool
 
-    async def grep(self, pattern: str, currentWorkDir: str, path: Optional[str] = None, include: Optional[str] = None, tool_call_id: Optional[str] = None) -> Dict[str, Any]:
+    async def grep(self, pattern: str, currentWorkDir: str, path: Optional[str] = None, include: Optional[str] = None, hide: Optional[str] = "false", tool_call_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Fast content search tool that works with any codebase size.
         Searches file contents using regular expressions.
@@ -27,7 +27,8 @@ class CoadingTools():
             "pattern": pattern,
             "path": path,
             "currentWorkDir": currentWorkDir,
-            "include": include
+            "include": include,
+            "hide": hide
         }
 
         try:
@@ -101,7 +102,7 @@ class CoadingTools():
                 "output": f"Error executing grep: {str(e)}"
             }
 
-    async def ls(self, currentWorkDir: str, path: Optional[str] = None, ignore: Optional[List[str]] = None, tool_call_id: Optional[str] = None) -> Dict[str, Any]:
+    async def ls(self, currentWorkDir: str, path: Optional[str] = None, ignore: Optional[List[str]] = None, hide: Optional[str] = "false", tool_call_id: Optional[str] = None) -> Dict[str, Any]:
         """
         List directory contents tool.
         Returns a formatted string of files and directories.
@@ -109,7 +110,8 @@ class CoadingTools():
         input_params = {
             "path": path,
             "ignore": ignore,
-            "currentWorkDir": currentWorkDir
+            "currentWorkDir": currentWorkDir,
+            "hide": hide
         }
 
         try:
@@ -183,14 +185,15 @@ class CoadingTools():
                 "output": f"Error executing ls: {str(e)}"
             }
 
-    async def globe(self, pattern: List[str], path: str, currentWorkDir: str, tool_call_id: Optional[str] = None) -> Dict[str, Any]:
+    async def globe(self, pattern: List[str], path: str, currentWorkDir: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Search for files using glob patterns.
         """
         input_params = {
             "pattern": pattern,
             "path": path,
-            "currentWorkDir": currentWorkDir
+            "currentWorkDir": currentWorkDir,
+            "hide": hide
         }
 
         try:
