@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_core.tools import Tool
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import RunnableLambda, RunnableConfig
 from langchain_core.messages import HumanMessage, SystemMessage
 import os
 import re
@@ -519,11 +519,11 @@ class LLMFactory():
 
             # Create callbacks list with rate limiting
             handler = AgentCallbackHandler(self.memory)
-            callbacks = handler.as_list()
+            # callbacks = handler.as_list()
 
-            llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
+            # llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
 
-            agent = create_tool_calling_agent(llm_with_callbacks, tools, prompt)
+            agent = create_tool_calling_agent(llm, tools, prompt)
 
             # Creating agent executor.
             executor = AgentExecutor(
@@ -531,13 +531,15 @@ class LLMFactory():
                 tools=tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                callbacks=callbacks,
                 max_iterations=100,
                 early_stopping_method="generate"
             )
 
             # Invoking LLM
-            response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
+            response = await executor.ainvoke(
+                {"input": formated_input, "chat_history": chat_history_for_llm},
+                config=RunnableConfig(callbacks=handler.as_list()),
+            )
             # returning response bac to the aura agent.
             return response
 
