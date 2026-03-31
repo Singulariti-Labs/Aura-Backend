@@ -496,19 +496,6 @@ class LLMFactory():
                 print(f"[aura_executor] History length: {len(history)}, entry types: {[type(m).__name__ for m in history[:5]]}")
                 chat_history_for_llm.extend(format_to_langchain(history, provider=provider))
             
-            # NO NEED OF THIS.
-            # if chat_history:
-            #     # Convert Message objects to LangChain BaseMessage
-            #     for msg in chat_history:
-            #         role = msg.role
-            #         content = msg.content
-            #         if role == "user":
-            #             chat_history_for_llm.append(HumanMessage(content=content))
-            #         elif role == "assistant":
-            #             chat_history_for_llm.append(AIMessage(content=content, tool_calls=msg.tool_calls or []))
-            #         elif role == "tool":
-            #             chat_history_for_llm.append(ToolMessage(content=content, tool_call_id=msg.tool_call_id, name=msg.name))
-            
             # Prepare system prompt
             if system_prompt:
                 prompt = ChatPromptTemplate.from_messages([
@@ -529,10 +516,6 @@ class LLMFactory():
                 f"system_info: {system_info_str}\n"
                 f"today: {today}\n"
             )
-            
-            
-            
-
 
             # Create callbacks list with rate limiting
             handler = AgentCallbackHandler(self.memory)
@@ -540,7 +523,7 @@ class LLMFactory():
 
             llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
 
-            agent = create_openai_tools_agent(llm_with_callbacks, tools, prompt)
+            agent = create_tool_calling_agent(llm_with_callbacks, tools, prompt)
 
             # Creating agent executor.
             executor = AgentExecutor(
@@ -557,7 +540,6 @@ class LLMFactory():
             response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
             # returning response bac to the aura agent.
             return response
-                
 
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")

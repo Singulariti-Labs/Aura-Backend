@@ -352,22 +352,34 @@ class SupervisorAgent(BaseAgent):
                 else:
                     final_result = "Aura LLM run failed, task failed to complete successfull."
 
-                await send_last_assistant_message(
+                # SEND_RESPONSE_TO_CLIENT - Supervisor agent output
+                await send_ws_message(
+                    websocket=self.websocket,
                     task_id=self.task_id,
                     chat_id=self.chat_id,
-                    memory=self.memory,
-                    message_type="aura_message",
-                    coming_from="supervisor/server"
+                    type="aura_message",
+                    payload={
+                        "content": {
+                            "role": "assistant",
+                            "message": final_result,
+                        },
+                        "coming_from": "supervisor/server"
+                    }
                 )
+
+                # await send_last_assistant_message(
+                #     task_id=self.task_id,
+                #     chat_id=self.chat_id,
+                #     memory=self.memory,
+                #     message_type="aura_message",
+                #     coming_from="supervisor/server"
+                # )
 
                 return final_result
 
             else:
                 return ("Aura run failed, input query not available")
             
-
-            
-
         except Exception as e:
             error_message = f"An error occurred while processing your request, Aura run failed: {str(e)}"
             update_memory(role="tool", name = "aura", tool_call_id=tool_call_id, content=error_message, memory=self.memory)

@@ -19,6 +19,8 @@ from app.api.websocket_utils import send_ws_message
 from app.Option_Helper.web_scraper import simple_web_scraper
 from app.DB.Queries.agent_event import create_agent_event
 from app.Agents.context_agent import ContextAgent
+from app.Prompts.aura_new import buildAuraSystemPrompt
+from app.helper import update_memory
 
 import asyncio
 import json
@@ -63,6 +65,7 @@ class Agent(BaseAgent):
         self.screenshot = screenshot
         self.agent_prompt = AGENT_PROMPT
         self.history = history
+        self.aura_config = aura_config or AuraConfig()
         self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history)
         self.payload = payload
         
@@ -75,7 +78,7 @@ class Agent(BaseAgent):
         - Constructs a user message from the query and optional screenshot.
         - Stores the message in memory to maintain chat history.
         - Retrieves available tools for the agent.
-        - Calls the LLM agent executor with the query, chat history, tools, system prompt, and system info.
+        - Calls the Aura executor with the query, chat history, tools, system prompt, system info and aura config.
         - Returns the result produced by the agent.
 
         Raises:
@@ -103,9 +106,7 @@ class Agent(BaseAgent):
             user_message = Message.user_message(content=self.query, base64_images=self.screenshot)
             self.memory.add_message(user_message)
 
-            chat_history = self.memory.messages
-
-
+            # chat_history = self.memory.messages
             try:
                 # ⏸ Pause check before any heavy work
                 await task_manager.wait_if_paused(self.task_id)
@@ -160,19 +161,53 @@ class Agent(BaseAgent):
                     result = await context_agent.run_general_agent()
 
                 else:
-                    result = await self.llm_factory.agent_executor(
-                        llm=self.llm,
-                        query=self.query,
-                        screenshot=self.screenshot,
-                        system_prompt=self.agent_prompt,
-                        chat_history=chat_history,
-                        tools=available_tools,
+                    # Calling Aura Agent
+                    # Get all the tools for the Aura
+                    tools = self.tools.get_supervisor_tools()
+
+                    prompt = buildAuraSystemPrompt(
                         system_info=self.system_info,
-                        llm_provider=self.llm_provider,
-                        agent_type="main"
+                        tools=tools,
+                        chat_id=self.chat_id,
+                        task_id=self.task_id,
+                        config=self.aura_config,
                     )
 
-                # SEND_RESPONSE_TO_CLIENT - Agent output
+                    result = None
+                    result = await self.llm_factory.aura_executor(
+                        query=self.query,
+                        system_prompt=prompt,
+                        tools=tools,
+                        system_info=self.system_info,
+                        llm=self.llm,
+                        agent_type="aura",
+                        history=self.history
+                    )
+
+                    final_result = None
+                    if "output" in result:
+                        final_result = result.get("output")
+                    else:
+                        final_result = "Aura LLM run failed, task failed to complete successfull."
+
+                    # SEND_RESPONSE_TO_CLIENT - Aura Agent output
+                    await send_ws_message(
+                        websocket=self.websocket,
+                        task_id=self.task_id,
+                        chat_id=self.chat_id,
+                        type="aura_message",
+                        payload={
+                            "content": {
+                                "role": "assistant",
+                                "message": final_result,
+                            },
+                            "coming_from": "aura_agent/server"
+                        }
+                    )
+
+                    update_memory(role="assistant", content=final_result, memory=self.memory)
+                
+                # SEND_STATUS_TO_CLIENT - Aura Run Completed
                 print(f"\n\n----- AGENT RUN FINISHED -----\n\n")
 
                 await send_ws_message(
