@@ -153,23 +153,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not using_custom:
                     logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
 
-                if not using_custom and payload.get("option") == "smart":
-                    await send_ws_message(
-                        websocket,
-                        type="aura_message",
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "tool": "aura",
-                                "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                            },
-                            "coming_from": "aura/server"
-                        }
-                    )
-                    await update_task_status(pool=pool, task_id=task_id, status="failed")
-                    return
+                # IF USING SMART MODE WITHOUT OWN API KEY
+                # if not using_custom and payload.get("option") == "smart":
+                #     await send_ws_message(
+                #         websocket,
+                #         type="aura_message",
+                #         task_id=task_id,
+                #         chat_id=chat_id,
+                #         payload={
+                #             "content": {
+                #                 "role": "assistant",
+                #                 "tool": "aura",
+                #                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
+                #             },
+                #             "coming_from": "aura/server"
+                #         }
+                #     )
+                #     await update_task_status(pool=pool, task_id=task_id, status="failed")
+                #     return
                 
                 # Extract aura_config from payload
                 aura_config_data = payload.get("aura_config", {})
@@ -181,7 +182,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     boot_me=aura_config_data.get("boot_me", False),
                 )
 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config)
+                # Extract history from payload
+                history = payload.get("messages", [])
+
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history)
 
                 # Notify client that processing has started
                 await send_ws_message(
@@ -221,40 +225,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "output": str(response)
                     }
                 
-                # Send back the final response [NO NEED TO SEND THE FINAL RESPONSE AS THE RESPONSE IS ALREADY STREAMED]
-                # await send_ws_message(
-                #     websocket,
-                #     type="server_tool_response",
-                #     task_id=task_id,
-                #     chat_id=chat_id,
-                #     payload={
-                #         "tool": "aura",
-                #         "content": {
-                #             "role": "assistant",
-                #             "message": final_result["output"],
-                #             "status": "success"
-                #         }
-                #     }
-                # )
-                
                 # Retrieve task state for event logging
                 # task_state = task_manager.get_state(task_id)
-
-                # Insert AURA complex agent event in the DB - FINAL ANSWER
-                # await create_agent_event(
-                #     pool=pool,
-                #     task_id=task_id,
-                #     role="tool",
-                #     message_type="server_tool_response",
-                #     tool="aura",
-                #     payload= {
-                #         "content": {
-                #             "message": final_result["output"],
-                #             "status": "success"
-                #         }
-                #     },
-                #     seq = task_state.get_next_seq() if task_state else 1
-                # )
 
                 # UPDATE TASK STATUS TO COMPLETED
                 await update_task_status(pool=pool, task_id=task_id, status="completed")
@@ -320,7 +292,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 task_id = message.get("task_id") or str(uuid.uuid4())
                 chat_id = message.get("chat_id")
 
-                if msg_type == "task_request":
+                if msg_type in ("task_request", "boot_me", "compress_context"):
 
                     # Create task state with WebSocket and DB Pool
                     task_manager.create_task(task_id, websocket, pool)
