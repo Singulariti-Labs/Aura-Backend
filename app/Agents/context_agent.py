@@ -219,6 +219,7 @@ class ContextAgent():
             # 1. TOOL CALL START
             if event_type == "on_tool_start":
                 tool_name = event["name"]
+                tool_call_id = event.get("run_id") or event.get("id")
                 tool_input = event["data"].get("input")
 
                 await send_ws_message(
@@ -227,8 +228,11 @@ class ContextAgent():
                     task_id=self.task_id,
                     chat_id=self.chat_id,
                     payload={
+                        "role": "tool",
                         "tool": tool_name,
+                        "tool_call_id": tool_call_id,
                         "input": tool_input,
+                        "coming_from": "context_agent/server"
                     },
                 )
 
@@ -241,6 +245,7 @@ class ContextAgent():
                     tool=tool_name,
                     payload={
                         "tool": tool_name,
+                        "tool_call_id": tool_call_id,
                         "input": tool_input,
                     },
                     seq=self.task_state.get_next_seq()
@@ -252,6 +257,7 @@ class ContextAgent():
             # 2. TOOL CALL END
             elif event_type == "on_tool_end":
                 tool_name = event["name"]
+                tool_call_id = event.get("run_id") or event.get("id")
                 tool_output = event["data"].get("output")
 
                 print(f"\n\n✅ TOOL NAME: {tool_name}")
@@ -264,10 +270,12 @@ class ContextAgent():
                     chat_id=self.chat_id,
                     payload={
                         "tool": tool_name,
+                        "tool_call_id": tool_call_id,
                         "content": {
                             "role": "tool",
                             "output": tool_output.content,
                         },
+                        "coming_from": "context_agent/server"
                     },
                 )
 
@@ -280,6 +288,7 @@ class ContextAgent():
                     tool=tool_name,
                     payload={
                         "tool": tool_name,
+                        "tool_call_id": tool_call_id,
                         "content": {
                             "role": "tool",
                             "output": tool_output.content,
@@ -315,13 +324,14 @@ class ContextAgent():
                             "content": {
                                 "role": "assistant",
                                 "message": content_text       # delta
-                            }
+                            },
+                            "coming_from": "context_agent/server"
                         },
                     )
 
         return current_response
 
-    async def run_general_agent(self):
+    async def  run_general_agent(self):
         """
         Run the general agent to give answer to the user query realted to general questions.
         """

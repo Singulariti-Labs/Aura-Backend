@@ -16,6 +16,7 @@ import re
 import os
 import openai
 import litellm
+import uuid
 
 from dotenv import load_dotenv
 
@@ -34,7 +35,7 @@ class FileEditor():
         self.websocket = self.task_state.websocket
         self.dbpool = self.task_state.dbpool
     
-    async def create_file(self, path: str, content: str, permissions: str = "644", tool_call_id: Optional[str] = None):
+    async def create_file(self, path: str, content: str, permissions: str = "644", hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Create File Tool which creates file at the given path"""
         try:
             await send_ws_message(
@@ -44,11 +45,14 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "create_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "content": content,
-                        "permissions": permissions
-                    }
+                        "permissions": permissions,
+                        "hide": hide
+                    },
+                    "coming_from": "create_file_tool_func/server"
                 }
             )
 
@@ -63,8 +67,9 @@ class FileEditor():
                   "input": {
                         "path": path,
                         "content": content,
-                        "permissions": permissions
-                },
+                        "permissions": permissions,
+                        "hide": hide
+                }
             },
                 seq = self.task_state.get_next_seq()
             )
@@ -110,7 +115,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Error in creating file: {str(e)}"}
 
-    async def str_replace(self, path: str, new_str: str, old_str: str, tool_call_id: Optional[str] = None):
+    async def str_replace(self, path: str, new_str: str, old_str: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Replaced string {old_str} with {new_str}"""
         try:
             await send_ws_message(
@@ -120,11 +125,14 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "str_replace",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "new_str": new_str,
-                        "old_str": old_str
-                    } 
+                        "old_str": old_str,
+                        "hide": hide
+                    },
+                    "coming_from": "str_replace_tool_func/server"
                 }
             )
 
@@ -139,7 +147,8 @@ class FileEditor():
                   "input": {
                         "path": path,
                         "new_str": new_str,
-                        "old_str": old_str
+                        "old_str": old_str,
+                        "hide": hide
                 },
             },
                 seq = self.task_state.get_next_seq()
@@ -184,7 +193,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Error in replacing string: {str(e)}"}
 
-    async def rewrite_file(self, path: str, content: str, permissions: str="644", tool_call_id: Optional[str] = None):
+    async def rewrite_file(self, path: str, content: str, permissions: str="644", hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Rewriting full file with content"""
         try:
             await send_ws_message(
@@ -194,11 +203,14 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "rewrite_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "content": content,
-                        "permissions": permissions
-                    } 
+                        "permissions": permissions,
+                        "hide": hide
+                    },
+                    "coming_from": "rewrite_file_tool_func/server"
                 }
             )
 
@@ -213,8 +225,10 @@ class FileEditor():
                   "input": {
                         "path": path,
                         "content": content,
-                        "permissions": permissions
-                    }
+                        "permissions": permissions,
+                        "hide": hide
+                    },
+                    "coming_from": "rewrite_file_tool_func/server"
                 },
                 seq = self.task_state.get_next_seq()
             )
@@ -257,7 +271,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Error in rewriting file: {str(e)}"}
     
-    async def delete_file(self, path:str, tool_call_id: Optional[str] = None):
+    async def delete_file(self, path:str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Deleting file located at path {path}"""
         try:
             await send_ws_message(
@@ -267,9 +281,12 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "delete_file",
+                    "tool_call_id": tool_call_id,
                     "input": {
-                        "path": path
-                    } 
+                        "path": path,
+                        "hide": hide
+                    },
+                    "coming_from": "delete_file_tool_func/server"
                 }
             )
 
@@ -282,7 +299,8 @@ class FileEditor():
                 tool="delete_file",
                 payload= {
                   "input": {
-                        "path": path
+                        "path": path,
+                        "hide": hide
                 },
             },
                 seq = self.task_state.get_next_seq()
@@ -328,7 +346,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Error while deleting file: {str(e)}"}
     
-    async def insert_str(self, path:str, insert_line_no: int, new_str: str, tool_call_id: Optional[str] = None):
+    async def insert_str(self, path:str, insert_line_no: int, new_str: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Inserting string {new_str} at the line number {insert_line}"""
         try:
             await send_ws_message(
@@ -338,11 +356,14 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "insert_str",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": path,
                         "insert_line_no": insert_line_no,
-                        "new_str": new_str
-                    } 
+                        "new_str": new_str,
+                        "hide": hide
+                    },
+                    "coming_from": "insert_str_tool_func/server"
                 }
             )
 
@@ -357,7 +378,8 @@ class FileEditor():
                   "input": {
                         "path": path,
                         "insert_line_no": insert_line_no,
-                        "new_str": new_str
+                        "new_str": new_str,
+                        "hide": hide
                 },
             },
                 seq = self.task_state.get_next_seq()
@@ -407,13 +429,13 @@ class FileEditor():
     
 
 
-    async def edit_file(self, target_file: str, instructions: str, code_edit: str, tool_call_id: Optional[str] = None):
+    async def edit_file(self, target_file: str, instructions: str, code_edit: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Edit a file by sending edit instructions to client via websocket"""
         
         new_content = None
         error_message = None
         try:
-            original_content = await self.get_file_content(target_file= target_file)
+            original_content = await self.get_file_content(target_file= target_file, tool_call_id=str(uuid.uuid4()))
 
             if original_content:
                 new_content, error_message = await self._call_ai_editor(file_content=original_content, code_edit=code_edit, instructions=instructions, path=target_file)
@@ -456,11 +478,14 @@ class FileEditor():
                         task_id=self.task_id,
                         payload={
                             "tool": "edit_file",
+                            "tool_call_id": tool_call_id,
                             "input": {
                                 "path": target_file,
                                 "original_content": original_content,
-                                "updated_content": new_content
-                            } 
+                                "updated_content": new_content,
+                                "hide": hide
+                            },
+                            "coming_from": "edit_file_tool_func/server"
                         }
                     )
 
@@ -475,7 +500,8 @@ class FileEditor():
                             "input": {
                                 "path": target_file,
                                 "orignal_content": original_content,
-                                "updated_content": new_content
+                                "updated_content": new_content,
+                                "hide": hide
                             }
                         },
                         seq = self.task_state.get_next_seq()
@@ -534,7 +560,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Unknown error while editing file: {str(e)}"}
 
-    async def get_file_content(self, target_file: str):
+    async def get_file_content(self, target_file: str, tool_call_id: Optional[str] = None):
         """Get the content of the file from client"""
         try:
             await send_ws_message(
@@ -544,9 +570,11 @@ class FileEditor():
                 task_id=self.task_id,
                 payload={
                     "tool": "get_file_content",
+                    "tool_call_id": tool_call_id,
                     "input": {
                         "path": target_file,
-                    } 
+                    },
+                    "coming_from": "get_file_content_tool_func/server"
                 }
             )
 

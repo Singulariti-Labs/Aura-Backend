@@ -46,16 +46,18 @@ class AskTool(BaseTool):
         result = {"text": text, "attachments": attachments}
         await send_ws_message(
             websocket=websocket,
-            type="aura_message",
+            type="server_tool_response",
             task_id=self.task_id,
             chat_id=self.chat_id,
             payload={
                 "tool": "ask",
+                "tool_call_id": tool_call_id,
                 "content":{
-                    "role": "tool",
+                    "role": "tool",                    
                     "message":json.dumps(result),
                     "status": "success"
-                }
+                },
+                "coming_from": "ask_tool_func/server"
             }
         )
 
@@ -64,7 +66,7 @@ class AskTool(BaseTool):
             pool=dbpool,
             task_id=self.task_id,
             role="tool",
-            message_type="aura_message",
+            message_type="server_tool_response",
             tool="ask",
             payload= {
                   "content": {

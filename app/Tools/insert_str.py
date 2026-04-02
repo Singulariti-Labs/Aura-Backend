@@ -41,6 +41,7 @@ class InsertStrTool(BaseTool):
             path=inputs.path,
             insert_line_no=inputs.insert_line_no,
             new_str=inputs.new_str,
+            hide=inputs.hide,
             tool_call_id=tool_call_id,
         )
 

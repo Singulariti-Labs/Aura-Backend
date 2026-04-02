@@ -6,13 +6,13 @@ import uuid
 from app.Tools.base_tool import BaseTool
 from app.Tools.tool_input_parser import ToolInputParser
 from app.LLM.memory import Memory
-from app.Types.agent_types import SupervisorToolInput
+from app.Types.agent_types import SupervisorToolInput, SystemInfo
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
 
 class SupervisorTool(BaseTool):
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, supervisor_agent: Optional["SupervisorAgent"] = None, system_info: Optional[SystemInfo] = None):
         """
         Initializes the SupervisorTool with a language model and optional memory.
 
@@ -31,6 +31,7 @@ class SupervisorTool(BaseTool):
             args_schema=SupervisorToolInput
         )
         self.supervisor_agent = supervisor_agent
+        self.system_info = system_info
 
     async def run(self, inputs: SupervisorToolInput):
         """
@@ -51,7 +52,7 @@ class SupervisorTool(BaseTool):
         """
 
         query = inputs.query
-        system_info = inputs.system_info
+        system_info = self.system_info
 
         tool_call_id = str(uuid.uuid4())
         response = await self.supervisor_agent.invoke_aura(

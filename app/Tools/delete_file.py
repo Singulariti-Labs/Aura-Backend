@@ -27,6 +27,7 @@ class DeleteFileTool(BaseTool):
         tool_call_id = str(uuid.uuid4())
         response = await self.file_editor.delete_file(
             path=inputs.path,
+            hide=inputs.hide,
             tool_call_id=tool_call_id,
         )
         return response

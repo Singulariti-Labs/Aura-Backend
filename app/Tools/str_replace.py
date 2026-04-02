@@ -45,6 +45,7 @@ class StrReplaceTool(BaseTool):
             path=path,
             new_str=new_str,
             old_str=old_str,
+            hide=inputs.hide,
             tool_call_id = tool_call_id
         )
         return response
