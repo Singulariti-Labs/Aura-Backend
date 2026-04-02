@@ -38,11 +38,13 @@ class CreateFileTool(BaseTool):
         path = inputs.path
         content = inputs.content
         permissions = inputs.permissions
+        hide = inputs.hide
         tool_call_id = str(uuid.uuid4())
         response = await self.file_editor.create_file(
             path=path,
             content=content,
             permissions=permissions,
+            hide=hide,
             tool_call_id = tool_call_id
         )
         return response

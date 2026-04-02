@@ -3,15 +3,15 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.Agents.base_agent import BaseAgent
-from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus, ROLE_TYPE
+from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus, ROLE_TYPE, AuraConfig
 from app.Agents.planner import PlannerAgent
 from app.Prompts.supervisor import SUPERVISOR_PROMPT
 from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Message, Memory
-from app.helper import update_memory
+from app.helper import update_memory, send_last_assistant_message
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
-from app.Prompts.aura import AURA_PROMPT
+from app.Prompts.aura_new import buildAuraSystemPrompt
 
 if TYPE_CHECKING:
     from app.Tools.tool_calling import Tools
@@ -25,7 +25,7 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = []):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
@@ -41,6 +41,8 @@ class SupervisorAgent(BaseAgent):
         self.tools = tools
         self.step_results = {}
         self.validate_response = False
+        self.aura_config = aura_config or AuraConfig()
+        self.history = history
         # self.task_manager = TaskManager()
 
 
@@ -114,14 +116,6 @@ class SupervisorAgent(BaseAgent):
                 # logger.info("Processing as complex task")
                 result = await self.handle_complex_task(plan)
 
-            # Store final result in memory
-            if "output" in result:
-                final_result = result["output"]
-                update_memory(role="assistant", content=final_result, memory=self.memory)
-            elif isinstance(result, str):
-                update_memory(role="assistant", content=result, memory=self.memory)
-            else:
-                update_memory(role="assistant", content="No response recived", memory=self.memory)
             return result
 
         except Exception as e:
@@ -331,7 +325,13 @@ class SupervisorAgent(BaseAgent):
             # Get all the tools for the Aura
             tools = self.tools.get_supervisor_tools()
 
-            prompt = AURA_PROMPT
+            prompt = buildAuraSystemPrompt(
+                system_info=system_info,
+                tools=tools,
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                config=self.aura_config,
+            )
 
             result = None
             # LLM call
@@ -342,7 +342,8 @@ class SupervisorAgent(BaseAgent):
                     tools=tools,
                     system_info=system_info,
                     llm=self.llm,
-                    agent_type="aura"
+                    agent_type="aura",
+                    history=self.history
                 )
 
                 final_result = None
@@ -351,30 +352,34 @@ class SupervisorAgent(BaseAgent):
                 else:
                     final_result = "Aura LLM run failed, task failed to complete successfull."
 
+                # SEND_RESPONSE_TO_CLIENT - Supervisor agent output
                 await send_ws_message(
                     websocket=self.websocket,
-                    type="aura_message",
                     task_id=self.task_id,
                     chat_id=self.chat_id,
-                    payload = {
+                    type="aura_message",
+                    payload={
                         "content": {
                             "role": "assistant",
-                            "tool": "aura-agent",
-                            "message": final_result
-                        }
+                            "message": final_result,
+                        },
+                        "coming_from": "supervisor/server"
                     }
                 )
 
-                update_memory(role="assistant", content=final_result, memory=self.memory)
+                # await send_last_assistant_message(
+                #     task_id=self.task_id,
+                #     chat_id=self.chat_id,
+                #     memory=self.memory,
+                #     message_type="aura_message",
+                #     coming_from="supervisor/server"
+                # )
 
                 return final_result
 
             else:
                 return ("Aura run failed, input query not available")
             
-
-            
-
         except Exception as e:
             error_message = f"An error occurred while processing your request, Aura run failed: {str(e)}"
             update_memory(role="tool", name = "aura", tool_call_id=tool_call_id, content=error_message, memory=self.memory)

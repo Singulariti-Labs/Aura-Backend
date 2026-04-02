@@ -46,6 +46,7 @@ class GrepTool(BaseTool):
             path=inputs.path,
             currentWorkDir=inputs.currentWorkDir,
             include=inputs.include,
+            hide=inputs.hide,
             tool_call_id=tool_call_id
         )
         return response

@@ -42,6 +42,7 @@ class LSTool(BaseTool):
             path=inputs.path,
             ignore=inputs.ignore,
             currentWorkDir=inputs.currentWorkDir,
+            hide=inputs.hide,
             tool_call_id=tool_call_id
         )
         return response

@@ -52,11 +52,13 @@ async def web_search(query: str, task_id: str, chat_id: str,num_results: Optiona
             chat_id=chat_id,
             payload={
                 "tool": "web_search",
+                "tool_call_id": tool_call_id,
                 "content":{
                     "role": "tool",
                     "message": json.dumps(result),
                     "status": "success"
-                }
+                },
+                "coming_from": "web_search_tool_func/server"
             }
         )
 
@@ -219,11 +221,13 @@ async def web_scraper(urls_string: str, workspace_path: str, chat_name: str, tas
         chat_id=chat_id,
         payload={
             "tool": "web_scraping",
+            "tool_call_id": tool_call_id,
             "content":{
                 "role": "tool",
                 "message": message,
                 "status": "success"
-            }
+            },
+            "coming_from": "web_scraping_tool_func/server"
         }
     )
 

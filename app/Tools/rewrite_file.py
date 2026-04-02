@@ -32,6 +32,7 @@ class RewriteFileTool(BaseTool):
             path=inputs.path,
             content=inputs.content,
             permissions=inputs.permissions,
+            hide=inputs.hide,
             tool_call_id=tool_call_id,
         )
         return response

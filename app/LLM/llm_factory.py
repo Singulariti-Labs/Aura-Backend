@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_core.tools import Tool
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import RunnableLambda, RunnableConfig
 from langchain_core.messages import HumanMessage, SystemMessage
 import os
 import re
@@ -23,6 +23,7 @@ from app.helper import update_memory, update_input_messages_with_screenshot_and_
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler
+from app.utils.format_messages import format_to_langchain
 from datetime import datetime
 
 
@@ -65,7 +66,7 @@ class LLMFactory():
             
             elif llm_config.provider == "anthropic":
                 api_key = user_api_key or os.environ.get("ANTHROPIC_API_KEY")
-                
+                 
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
@@ -99,7 +100,17 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("GOOGLE_API_KEY environment variable is not set")
                 
-                return ChatGoogleGenerativeAI(model=llm_config.model_name, api_key=api_key)
+                return ChatGoogleGenerativeAI(
+                    model=llm_config.model_name, 
+                    api_key=api_key,  
+                    model_kwargs={
+                        "tool_config": {
+                            "function_calling_config": {
+                                "mode": "ANY"
+                            }
+                        }
+                    }
+                )
             
             elif llm_config.provider == "agent_router":
                 api_key = user_api_key or os.environ.get("AGENTROUTER_API_KEY")
@@ -458,6 +469,7 @@ class LLMFactory():
             chat_history: Optional[List[Message]] = None,
             base_64_image:  Optional[List[str]] = None,
             max_tokens: int = 128000,
+            history: List[Dict] = []
         ):
         """
         Method to run the aura agent with the given task in a loop till the task is not completed.
@@ -476,14 +488,19 @@ class LLMFactory():
             - The response from the agent or LLM after processing the query.
         """
         try:
-            # Prepare chat history  WIP**- Adding chat_histroy later when we introduce memory for prev_message.
-            # if chat_history:
-            #     chat_history_for_llm = [message.to_dict() for message in chat_history]
+            # Prepare chat history from memory and provided history
+            chat_history_for_llm = []
+            if history:
+                provider = self.detect_provider_from_llm(llm)
+                # Debug: log history shape to detect malformed entries
+                print(f"[aura_executor] History length: {len(history)}, entry types: {[type(m).__name__ for m in history[:5]]}")
+                chat_history_for_llm.extend(format_to_langchain(history, provider=provider))
             
             # Prepare system prompt
             if system_prompt:
                 prompt = ChatPromptTemplate.from_messages([
                     ("system", system_prompt),
+                    MessagesPlaceholder(variable_name="chat_history"),
                     ("human", "{input}"),
                     MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
@@ -499,14 +516,14 @@ class LLMFactory():
                 f"system_info: {system_info_str}\n"
                 f"today: {today}\n"
             )
-            
-            
-            agent = create_openai_tools_agent(llm, tools, prompt)
 
             # Create callbacks list with rate limiting
-            callbacks = [
-                AgentCallbackHandler(self.memory),
-            ]
+            handler = AgentCallbackHandler(self.memory)
+            # callbacks = handler.as_list()
+
+            # llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
+
+            agent = create_tool_calling_agent(llm, tools, prompt)
 
             # Creating agent executor.
             executor = AgentExecutor(
@@ -514,16 +531,17 @@ class LLMFactory():
                 tools=tools,
                 verbose=True,
                 return_intermediate_steps=True,
-                callbacks=callbacks,
                 max_iterations=100,
                 early_stopping_method="generate"
             )
 
             # Invoking LLM
-            response = await executor.ainvoke({"input": formated_input})
+            response = await executor.ainvoke(
+                {"input": formated_input, "chat_history": chat_history_for_llm},
+                config=RunnableConfig(callbacks=handler.as_list()),
+            )
             # returning response bac to the aura agent.
             return response
-                
 
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")

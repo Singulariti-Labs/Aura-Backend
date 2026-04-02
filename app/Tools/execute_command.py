@@ -47,6 +47,7 @@ class ExecuteCommandTool(BaseTool):
             pty=inputs.pty,
             security=inputs.security,
             ask=inputs.ask,
+            hide=inputs.hide,
             tool_call_id=tool_call_id
         )
         return response

@@ -49,16 +49,18 @@ class CompleteTool(BaseTool):
             result = {"text": text, "attachments": attachments}
             await send_ws_message(
                 websocket=websocket,
-                type="aura_message",
+                type="server_tool_response",
                 task_id=self.task_id,
                 chat_id=self.chat_id,
                 payload={
                     "tool": "complete",
+                    "tool_call_id": tool_call_id,
                     "content":{
                         "role": "tool",
                         "message":json.dumps(result),
                         "status": "success"
-                    }
+                    },
+                    "coming_from": "complete_tool_func/server"
                 }
             )
             
@@ -67,7 +69,7 @@ class CompleteTool(BaseTool):
                 pool=dbpool,
                 task_id=self.task_id,
                 role="tool",
-                message_type="aura_message",
+                message_type="server_tool_response",
                 tool="complete",
                 payload= {
                     "content": {

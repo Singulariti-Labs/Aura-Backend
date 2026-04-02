@@ -12,7 +12,7 @@ import json
 # MEMORY - WIP
 def update_memory(
         role: ROLE_TYPE,  # type: ignore
-        content: str,
+        content: Union[str, List[Any]],
         memory: Memory,
         base64_images: Optional[List[str]] = None,
         **kwargs,
@@ -40,8 +40,8 @@ def update_memory(
             raise ValueError(f"Unsupported message role: {role}")
 
         # Create message with appropriate parameters based on role
-        kwargs = {"base64_images": base64_images, **(kwargs if role == "tool" else {})}
-        memory.add_message(message_map[role](content, **kwargs))
+        full_kwargs = {"base64_images": base64_images, **kwargs}
+        memory.add_message(message_map[role](content, **full_kwargs))
     
 def update_input_messages_with_screenshot_and_context(
     input_message: List[dict],
@@ -65,10 +65,8 @@ def update_input_messages_with_screenshot_and_context(
     # Construct the updated message parts
     image_part = (
         {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}"  # JPEG format make png
-            }
+            "type": "image",
+            "image_url": f"data:image/jpeg;base64,{base64_image}"  # JPEG format make png
         } if base64_image else None
     )
 
@@ -82,9 +80,10 @@ def update_input_messages_with_screenshot_and_context(
 
         # Ensure content is a list
         if isinstance(content, list):
-            # Update the first text block (assuming it's the query)
-            if content and content[0]["type"] == "text" and "query:" in content[0]["text"]:
-                content[0]["text"] += f"\nscreen_context: {parsed_screen_context}" if parsed_screen_context else ""
+            # Find and update the text block that contains the query
+            text_block = next((block for block in content if block.get("type") == "text" and "query:" in block.get("text", "")), None)
+            if text_block:
+                text_block["text"] += f"\nscreen_context: {parsed_screen_context}" if parsed_screen_context else ""
 
             # Append the image if provided
             if image_part:
@@ -108,89 +107,90 @@ def update_input_messages_with_screenshot_and_context(
 
     return input_message
 
-async def send_last_assistant_message(task_id: str, chat_id: str, memory: Optional[Memory], tool_name: Optional[str] = None):
-    """Sends the Last role = assistant message to the client. for displaying user.
+async def send_last_assistant_message(
+    task_id: str, 
+    chat_id: str, 
+    memory: Optional[Memory], 
+    tool_name: Optional[str] = None, 
+    message_type: str = "aura_thinking",
+    coming_from: str = "agent_callback_handler"
+):
+    """Sends the Last role = assistant message to the client for displaying to the user.
     
     input:
         - memory(Optional[Memory]): Chat Memory,
-        - task_id(str) : unique identfier for the task,
-        - chat_id(str) : unique identfier for the chat
-
+        - task_id(str) : unique identifier for the task,
+        - chat_id(str) : unique identifier for the chat,
+        - tool_name(Optional[str]): name of the tool being called (if applicable),
+        - message_type(str): "aura_thinking" or "aura_message",
+        - coming_from(str): sender location identifier.
     """
     try:
-
         task_state = task_manager.get_state(task_id)
         websocket = task_state.websocket
         dbpool = task_state.dbpool
 
         messages = memory.messages
 
-        last_assistant_msg = last_assistant_content = next((msg.content for msg in reversed(messages) if msg.role == "assistant"), None)
+        # Retrieve the serialized last assistant message
+        last_assistant = next((msg.to_dict() for msg in reversed(messages) if msg.role == "assistant"), None)
 
-        if last_assistant_msg:
+        if last_assistant:
+            last_assistant_msg = last_assistant.get("content")
+            usage = last_assistant.get("usage")
+            details = last_assistant.get("details")
 
-            # this message to send the assistant message and to tell which tool we are going to call next in perticular step or thinking message
-            if tool_name:
-                await send_ws_message(
-                    websocket=websocket,
-                    type="aura_thinking",
-                    task_id=task_id,
-                    chat_id=chat_id,
-                    payload = {
-                        "content": {
-                            "role": "assistant",
-                            "tool": tool_name,
-                            "message": last_assistant_msg
-                        }
-                    }
-                )
+            # Construct the payload
+            payload = {
+                "content": {
+                    "role": "assistant",
+                    "message": last_assistant_msg,
+                    "usage": usage,
+                    "details": details
+                },
+                "coming_from": coming_from
+            }
 
-                # Insert AURA complex agent event in the DB 
-                await create_agent_event(
-                    pool=dbpool,
-                    task_id=task_id,
-                    role="assistant",
-                    message_type="aura_thinking",
-                    tool=tool_name,
-                    payload= {
-                        "content": {
-                            "message": last_assistant_msg
-                        }
-                    },
-                    seq = task_state.get_next_seq()
-                )
+            # Add tool_name only if it's aura_thinking
+            if tool_name and message_type == "aura_thinking":
+                payload["content"]["tool"] = tool_name
+
+            await send_ws_message(
+                websocket=websocket,
+                type=message_type,
+                task_id=task_id,
+                chat_id=chat_id,
+                payload=payload
+            )
+
+            # Prepare common event payload
+            event_payload = {
+                "content": {
+                    "message": last_assistant_msg,
+                    "usage": usage,
+                    "details": details
+                }
+            }
+
+            # Insert AURA agent event in the DB
+            event_kwargs = {
+                "pool": dbpool,
+                "task_id": task_id,
+                "role": "assistant",
+                "message_type": message_type,
+                "payload": event_payload,
+                "seq": task_state.get_next_seq()
+            }
             
-            else:
-                await send_ws_message(
-                    websocket=websocket,
-                    type="aura_thinking",
-                    task_id=task_id,
-                    chat_id=chat_id,
-                    payload = {
-                        "content": {
-                            "role": "assistant",
-                            "message": last_assistant_msg
-                        }
-                    }
-                )
-                
-                # Insert AURA complex agent thinking event in the DB 
-                await create_agent_event(
-                    pool=dbpool,
-                    task_id=task_id,
-                    role="assistant",
-                    message_type="aura_thinking",
-                    payload= {
-                        "content": {
-                            "message": last_assistant_msg
-                        }
-                    },
-                    seq = task_state.get_next_seq()
-                )
+            # include tool only if aura_thinking
+            if tool_name and message_type == "aura_thinking":
+                event_kwargs["tool"] = tool_name
+
+            await create_agent_event(**event_kwargs)
+
 
     except Exception as e:
         print(f"Error while sending assistant message to the client: {e}")
-        
 
 def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, Any], str]):
     """
