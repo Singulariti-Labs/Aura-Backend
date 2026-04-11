@@ -127,10 +127,34 @@ async def websocket_endpoint(websocket: WebSocket):
                     cwd=cwd_path
                 )
                 
-                # Check for LLM config override from user settings
+                # Check for LLM config override
                 current_llm_config = llm_config
                 using_custom = False
-                if user_settings and "api_creds" in user_settings:
+
+                # 1. Check for API_Config in the payload (per-message override)
+                api_config_payload = payload.get("API_Config")
+                if api_config_payload and isinstance(api_config_payload, dict):
+                    raw_provider = api_config_payload.get("provider")
+                    custom_api_key = api_config_payload.get("key")
+                    is_active = api_config_payload.get("is_active", False)
+
+                    if is_active and raw_provider and custom_api_key:
+                        target_provider = PROVIDER_MAPPING.get(raw_provider)
+                        if target_provider:
+                            default_model = DEFAULT_MODELS.get(target_provider)
+                            try:
+                                current_llm_config = LLMConfig(
+                                    provider=target_provider,
+                                    model_name=default_model,
+                                    api_key=custom_api_key
+                                )
+                                using_custom = True
+                                logger.info(f"Using custom LLM config from payload: {target_provider}")
+                            except Exception as e:
+                                logger.error(f"Failed to create custom LLM config from payload: {e}")
+
+                # 2. If not using custom from payload, check user settings from DB
+                if not using_custom and user_settings and "api_creds" in user_settings:
                     api_creds = user_settings.get("api_creds", {})
                     raw_provider = api_creds.get("provider")
                     custom_api_key = api_creds.get("key")
@@ -146,31 +170,31 @@ async def websocket_endpoint(websocket: WebSocket):
                                     api_key=custom_api_key
                                 )
                                 using_custom = True
-                                logger.info(f"Using custom LLM config for user using, {target_provider}")
+                                logger.info(f"Using custom LLM config from user settings: {target_provider}")
                             except Exception as e:
-                                logger.error(f"Failed to create custom LLM config: {e}. Falling back to default.")
+                                logger.error(f"Failed to create custom LLM config from settings: {e}. Falling back to default.")
                 
                 if not using_custom:
                     logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
 
                 # IF USING SMART MODE WITHOUT OWN API KEY
-                # if not using_custom and payload.get("option") == "smart":
-                #     await send_ws_message(
-                #         websocket,
-                #         type="aura_message",
-                #         task_id=task_id,
-                #         chat_id=chat_id,
-                #         payload={
-                #             "content": {
-                #                 "role": "assistant",
-                #                 "tool": "aura",
-                #                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                #             },
-                #             "coming_from": "aura/server"
-                #         }
-                #     )
-                #     await update_task_status(pool=pool, task_id=task_id, status="failed")
-                #     return
+                if not using_custom and payload.get("option") == "smart":
+                    await send_ws_message(
+                        websocket,
+                        type="aura_message",
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        payload={
+                            "content": {
+                                "role": "assistant",
+                                "tool": "aura",
+                                "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
+                            },
+                            "coming_from": "aura/server"
+                        }
+                    )
+                    await update_task_status(pool=pool, task_id=task_id, status="failed")
+                    return
                 
                 # Extract aura_config from payload
                 aura_config_data = payload.get("aura_config", {})
