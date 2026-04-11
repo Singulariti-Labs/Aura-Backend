@@ -60,9 +60,13 @@ RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 # Provider mapping for user settings
 PROVIDER_MAPPING = {
     "Open AI": "openai",
+    "openai": "openai",
     "Anthropic": "anthropic",
+    "anthropic": "anthropic",
     "Open Router": "open_router",
-    "Gemini": "google"
+    "open_router": "open_router",
+    "Gemini": "google",
+    "gemini": "google"
 }
 
 # Default models for each provider when user overrides
