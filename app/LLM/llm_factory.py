@@ -100,17 +100,29 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("GOOGLE_API_KEY environment variable is not set")
                 
+                if llm_config.model_name == "gemini-3-flash-preview":
+                    return ChatGoogleGenerativeAI(
+                        model=llm_config.model_name, 
+                        api_key=api_key,
+                        thinking_level="low",
+                        model_kwargs={
+                            "tool_config": {
+                                "function_calling_config": {
+                                    "mode": "ANY"
+                                }
+                            }
+                        }
+                    )
                 return ChatGoogleGenerativeAI(
-                    model=llm_config.model_name, 
-                    api_key=api_key,  
+                    model=llm_config.model_name,
+                    api_key=api_key,
                     model_kwargs={
                         "tool_config": {
                             "function_calling_config": {
                                 "mode": "ANY"
                             }
                         }
-                    }
-                )
+                    })
             
             elif llm_config.provider == "agent_router":
                 api_key = user_api_key or os.environ.get("AGENTROUTER_API_KEY")

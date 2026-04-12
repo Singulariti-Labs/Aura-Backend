@@ -32,7 +32,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="google", model_name="gemini-2.5-flash")
+llm_config = LLMConfig(provider="google", model_name="gemini-3-flash-preview")
 
 # task_manager = TaskManager()
 
