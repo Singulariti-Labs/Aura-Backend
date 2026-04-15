@@ -25,6 +25,7 @@ class AuraConfig(BaseModel):
     timezone: str = Field(default="Asia/Kolkata", description="User timezone")
     compression: bool = Field(default=False, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
+    local_skills: Optional[str] = Field(default=None, description="String containing local skills metadata")
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
 AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
@@ -265,3 +266,7 @@ class GlobeToolInput(BaseModel):
     path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the subdirectory of currentWorkDir or same as currentWorkDir.")
     currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. consider it is the root of the project.")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+class ReadSkillToolInput(BaseModel):
+    skill_name: str = Field(..., description="The name of the skill to read")
+    path: str = Field(..., description="The location/path of the skill folder. Use 'default_skill' for default skills.")
+    arguments: Optional[dict] = Field(None, description="Optional arguments to pass to the skill if required")

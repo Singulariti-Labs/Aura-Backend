@@ -21,6 +21,7 @@ from app.Tools.grep import GrepTool
 from app.Tools.ls import LSTool
 from app.Tools.globe import GlobeTool
 from app.Tools.ask_user import AskUserTool
+from app.Tools.read_skill import ReadSkillTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -71,6 +72,7 @@ class Tools():
         self.ls_tool = LSTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.globe_tool = GlobeTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ask_user_tool = AskUserTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.read_skill_tool = ReadSkillTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -109,6 +111,7 @@ class Tools():
                  self.grep_tool.to_tool(),
                  self.ls_tool.to_tool(),
                  self.globe_tool.to_tool(),
-                 self.ask_user_tool.to_tool()
+                 self.ask_user_tool.to_tool(),
+                 self.read_skill_tool.to_tool()
                 ]
         return tools

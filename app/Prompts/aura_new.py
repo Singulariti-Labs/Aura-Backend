@@ -1,3 +1,5 @@
+import os
+import re
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -30,6 +32,7 @@ TOOL_NAME_MAP = {
     "grep_tool":            ("grep",             "Search file contents using pattern matching"),
     "ls_tool":              ("ls",               "List contents of a directory"),
     "globe_tool":           ("glob",             "Find files matching a glob pattern"),
+    "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
 }
 
 COMPRESSION_PROMPT = """
@@ -98,6 +101,79 @@ Return the summary in this structure:
 - If unsure whether something is important, keep it
 - maintain the sequence of the messages
 """
+
+def load_default_skills(local_skills: Optional[str] = None) -> str:
+    """
+    Loads default skills from the app/Skills directory.
+    Extracts name and description from SKILL.md frontmatter.
+    Searches recursively through all subdirectories.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    skills_root = os.path.abspath(os.path.join(current_dir, "..", "Skills"))
+    
+    if not os.path.exists(skills_root):
+        return ""
+    
+    skill_entries = []
+    
+    # os.walk recursively traverses ALL subdirectories
+    for root, dirs, files in os.walk(skills_root):
+        dirs.sort()  # consistent ordering
+        
+        if "SKILL.md" in files:
+            skill_md_path = os.path.join(root, "SKILL.md")
+            try:
+                with open(skill_md_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Extract frontmatter between --- and ---
+                fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL | re.MULTILINE)
+                if fm_match:
+                    fm_text = fm_match.group(1)
+                    
+                    # Extract name
+                    name_match = re.search(r'^name:\s*(.*)', fm_text, re.MULTILINE)
+                    folder = os.path.basename(root)
+                    name = name_match.group(1).strip() if name_match else folder
+                    
+                    # Extract description
+                    desc_match = re.search(r'^description:\s*(.*?)(?=\n[a-z]+:|\Z)', fm_text, re.DOTALL | re.MULTILINE)
+                    description = desc_match.group(1).strip() if desc_match else ""
+                    
+                    # Clean up description (strip outer quotes)
+                    if (description.startswith('"') and description.endswith('"')) or \
+                       (description.startswith("'") and description.endswith("'")):
+                        description = description[1:-1]
+                    
+                    # Calculate relative path from skills_root
+                    rel_path = os.path.relpath(root, skills_root).replace(os.sep, '/')
+                    
+                    entry = (
+                        f"**name:** {name}\n"
+                        f"**description:** {description}\n"
+                        f"**location:** default_skill/{rel_path}\n"
+                    )
+                    skill_entries.append(entry)
+            except Exception:
+                continue
+                
+    # Append local skills if provided
+    if local_skills:
+        # Remove <available_local_skills> and </available_local_skills> tags if present
+        cleaned_local_skills = re.sub(r'</?available_local_skills>', '', local_skills).strip()
+        if cleaned_local_skills:
+            skill_entries.append(cleaned_local_skills)
+
+    if not skill_entries:
+        return ""
+        
+    skills_output = "### Available Skills\n\n"
+    skills_output += "<available_skills>\n"
+    skills_output += "\n\n".join(skill_entries)
+    skills_output += "\n</available_skills>"
+    
+    return skills_output
+
 
 def get_time_in_timezone(tz_name: str) -> datetime:
     """Returns a timezone-aware datetime object using built-in zoneinfo."""
@@ -581,6 +657,27 @@ def buildAuraSystemPrompt(
         "Never repeat the same sentence across different tool calls.\n"
         "Never use any tags, symbols, labels, or special formatting in these messages. Plain text only.\n"
     )
+
+    # ── Skills ─────────────────────────────────────
+    sections.append(
+        "## Skills\n\n"
+        "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.\n\n"
+        "** How To invoke Skills **\n\n"
+        "- To invoke skills, use read_skill tool. This tool will read the specified skill and make it available for use.\n\n"
+        "- Invoke read_skill tool with skill name and location of the skill\n"
+        
+        "**IMPORTANT\n\n:"
+        "- Available skills are listed under <available_skills> tag\n"
+        "- When a skill matches the user's request or the task will requie any skill from the available skills, invoke the read_skill tool BEFORE generating any other response\n"
+        "- NEVER mention a skill without actually calling read_skill tool\n"
+        "- Do not invoke a skill that is already running\n"
+        "- In the Messsage explain that loading skill name and reason\n\n"
+    )
+
+    # ── Available Skills ─────────────────────────────
+    available_skills = load_default_skills(config.local_skills)
+    if available_skills:
+        sections.append(available_skills)
 
     # ── Final Response ─────────────────────────────────────
     sections.append(

@@ -204,6 +204,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     timezone=aura_config_data.get("timezone", "Asia/Kolkata"),
                     compression=aura_config_data.get("compression", False),
                     boot_me=aura_config_data.get("boot_me", False),
+                    local_skills=aura_config_data.get("local_skills"),
                 )
 
                 # Extract history from payload
