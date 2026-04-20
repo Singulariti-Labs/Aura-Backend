@@ -24,6 +24,7 @@ from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler
 from app.utils.format_messages import format_to_langchain
+from app.Adapters.format_message import prepareMessageForAI
 from datetime import datetime
 
 
@@ -475,13 +476,16 @@ class LLMFactory():
             system_prompt: str,
             llm: BaseChatModel,
             query: str,
+            llm_provider: str,
             agent_type: AGENT_TYPE,
             system_info: Optional[SystemInfo | str] = None,
             tools: Optional[List[Tool]] = None,
             chat_history: Optional[List[Message]] = None,
             base_64_image:  Optional[List[str]] = None,
+            attached_files: Optional[List[Dict[str, Any]]] = None,
+            attached_images: Optional[List[Dict[str, Any]]] = None,
             max_tokens: int = 128000,
-            history: List[Dict] = []
+            history: List[Dict] = [],
         ):
         """
         Method to run the aura agent with the given task in a loop till the task is not completed.
@@ -513,7 +517,7 @@ class LLMFactory():
                 prompt = ChatPromptTemplate.from_messages([
                     ("system", system_prompt),
                     MessagesPlaceholder(variable_name="chat_history"),
-                    ("human", "{input}"),
+                    MessagesPlaceholder(variable_name="input"),
                     MessagesPlaceholder(variable_name="agent_scratchpad")
                 ])
             
@@ -523,11 +527,27 @@ class LLMFactory():
             
             today = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            formated_input = (
-                f"query: {query}\n"
-                f"system_info: {system_info_str}\n"
-                f"today: {today}\n"
+            # Format input using prepareMessageForAI
+            formated_input = prepareMessageForAI(
+                llm_provider=llm_provider,
+                attached_files=attached_files or [],
+                attached_images=attached_images or [],
+                query=query
             )
+
+            # If formated_input is a list (multimodal), we append system_info and today to the first text block if possible
+            # or just add another text block.
+            system_info_text = f"\n\nsystem_info: {system_info_str}\ntoday: {today}\n"
+            
+            if isinstance(formated_input, list):
+                # Find the query block and append system_info and today to it
+                for block in formated_input:
+                    if block.get("type") == "text" and block.get("text", "").startswith("query:"):
+                        block["text"] += f"\nsystem_info: {system_info_str}\ntoday: {today}\n"
+                        break
+            else:
+                # It's a string
+                formated_input += system_info_text
 
             # Create callbacks list with rate limiting
             handler = AgentCallbackHandler(self.memory)
@@ -548,8 +568,12 @@ class LLMFactory():
             )
 
             # Invoking LLM
+            # Wrap formated_input in a HumanMessage for proper multimodal support
+            input_message = HumanMessage(content=formated_input)
+
+            # Invoking LLM
             response = await executor.ainvoke(
-                {"input": formated_input, "chat_history": chat_history_for_llm},
+                {"input": [input_message], "chat_history": chat_history_for_llm},
                 config=RunnableConfig(callbacks=handler.as_list()),
             )
             # returning response bac to the aura agent.

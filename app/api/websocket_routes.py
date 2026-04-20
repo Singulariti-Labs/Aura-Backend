@@ -195,6 +195,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
                     await update_task_status(pool=pool, task_id=task_id, status="failed")
                     return
+
+                # Extract attached files and images
+                attached_files = payload.get("attached_files", [])
+                attached_images = payload.get("attached_images", [])
                 
                 # Extract aura_config from payload
                 aura_config_data = payload.get("aura_config", {})
@@ -210,7 +214,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Extract history from payload
                 history = payload.get("messages", [])
 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history)
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history, attached_files=attached_files, attached_images=attached_images)
 
                 # Notify client that processing has started
                 await send_ws_message(
