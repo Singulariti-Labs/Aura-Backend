@@ -297,29 +297,41 @@ def buildAuraSystemPrompt(
     # ── Workspace ────────────────────────────────────────────────
     sections.append(
         f"## Workspace\n"
-        f"Your workspace is `{system_info.workspace}`. This is the root directory for the current session. "
+        f"Your workspace is `{system_info.workspace}`. This is your complete environment."
         f"By default, this is `App_Path/workspace`. Use this as the base for Context files."
+        f" It consit of all the different elements that are essential for you to function properly,"
+        f"your goal is to keep this workspace organized and efficient.\n\n"
+        "### Worspace Structure"
+        f"{system_info.workspace}/"
+        "├── AuraSpace/"
+        "├── conscious/"
+        "├── map_website/"
+        "├── session/"
+        "├── Singulariti_Pitch_Deck_refined.pdf"
+        "├── todos/"
+        f"\n\n"
     )
 
     # ── Current Working Directory ────────────────────────────────
     cwd_lines = [
         "## Current Working Directory\n",
-        f"The Current Working Directory (cwd) is the directory where you are working for this session: `{system_info.cwd}`.",
-        "The Current Working Directory is the root location where ALL file operations, project creation, command execution, and task-related activities take place. It is the single source of truth for any path resolution in the session.",
-        "This is the primary directory for performing operations on the system."
+        f"The Current Working Directory (cwd) is the directory where you are working for this session/task: `{system_info.cwd}`.",
+        f"The Current Working Directory is the root location where ALL file operations, project creation, command execution, and task-related activities take place.",
+        f"It is the single source of truth for any path resolution in the session."
+        f"This is the primary directory for performing operations on the system."
     ]
     sections.append("\n".join(cwd_lines))
 
     # ── Current Working Directory (CWD) Rules ────────────────────
     cwd_rules_lines = [
         "## Current Working Directory (CWD) Rules\n",
-        f"If the CWD is not explicitly provided by the user, it becomes equal to the workspace (`{system_info.workspace}`). "
-        "When the CWD equals the workspace, apply the following scenarios to determine the effective current working directory.\n",
+        f"If the CWD is not explicitly provided by the user, by default it is equal to `workspace/AuraSpace/{chat_id if chat_id else '[chat_id]'}`. "
+        "When the CWD is not explictly provided by the user, then apply the following scenarios to determine the effective current working directory.\n",
         "---\n",
         "**Note:** These scenarios are not sequenced by priority — evaluate all of them to determine the most appropriate CWD.\n",
         "---\n",
         f"**Scenario I — Default Session Directory**\n"
-        f"If the CWD is the same as the workspace (`{system_info.workspace}`) and no other context is available, "
+        f"If CWD is not provide by the user and no other context is available,"
         f"the effective working directory becomes:\n"
         f"`{system_info.workspace}/AuraSpace/{chat_id if chat_id else '[chat_id]'}`\n"
         "Perform all task-related and session-related file operations inside this directory.\n\n"
@@ -552,6 +564,25 @@ def buildAuraSystemPrompt(
         "- TODO-research.md ← labeled(research), TODO-design.md ← labeled(design).\n"
         "- Using lable is optional, lable is always according to task.\n\n"
         "[NOTE] Whenever you want to use TODO.md for any task, use this given path format."
+    )
+
+    # ── Workspace & CWD differences ────────────────────────────────────────────
+    sections.append(
+        "## Workspace\n"
+        f"WORKSPACE is your complete environment — it holds your identity, memory, conscious files," 
+        f"session storage, todos, and all context about yourself and the user." 
+        f"Workspace is your brain. Any updates to memory, conscious files, or" 
+        f"system-level files always go to their dedicated locations inside the Workspace," 
+        f"never in CWD.\n\n"
+        
+        "## Current Working Directory\n"
+        f"CWD (Current Working Directory) is strictly for the current task only — create, edit," 
+        f"or run operations on files that belong to that task (documents, code, presentations," 
+        f"outputs, etc.). CWD is explicitly set by the user." 
+        f"If no CWD is given, default CWD is AuraSpace/{chat_id} inside the Workspace."
+
+        f"Workspace = who you are, what you know, your system-level files."
+        f"CWD       = the task at hand, nothing beyond it."
     )
 
     # ── Response Format ──────────────────────────────────────────
