@@ -28,7 +28,7 @@ class AuraConfig(BaseModel):
     local_skills: Optional[str] = Field(default=None, description="String containing local skills metadata")
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
-AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
+AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
 GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
 AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
@@ -73,9 +73,9 @@ PROVIDER_MAPPING = {
 # Default models for each provider when user overrides
 DEFAULT_MODELS = {
     "openai": "gpt-4.1",
-    "anthropic": "claude-4.5-opus",
+    "anthropic": "claude-sonnet-4-6",
     "open_router": "z-ai",
-    "google": "gemini-2.5-flash"
+    "google": "gemini-3-flash-preview"
 }
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server

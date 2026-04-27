@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
 from langchain_openai.chat_models.base import ChatOpenAI
-from langchain_community.chat_models.anthropic import ChatAnthropic
+from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_classic.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
@@ -71,7 +71,7 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
-                return ChatAnthropic(model=llm_config.model_name)
+                return ChatAnthropic(model=llm_config.model_name, api_key=api_key)
             
             elif llm_config.provider == "open_router":
                 api_key = user_api_key or os.environ.get("OPENROUTER_API_KEY")
