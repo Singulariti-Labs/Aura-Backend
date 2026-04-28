@@ -26,6 +26,8 @@ class AuraConfig(BaseModel):
     compression: bool = Field(default=False, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
     local_skills: Optional[str] = Field(default=None, description="String containing local skills metadata")
+    cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
+
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
 AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6']

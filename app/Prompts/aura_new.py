@@ -199,6 +199,9 @@ def buildAuraSystemPrompt(
     timezone = config.timezone
     compression = config.compression
     boot_me = config.boot_me
+    
+    if config.cwd:
+        system_info.cwd = config.cwd
 
     sections = []
 
