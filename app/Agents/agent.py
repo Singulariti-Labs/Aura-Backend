@@ -68,7 +68,7 @@ class Agent(BaseAgent):
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider)
         self.payload = payload
         self.attached_files = attached_files
         self.attached_images = attached_images

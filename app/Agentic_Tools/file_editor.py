@@ -1,15 +1,3 @@
-from typing import Optional
-from langchain_core.language_models.chat_models import BaseChatModel
-
-from app.LLM.memory import Memory, Message
-from app.api.websocket_utils import send_ws_message
-from app.Task.task_manager import task_manager
-from app.helper import update_memory, save_tool_response
-from app.DB.Queries.agent_event import create_agent_event
-from openai import AsyncOpenAI
-
-
-
 import asyncio
 import json
 import re
@@ -17,6 +5,16 @@ import os
 import openai
 import litellm
 import uuid
+from typing import Optional
+from langchain_core.language_models.chat_models import BaseChatModel
+from openai import AsyncOpenAI
+
+from app.LLM.memory import Memory, Message
+from app.api.websocket_utils import send_ws_message
+from app.Task.task_manager import task_manager
+from app.helper import update_memory, save_tool_response
+from app.DB.Queries.agent_event import create_agent_event
+from app.Adapters.format_tool_message import create_tool_response
 
 from dotenv import load_dotenv
 
@@ -114,6 +112,118 @@ class FileEditor():
             }
         except Exception as e:
             return { "success": False, "output": f"Error in creating file: {str(e)}"}
+
+    async def read_file(self, filePath: str, offset: Optional[int] = 1, limit: Optional[int] = 2000, tool_call_id: Optional[str] = None, llm_provider: Optional[str] = None):
+        """Read File Tool which reads file or directory at the given path"""
+        try:
+            await send_ws_message(
+                websocket= self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "read_file",
+                    "tool_call_id": tool_call_id,
+                    "input": {
+                        "filePath": filePath,
+                        "offset": offset,
+                        "limit": limit
+                    },
+                    "coming_from": "read_file_tool_func/server"
+                }
+            )
+
+            # Insert AURA complex agent event in the DB 
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="read_file",
+                payload= {
+                  "input": {
+                        "filePath": filePath,
+                        "offset": offset,
+                        "limit": limit
+                }
+            },
+                seq = self.task_state.get_next_seq()
+            )
+
+            # Wait for client tool response 
+            tool_resp = await task_manager.wait_for_input(self.task_id)
+
+            response_type = tool_resp.get("type")
+
+            if response_type == "client_tool_response":
+                payload = tool_resp.get("payload", {})
+
+            # check if correct tool responded
+            if payload.get("tool") == "read_file":
+                result = payload.get("result")
+
+                if result.get("success") == True:
+                    output = result.get("content") or result.get("output") or f"File '{filePath}' read successfully."
+                    attachment = result.get("attachment")
+
+                    if attachment:
+                        # Format for the specific provider using the adapter
+                        options = {
+                            "provider": llm_provider or "openai", # default to openai if none
+                            "text": output,
+                            "files": [],
+                            "images": []
+                        }
+                        
+                        # Identify attachment type (Image or File/PDF)
+                        att_type = attachment.get("type", "").lower()
+                        if "image" in att_type:
+                            options["images"].append(attachment)
+                        else:
+                            options["files"].append(attachment)
+                        
+                        formatted_content = create_tool_response(options)
+
+                        # Return the structured tool result with media blocks
+                        return {
+                            "success": True,
+                            "result": {
+                                "role": "user",
+                                "content": [{
+                                    "type": "tool_result",
+                                    "tool_use_id": tool_call_id,
+                                    "content": formatted_content
+                                }]
+                            }
+                        }
+                    
+                    # Direct output if no attachment
+                    final_result = {
+                        "success": True,
+                        "output": output,
+                    }
+                else:
+                    final_result = {
+                        "success": False,
+                        "output": result.get("message", f"Unknown error while reading file '{filePath}'."),
+                    }
+                
+                # Update local memory
+                arguments = {"filePath": filePath, "offset": offset, "limit": limit}
+                assistant_message = f"reading file using read_file tool args {json.dumps(arguments)}"
+                update_memory(role="assistant", content=assistant_message, memory=self.shared_memory)
+                update_memory(role="tool", name="read_file", tool_call_id=tool_call_id, content=json.dumps(final_result), memory=self.shared_memory)
+
+                return final_result
+
+            # If response type not correct
+            return {
+                "success": False,
+                "output": f"Unexpected response type: {response_type}",
+            }
+        except Exception as e:
+            return { "success": False, "output": f"Error in reading file: {str(e)}"}
+
 
     async def str_replace(self, path: str, new_str: str, old_str: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Replaced string {old_str} with {new_str}"""
