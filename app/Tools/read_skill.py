@@ -1,5 +1,4 @@
 import os
-import uuid
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -29,13 +28,17 @@ class ReadSkillTool(BaseTool):
         """
         Executes the logic to read a skill.
         """
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="read_skill")
+        # Sending the last assistant message and retrieving the correct tool_call_id
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="read_skill"
+        )
         
         skill_name = inputs.skill_name
         path = inputs.path
         arguments = inputs.arguments
-        tool_call_id = str(uuid.uuid4())
         
         response = await self.skill_loader.read_skill(
             skill_name=skill_name,

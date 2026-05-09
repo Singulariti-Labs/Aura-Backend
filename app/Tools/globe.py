@@ -1,6 +1,5 @@
 from typing import Optional, List
 from langchain_core.language_models.chat_models import BaseChatModel
-import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
@@ -33,10 +32,14 @@ class GlobeTool(BaseTool):
 
     async def run(self, inputs: GlobeToolInput):
 
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="globe")
+        # Sending the last assistant message to the client and get tool_call_id
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="globe"
+        )
         
-        tool_call_id = str(uuid.uuid4())
         response = await self.coading_tools.globe(
             pattern=inputs.pattern,
             path=inputs.path,

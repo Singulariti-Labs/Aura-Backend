@@ -1,6 +1,5 @@
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
-import uuid
 
 from app.Types.agent_types import GetAppContextInput
 from app.Tools.base_tool import BaseTool
@@ -29,15 +28,18 @@ class GetAppContextTool(BaseTool):
     async def run(self, inputs: GetAppContextInput):
 
         # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="get_app_context")
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="get_app_context"
+        )
         
         name = inputs.name
         pid = inputs.pid
         hwnd = inputs.hwnd
         exe_path = inputs.exe_path
         
-        tool_call_id = str(uuid.uuid4())
-
         response = await self.get_app_context_agentic.get_app_context(
             name=name, 
             pid=pid, 

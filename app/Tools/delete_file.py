@@ -1,7 +1,6 @@
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import Tool as LangchainTool
-import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
@@ -23,8 +22,12 @@ class DeleteFileTool(BaseTool):
         self.file_editor = FileEditor(llm=llm, task_id=task_id, chat_id=chat_id, memory=memory)
 
     async def run(self, inputs: DeleteFileToolInput) -> str:
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="delete_file")
-        tool_call_id = str(uuid.uuid4())
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="delete_file"
+        )
         response = await self.file_editor.delete_file(
             path=inputs.path,
             hide=inputs.hide,

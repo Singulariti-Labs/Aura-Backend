@@ -1,6 +1,5 @@
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
-import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
@@ -56,19 +55,26 @@ class ReadFileTool(BaseTool):
         self.file_editor = FileEditor(llm=llm, task_id=task_id, chat_id=chat_id, memory=memory)
 
     async def run(self, inputs: ReadFileToolInput):
-
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="read_file")
+        """
+        Executes the read_file logic.
+        """
+        # Sending the last assistant message and retrieving the correct tool_call_id
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="read_file"
+        )
+        
         filePath = inputs.filePath
         offset = inputs.offset
         limit = inputs.limit
         
-        tool_call_id = str(uuid.uuid4())
         response = await self.file_editor.read_file(
             filePath=filePath,
             offset=offset,
             limit=limit,
-            tool_call_id = tool_call_id,
+            tool_call_id=tool_call_id,
             llm_provider=self.llm_provider
         )
         return response

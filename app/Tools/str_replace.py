@@ -1,7 +1,6 @@
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import Tool as LangchainTool
-import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.LLM.memory import Memory
@@ -35,12 +34,17 @@ class StrReplaceTool(BaseTool):
 
     async def run(self, inputs: StrReplaceToolInput):
 
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="str_replace")
+        # Sending the last assistant message to the client and get tool_call_id
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="str_replace"
+        )
         path = inputs.path
         new_str = inputs.new_str
         old_str = inputs.old_str
-        tool_call_id = str(uuid.uuid4())
+
         response = await self.file_editor.str_replace(
             path=path,
             new_str=new_str,

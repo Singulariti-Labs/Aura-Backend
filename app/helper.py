@@ -114,7 +114,7 @@ async def send_last_assistant_message(
     tool_name: Optional[str] = None, 
     message_type: str = "aura_thinking",
     coming_from: str = "agent_callback_handler"
-):
+) -> Optional[str]:
     """Sends the Last role = assistant message to the client for displaying to the user.
     
     input:
@@ -124,6 +124,9 @@ async def send_last_assistant_message(
         - tool_name(Optional[str]): name of the tool being called (if applicable),
         - message_type(str): "aura_thinking" or "aura_message",
         - coming_from(str): sender location identifier.
+
+    returns:
+        - tool_call_id(Optional[str]): the ID of the tool call matching tool_name.
     """
     try:
         task_state = task_manager.get_state(task_id)
@@ -132,13 +135,24 @@ async def send_last_assistant_message(
 
         messages = memory.messages
 
-        # Retrieve the serialized last assistant message
-        last_assistant = next((msg.to_dict() for msg in reversed(messages) if msg.role == "assistant"), None)
+        # Retrieve the last assistant message object directly to access its tool_calls
+        last_assistant_obj = next((msg for msg in reversed(messages) if msg.role == "assistant"), None)
 
-        if last_assistant:
-            last_assistant_msg = last_assistant.get("content")
+        if last_assistant_obj:
+            last_assistant = last_assistant_obj.to_dict()
+            last_assistant_msg = last_assistant.get("message") or last_assistant.get("content")
             usage = last_assistant.get("usage")
             details = last_assistant.get("details")
+
+            # Extract tool_call_id if tool_name is provided
+            found_tool_call_id = None
+            if tool_name and last_assistant_obj.tool_calls:
+                for tc in last_assistant_obj.tool_calls:
+                    # Handle both dict and object formats
+                    tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
+                    if tc_name == tool_name:
+                        found_tool_call_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                        break
 
             # Construct the payload
             payload = {
@@ -187,10 +201,14 @@ async def send_last_assistant_message(
                 event_kwargs["tool"] = tool_name
 
             await create_agent_event(**event_kwargs)
+            
+            return found_tool_call_id
 
 
     except Exception as e:
         print(f"Error while sending assistant message to the client: {e}")
+    
+    return None
 
 def save_tool_response(task_id: str, tool_name: str, response: Union[Dict[str, Any], str]):
     """
