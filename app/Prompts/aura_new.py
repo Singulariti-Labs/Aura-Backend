@@ -34,7 +34,8 @@ TOOL_NAME_MAP = {
     "globe_tool":           ("glob",             "Find files matching a glob pattern"),
     "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
     "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path."),
-    "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task.")
+    "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
+    "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
 }
 
 COMPRESSION_PROMPT = """

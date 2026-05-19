@@ -148,39 +148,44 @@ def _format_for_gemini(
     files: List[FileAttachment],
     images: List[ImageAttachment],
 ) -> List[Dict[str, Any]]:
-    content = []
+    parts = []
 
-    # Images — media blocks
+    # 1. Add tool functionResponse part
+    result_text = "Screenshot captured successfully."
+    if text_blocks:
+        result_text = "\n".join(text_blocks)
+        
+    parts.append({
+        "functionResponse": {
+            "name": "screenshot",
+            "response": { "result": result_text }
+        }
+    })
+
+    # 2. Add inlineData part for each image
     for img in images:
         if not img.get("content"):
             continue
-        content.append({
-            "type": "media",
-            "mime_type": img.get("mime") or "image/png",
-            "data": img["content"],
+        parts.append({
+            "inlineData": {
+                "mimeType": img.get("mime") or "image/png",
+                "data": img["content"]
+            }
         })
 
-    # PDFs — media blocks
+    # 3. Add inlineData part for each PDF file
     for file in files:
         if not file.get("content"):
             continue
         if _is_pdf(file.get("type", "")):
-            content.append({
-                "type": "media",
-                "mime_type": "application/pdf",
-                "data": file["content"],
+            parts.append({
+                "inlineData": {
+                    "mimeType": "application/pdf",
+                    "data": file["content"]
+                }
             })
 
-    # Non-PDF files — concatenated text block
-    file_text = _build_file_text(files)
-    if file_text:
-        content.append({"type": "text", "text": file_text})
-
-    # User text blocks
-    for text in text_blocks:
-        content.append({"type": "text", "text": text})
-
-    return content
+    return parts
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────

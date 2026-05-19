@@ -57,7 +57,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -280,3 +280,7 @@ class ReadFileToolInput(BaseModel):
     filePath: str = Field(..., description="Absolute path to the file or directory to read")
     offset: Optional[int] = Field(1, description="1-indexed. For text/docx/xlsx/csv: line number to start from. For pptx: slide number. Defaults to 1.")
     limit: Optional[int] = Field(2000, description="Max lines (or slides for pptx) to read. Defaults to 2000.")
+
+class ScreenshotToolInput(BaseModel):
+    reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user")

@@ -24,6 +24,7 @@ from app.Tools.ask_user import AskUserTool
 from app.Tools.read_skill import ReadSkillTool
 from app.Tools.get_app_context import GetAppContextTool
 from app.Tools.read_file import ReadFileTool
+from app.Tools.screenshot import ScreenshotTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -79,6 +80,7 @@ class Tools():
         self.read_skill_tool = ReadSkillTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.get_app_context_tool = GetAppContextTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.read_file_tool = ReadFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
+        self.screenshot_tool = ScreenshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
 
     
     def get_agent_tools(self):
@@ -121,6 +123,7 @@ class Tools():
                  self.ask_user_tool.to_tool(),
                  self.read_skill_tool.to_tool(),
                  self.get_app_context_tool.to_tool(),
-                 self.read_file_tool.to_tool()
+                 self.read_file_tool.to_tool(),
+                 self.screenshot_tool.to_tool()
                 ]
         return tools
