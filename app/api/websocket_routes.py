@@ -178,23 +178,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
 
                 # IF USING SMART MODE WITHOUT OWN API KEY
-                if not using_custom and payload.get("option") == "smart":
-                    await send_ws_message(
-                        websocket,
-                        type="aura_message",
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "tool": "aura",
-                                "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                            },
-                            "coming_from": "aura/server"
-                        }
-                    )
-                    await update_task_status(pool=pool, task_id=task_id, status="failed")
-                    return
+                # if not using_custom and payload.get("option") == "smart":
+                #     await send_ws_message(
+                #         websocket,
+                #         type="aura_message",
+                #         task_id=task_id,
+                #         chat_id=chat_id,
+                #         payload={
+                #             "content": {
+                #                 "role": "assistant",
+                #                 "tool": "aura",
+                #                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
+                #             },
+                #             "coming_from": "aura/server"
+                #         }
+                #     )
+                #     await update_task_status(pool=pool, task_id=task_id, status="failed")
+                #     return
 
                 # Extract attached files and images
                 attached_files = payload.get("attached_files", [])
