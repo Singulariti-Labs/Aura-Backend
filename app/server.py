@@ -1,3 +1,6 @@
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(), override=True)
+
 from fastapi import FastAPI
 from app.api.websocket_routes import ws_router
 from app.api.rest_routes import rest_router

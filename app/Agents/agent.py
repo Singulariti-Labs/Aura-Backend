@@ -49,7 +49,9 @@ class Agent(BaseAgent):
         screenshot:  Optional[List[str]] = None,
         pool: Pool | None = None,
         aura_config: Optional[AuraConfig] = None,
-        history: List[Dict] = []
+        history: List[Dict] = [],
+        attached_files: Optional[List[Dict[str, Any]]] = None,
+        attached_images: Optional[List[Dict[str, Any]]] = None
     ):
         self.query = query
         self.task_id = task_id
@@ -66,8 +68,10 @@ class Agent(BaseAgent):
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider)
         self.payload = payload
+        self.attached_files = attached_files
+        self.attached_images = attached_images
         
     # Runs the Aura Agent.
     async def invoke(self):
@@ -120,6 +124,9 @@ class Agent(BaseAgent):
                 # ⏸ Pause check again before the LLM call
                 await task_manager.wait_if_paused(self.task_id)
                 result = None
+
+                #Get llm provider
+                llm_provider = self.llm_config.provider
 
                 # If the option is not complex_task or smart then run the main agent
                 if self.payload.get('option') not in ["complex_task", "smart"]:
@@ -178,10 +185,13 @@ class Agent(BaseAgent):
                         query=self.query,
                         system_prompt=prompt,
                         tools=tools,
+                        attached_files=self.attached_files,
+                        attached_images=self.attached_images,
                         system_info=self.system_info,
                         llm=self.llm,
                         agent_type="aura",
-                        history=self.history
+                        history=self.history,
+                        llm_provider=llm_provider
                     )
 
                     final_result = None

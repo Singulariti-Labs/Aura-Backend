@@ -1,3 +1,5 @@
+import os
+import re
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -30,6 +32,10 @@ TOOL_NAME_MAP = {
     "grep_tool":            ("grep",             "Search file contents using pattern matching"),
     "ls_tool":              ("ls",               "List contents of a directory"),
     "globe_tool":           ("glob",             "Find files matching a glob pattern"),
+    "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
+    "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path."),
+    "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
+    "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
 }
 
 COMPRESSION_PROMPT = """
@@ -99,6 +105,79 @@ Return the summary in this structure:
 - maintain the sequence of the messages
 """
 
+def load_default_skills(local_skills: Optional[str] = None) -> str:
+    """
+    Loads default skills from the app/Skills directory.
+    Extracts name and description from SKILL.md frontmatter.
+    Searches recursively through all subdirectories.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    skills_root = os.path.abspath(os.path.join(current_dir, "..", "Skills"))
+    
+    if not os.path.exists(skills_root):
+        return ""
+    
+    skill_entries = []
+    
+    # os.walk recursively traverses ALL subdirectories
+    for root, dirs, files in os.walk(skills_root):
+        dirs.sort()  # consistent ordering
+        
+        if "SKILL.md" in files:
+            skill_md_path = os.path.join(root, "SKILL.md")
+            try:
+                with open(skill_md_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Extract frontmatter between --- and ---
+                fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL | re.MULTILINE)
+                if fm_match:
+                    fm_text = fm_match.group(1)
+                    
+                    # Extract name
+                    name_match = re.search(r'^name:\s*(.*)', fm_text, re.MULTILINE)
+                    folder = os.path.basename(root)
+                    name = name_match.group(1).strip() if name_match else folder
+                    
+                    # Extract description
+                    desc_match = re.search(r'^description:\s*(.*?)(?=\n[a-z]+:|\Z)', fm_text, re.DOTALL | re.MULTILINE)
+                    description = desc_match.group(1).strip() if desc_match else ""
+                    
+                    # Clean up description (strip outer quotes)
+                    if (description.startswith('"') and description.endswith('"')) or \
+                       (description.startswith("'") and description.endswith("'")):
+                        description = description[1:-1]
+                    
+                    # Calculate relative path from skills_root
+                    rel_path = os.path.relpath(root, skills_root).replace(os.sep, '/')
+                    
+                    entry = (
+                        f"**name:** {name}\n"
+                        f"**description:** {description}\n"
+                        f"**location:** default_skill/{rel_path}\n"
+                    )
+                    skill_entries.append(entry)
+            except Exception:
+                continue
+                
+    # Append local skills if provided
+    if local_skills:
+        # Remove <available_local_skills> and </available_local_skills> tags if present
+        cleaned_local_skills = re.sub(r'</?available_local_skills>', '', local_skills).strip()
+        if cleaned_local_skills:
+            skill_entries.append(cleaned_local_skills)
+
+    if not skill_entries:
+        return ""
+        
+    skills_output = "### Available Skills\n\n"
+    skills_output += "<available_skills>\n"
+    skills_output += "\n\n".join(skill_entries)
+    skills_output += "\n</available_skills>"
+    
+    return skills_output
+
+
 def get_time_in_timezone(tz_name: str) -> datetime:
     """Returns a timezone-aware datetime object using built-in zoneinfo."""
     try:
@@ -123,6 +202,9 @@ def buildAuraSystemPrompt(
     timezone = config.timezone
     compression = config.compression
     boot_me = config.boot_me
+    
+    if config.cwd:
+        system_info.cwd = config.cwd
 
     sections = []
 
@@ -221,29 +303,41 @@ def buildAuraSystemPrompt(
     # ── Workspace ────────────────────────────────────────────────
     sections.append(
         f"## Workspace\n"
-        f"Your workspace is `{system_info.workspace}`. This is the root directory for the current session. "
+        f"Your workspace is `{system_info.workspace}`. This is your complete environment."
         f"By default, this is `App_Path/workspace`. Use this as the base for Context files."
+        f" It consit of all the different elements that are essential for you to function properly,"
+        f"your goal is to keep this workspace organized and efficient.\n\n"
+        "### Worspace Structure"
+        f"{system_info.workspace}/"
+        "├── AuraSpace/"
+        "├── conscious/"
+        "├── map_website/"
+        "├── session/"
+        "├── Singulariti_Pitch_Deck_refined.pdf"
+        "├── todos/"
+        f"\n\n"
     )
 
     # ── Current Working Directory ────────────────────────────────
     cwd_lines = [
         "## Current Working Directory\n",
-        f"The Current Working Directory (cwd) is the directory where you are working for this session: `{system_info.cwd}`.",
-        "The Current Working Directory is the root location where ALL file operations, project creation, command execution, and task-related activities take place. It is the single source of truth for any path resolution in the session.",
-        "This is the primary directory for performing operations on the system."
+        f"The Current Working Directory (cwd) is the directory where you are working for this session/task: `{system_info.cwd}`.",
+        f"The Current Working Directory is the root location where ALL file operations, project creation, command execution, and task-related activities take place.",
+        f"It is the single source of truth for any path resolution in the session."
+        f"This is the primary directory for performing operations on the system."
     ]
     sections.append("\n".join(cwd_lines))
 
     # ── Current Working Directory (CWD) Rules ────────────────────
     cwd_rules_lines = [
         "## Current Working Directory (CWD) Rules\n",
-        f"If the CWD is not explicitly provided by the user, it becomes equal to the workspace (`{system_info.workspace}`). "
-        "When the CWD equals the workspace, apply the following scenarios to determine the effective current working directory.\n",
+        f"If the CWD is not explicitly provided by the user, by default it is equal to `workspace/AuraSpace/{chat_id if chat_id else '[chat_id]'}`. "
+        "When the CWD is not explictly provided by the user, then apply the following scenarios to determine the effective current working directory.\n",
         "---\n",
         "**Note:** These scenarios are not sequenced by priority — evaluate all of them to determine the most appropriate CWD.\n",
         "---\n",
         f"**Scenario I — Default Session Directory**\n"
-        f"If the CWD is the same as the workspace (`{system_info.workspace}`) and no other context is available, "
+        f"If CWD is not provide by the user and no other context is available,"
         f"the effective working directory becomes:\n"
         f"`{system_info.workspace}/AuraSpace/{chat_id if chat_id else '[chat_id]'}`\n"
         "Perform all task-related and session-related file operations inside this directory.\n\n"
@@ -405,6 +499,58 @@ def buildAuraSystemPrompt(
             apps_lines.append(f"\nThe Focused Application is {open_apps.focused_app}.\nFocused application is the application or window focused on the users machine.")
         
         sections.append("\n".join(apps_lines))
+    
+    #  ── Get Open APP Context For Interaction (windows) ─────────────────────────────────────
+    if open_apps:
+        sections.append("""
+            ## Application Context / Focused App Context
+            When the user's request is related to the application currently visible on their screen focused_app,
+            you must first understand what is open in that application before acting, you should first 
+            get the context of the application before acting on the user's request.
+
+            ### Rule: Get Context Before Acting on a Focused App
+            - If the user query is realted to the focused application and you dont have any prior context 
+            of what is open in that application use the get_app_context tool to get the context of the 
+            application and then act accordingly with the best tools/approach you have.
+            - Using this tool will give the following,
+              - Which file(s) are currently open in the app active_files could be one or many.
+              - Path of the active file.
+              - Root folder path if it is applicable.
+            - Once you have the context then file paths then you can treat as normal task using the best 
+            tools to complete the given task.
+
+            ### When to use the get_app_context tool
+            - The user's query is about something visible in the focused app
+            - You need to know which file is open to act on it or the context of the application.
+            
+            ### Skip get_app_context tool
+            - You already retrieved context for this app earlier in this conversation → reuse it
+            - The query has nothing to do with the focused app
+            - You already have the file path and content from earlier in the conversation or 
+            user has explicitly provided the file path to perform the task.
+
+            ### Examples
+
+            *Conditions you use the get_app_context tool:*
+            1) Focused App: Any code editor like vscode, antigravity, cursor, etc
+               user: "Can You add the API end point for the google maps to search any loaction?"
+
+            2) Focused App: Video edito like davinci resolve, premier pro, Final cut pro, etc
+               user: "Can You add the cenmatic effect to this clip?"
+
+            3) Focused App: Powerpoint
+               user: "Can you add the problems slide next to the vision slide?"
+            
+            4) Focused App: Excel Sheet
+               user: "Add the chart for geeting the top 10 sectors by market size/profit"
+            
+            5) Focused App: Any browser like chrome, brave, opera, edge, comet etc
+               user: "Can you tell me more about this program?"
+               user: "Explain this mail to me"
+            
+            6) Focused App: CAD like AutoCAD, DraftSight, Fusion 360 etc
+               user: "Add the dimension of 450mm for this length"
+        """)
 
     # ── Boot Me ───────────────────────────────────────────────────
     if boot_me:
@@ -476,6 +622,25 @@ def buildAuraSystemPrompt(
         "- TODO-research.md ← labeled(research), TODO-design.md ← labeled(design).\n"
         "- Using lable is optional, lable is always according to task.\n\n"
         "[NOTE] Whenever you want to use TODO.md for any task, use this given path format."
+    )
+
+    # ── Workspace & CWD differences ────────────────────────────────────────────
+    sections.append(
+        "## Workspace\n"
+        f"WORKSPACE is your complete environment — it holds your identity, memory, conscious files," 
+        f"session storage, todos, and all context about yourself and the user." 
+        f"Workspace is your brain. Any updates to memory, conscious files, or" 
+        f"system-level files always go to their dedicated locations inside the Workspace," 
+        f"never in CWD.\n\n"
+        
+        "## Current Working Directory\n"
+        f"CWD (Current Working Directory) is strictly for the current task only — create, edit," 
+        f"or run operations on files that belong to that task (documents, code, presentations," 
+        f"outputs, etc.). CWD is explicitly set by the user." 
+        f"If no CWD is given, default CWD is AuraSpace/{chat_id} inside the Workspace."
+
+        f"Workspace = who you are, what you know, your system-level files."
+        f"CWD       = the task at hand, nothing beyond it."
     )
 
     # ── Response Format ──────────────────────────────────────────
@@ -581,6 +746,27 @@ def buildAuraSystemPrompt(
         "Never repeat the same sentence across different tool calls.\n"
         "Never use any tags, symbols, labels, or special formatting in these messages. Plain text only.\n"
     )
+
+    # ── Skills ─────────────────────────────────────
+    sections.append(
+        "## Skills\n\n"
+        "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.\n\n"
+        "** How To invoke Skills **\n\n"
+        "- To invoke skills, use read_skill tool. This tool will read the specified skill and make it available for use.\n\n"
+        "- Invoke read_skill tool with skill name and location of the skill\n"
+        
+        "**IMPORTANT\n\n:"
+        "- Available skills are listed under <available_skills> tag\n"
+        "- When a skill matches the user's request or the task will requie any skill from the available skills, invoke the read_skill tool BEFORE generating any other response\n"
+        "- NEVER mention a skill without actually calling read_skill tool\n"
+        "- Do not invoke a skill that is already running\n"
+        "- In the Messsage explain that loading skill name and reason\n\n"
+    )
+
+    # ── Available Skills ─────────────────────────────
+    available_skills = load_default_skills(config.local_skills)
+    if available_skills:
+        sections.append(available_skills)
 
     # ── Final Response ─────────────────────────────────────
     sections.append(

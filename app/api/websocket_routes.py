@@ -32,7 +32,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="google", model_name="gemini-2.5-flash")
+llm_config = LLMConfig(provider="google", model_name="gemini-3-flash-preview")
 
 # task_manager = TaskManager()
 
@@ -178,23 +178,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
 
                 # IF USING SMART MODE WITHOUT OWN API KEY
-                if not using_custom and payload.get("option") == "smart":
-                    await send_ws_message(
-                        websocket,
-                        type="aura_message",
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "tool": "aura",
-                                "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                            },
-                            "coming_from": "aura/server"
-                        }
-                    )
-                    await update_task_status(pool=pool, task_id=task_id, status="failed")
-                    return
+                # if not using_custom and payload.get("option") == "smart":
+                #     await send_ws_message(
+                #         websocket,
+                #         type="aura_message",
+                #         task_id=task_id,
+                #         chat_id=chat_id,
+                #         payload={
+                #             "content": {
+                #                 "role": "assistant",
+                #                 "tool": "aura",
+                #                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
+                #             },
+                #             "coming_from": "aura/server"
+                #         }
+                #     )
+                #     await update_task_status(pool=pool, task_id=task_id, status="failed")
+                #     return
+
+                # Extract attached files and images
+                attached_files = payload.get("attached_files", [])
+                attached_images = payload.get("attached_images", [])
                 
                 # Extract aura_config from payload
                 aura_config_data = payload.get("aura_config", {})
@@ -204,12 +208,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     timezone=aura_config_data.get("timezone", "Asia/Kolkata"),
                     compression=aura_config_data.get("compression", False),
                     boot_me=aura_config_data.get("boot_me", False),
+                    local_skills=aura_config_data.get("local_skills"),
                 )
 
                 # Extract history from payload
                 history = payload.get("messages", [])
 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history)
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history, attached_files=attached_files, attached_images=attached_images)
 
                 # Notify client that processing has started
                 await send_ws_message(

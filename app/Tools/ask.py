@@ -1,5 +1,4 @@
 from typing import Optional
-import uuid
 import json
 
 from app.Types.agent_types import AskToolInput
@@ -30,14 +29,10 @@ class AskTool(BaseTool):
 
     async def run(self, inputs: AskToolInput):
 
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="ask")
+        # Sending the last assistant message to the client and to get tool_call_id
+        tool_call_id = await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="ask")
         text = inputs.text
         attachments = inputs.attachments
-        tool_call_id = str(uuid.uuid4())
-        
-        # WIP**
-        # send ws message to client and close the task here and Compress the messages and feed them to next task run new task with the user_input.
 
         task_state = task_manager.get_state(self.task_id)
         websocket = task_state.websocket

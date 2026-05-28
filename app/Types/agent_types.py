@@ -25,9 +25,12 @@ class AuraConfig(BaseModel):
     timezone: str = Field(default="Asia/Kolkata", description="User timezone")
     compression: bool = Field(default=False, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
+    local_skills: Optional[str] = Field(default=None, description="String containing local skills metadata")
+    cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
+
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
-AnthropicModels = Literal['claude-3-sonnet-20240229', 'claude-3-haiku-20240307', 'claude-3-opus-20240229']
+AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
 GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
 AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
@@ -54,7 +57,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -72,9 +75,9 @@ PROVIDER_MAPPING = {
 # Default models for each provider when user overrides
 DEFAULT_MODELS = {
     "openai": "gpt-4.1",
-    "anthropic": "claude-4.5-opus",
+    "anthropic": "claude-sonnet-4-6",
     "open_router": "z-ai",
-    "google": "gemini-2.5-flash"
+    "google": "gemini-3-flash-preview"
 }
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server
@@ -136,6 +139,12 @@ class WebScraperInput(BaseModel):
     urls_string: str
     workspace_path: str
     chat_name: str
+
+class GetAppContextInput(BaseModel):
+    name: str = Field(..., description="Name of the application")
+    pid: int = Field(..., description="Process ID of the application")
+    hwnd: int = Field(..., description="Window handle of the application")
+    exe_path: str = Field(..., description="Executable path of the application")
 
 class CompleteToolInput(BaseModel):
     text: str = Field(
@@ -207,18 +216,16 @@ class StrReplaceToolInput(BaseModel):
     new_str: str = Field(..., description="Replacement text")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing ie, Memory and Conscious Files")
 
-
 class RewriteFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     content: str = Field(..., description="The new content to write to the file, replacing all existing content")
     permissions: str = Field(default="644", description="File permissions in octal string format (default: 644)")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
-        
 
 class DeleteFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
-    
+
 class InsertStrToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
     insert_line_no: int = Field(..., description="number of line where string will be inserted")
@@ -230,7 +237,6 @@ class EditFileToolInput(BaseModel):
     instructions: str = Field(..., description="A clear, first-person description of the changes you are making (e.g., 'I am adding a new validation check')")
     code_edit: str = Field(..., description="The precise code changes using // ... existing code ... for unchanged parts")
     hide: str = Field(default="false", description="If 'true', this tool call will not be shown in the UI")
-     
 
 class ExecuteCommandToolInput(BaseModel):
     command: str = Field(..., description="The shell command to execute")
@@ -253,7 +259,6 @@ class GrepToolInput(BaseModel):
     include: Optional[str] = Field(None, description="Filter files by name or extension using a glob pattern (e.g. \"*.ts\", \"*.{ts,tsx}\", \"*.css\"), If not provided, searches all files.")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
-
 class LSToolInput(BaseModel):
     path: Optional[str] = Field(None, description="The path to list files and directories for. Must be an absolute path. Omit it to use the current workspace directory.")
     ignore: Optional[List[str]] = Field(None, description="Optional: List of global/ignore patterns to skip. eg: ['*.log', 'tmp/*']")
@@ -265,3 +270,17 @@ class GlobeToolInput(BaseModel):
     path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the subdirectory of currentWorkDir or same as currentWorkDir.")
     currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. consider it is the root of the project.")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
+
+class ReadSkillToolInput(BaseModel):
+    skill_name: str = Field(..., description="The name of the skill to read")
+    path: str = Field(..., description="The location/path of the skill folder. Use 'default_skill' for default skills.")
+    arguments: Optional[dict] = Field(None, description="Optional arguments to pass to the skill if required")
+
+class ReadFileToolInput(BaseModel):
+    filePath: str = Field(..., description="Absolute path to the file or directory to read")
+    offset: Optional[int] = Field(1, description="1-indexed. For text/docx/xlsx/csv: line number to start from. For pptx: slide number. Defaults to 1.")
+    limit: Optional[int] = Field(2000, description="Max lines (or slides for pptx) to read. Defaults to 2000.")
+
+class ScreenshotToolInput(BaseModel):
+    reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
+    hide: str = Field(default="false", description="if true then tool call will not be visible to user")
