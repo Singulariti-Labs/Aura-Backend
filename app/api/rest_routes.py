@@ -195,3 +195,34 @@ async def audio_input(audio: UploadFile = File(...)):
             status_code=500,
             detail=f"Speech-to-text processing failed: {str(e)}"
         )
+
+@rest_router.post("/audio/transcribe")
+async def audio_transcribe(audio: UploadFile = File(...)):
+    # Accepts an audio file, transcribes it, and converts it into polished dictation based on user intent.
+    if not audio:
+        raise HTTPException(status_code=400, detail="No audio file provided.")
+    
+    try:
+        # Read the uploaded audio bytes
+        audio_bytes = await audio.read()
+        mime_type = audio.content_type or "audio/wav"
+        
+        # Process the transcription via the intent-aware STTService method
+        stt_service = STTService()
+        transcript = await stt_service.stt_transcription(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type
+        )
+        
+        return {
+            "status": "success",
+            "transcript": transcript
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audio transcription processing failed: {str(e)}"
+        )
+
