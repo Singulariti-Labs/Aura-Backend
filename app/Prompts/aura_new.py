@@ -33,7 +33,7 @@ TOOL_NAME_MAP = {
     "ls_tool":              ("ls",               "List contents of a directory"),
     "globe_tool":           ("glob",             "Find files matching a glob pattern"),
     "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
-    "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path."),
+    "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path. Dont give the random app name."),
     "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
     "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
 }
@@ -487,71 +487,6 @@ def buildAuraSystemPrompt(
         "hide = true is to hide the UI from the user."
     )
 
-    # ── Open Applications ─────────────────────────────────────
-    if open_apps:
-        apps_lines = ["## Open Applications"]
-        if open_apps.active_apps:
-            apps_lines.append("All applications open on the system are:")
-            for app in open_apps.active_apps:
-                apps_lines.append(f"- {app}")
-        
-        if open_apps.focused_app:
-            apps_lines.append(f"\nThe Focused Application is {open_apps.focused_app}.\nFocused application is the application or window focused on the users machine.")
-        
-        sections.append("\n".join(apps_lines))
-    
-    #  ── Get Open APP Context For Interaction (windows) ─────────────────────────────────────
-    if open_apps:
-        sections.append("""
-            ## Application Context / Focused App Context
-            When the user's request is related to the application currently visible on their screen focused_app,
-            you must first understand what is open in that application before acting, you should first 
-            get the context of the application before acting on the user's request.
-
-            ### Rule: Get Context Before Acting on a Focused App
-            - If the user query is realted to the focused application and you dont have any prior context 
-            of what is open in that application use the get_app_context tool to get the context of the 
-            application and then act accordingly with the best tools/approach you have.
-            - Using this tool will give the following,
-              - Which file(s) are currently open in the app active_files could be one or many.
-              - Path of the active file.
-              - Root folder path if it is applicable.
-            - Once you have the context then file paths then you can treat as normal task using the best 
-            tools to complete the given task.
-
-            ### When to use the get_app_context tool
-            - The user's query is about something visible in the focused app
-            - You need to know which file is open to act on it or the context of the application.
-            
-            ### Skip get_app_context tool
-            - You already retrieved context for this app earlier in this conversation → reuse it
-            - The query has nothing to do with the focused app
-            - You already have the file path and content from earlier in the conversation or 
-            user has explicitly provided the file path to perform the task.
-
-            ### Examples
-
-            *Conditions you use the get_app_context tool:*
-            1) Focused App: Any code editor like vscode, antigravity, cursor, etc
-               user: "Can You add the API end point for the google maps to search any loaction?"
-
-            2) Focused App: Video edito like davinci resolve, premier pro, Final cut pro, etc
-               user: "Can You add the cenmatic effect to this clip?"
-
-            3) Focused App: Powerpoint
-               user: "Can you add the problems slide next to the vision slide?"
-            
-            4) Focused App: Excel Sheet
-               user: "Add the chart for geeting the top 10 sectors by market size/profit"
-            
-            5) Focused App: Any browser like chrome, brave, opera, edge, comet etc
-               user: "Can you tell me more about this program?"
-               user: "Explain this mail to me"
-            
-            6) Focused App: CAD like AutoCAD, DraftSight, Fusion 360 etc
-               user: "Add the dimension of 450mm for this length"
-        """)
-
     # ── Boot Me ───────────────────────────────────────────────────
     if boot_me:
         sections.append(BOOTME_TEMPLATE.strip())
@@ -623,6 +558,83 @@ def buildAuraSystemPrompt(
         "- Using lable is optional, lable is always according to task.\n\n"
         "[NOTE] Whenever you want to use TODO.md for any task, use this given path format."
     )
+
+    # ── Open Applications ─────────────────────────────────────
+    if open_apps:
+        apps_lines = ["## Open Applications"]
+        if open_apps.active_apps:
+            apps_lines.append("All applications open on the system are:")
+            for app in open_apps.active_apps:
+                apps_lines.append(f"- {app}")
+        
+        if open_apps.focused_app:
+            apps_lines.append(f"""\nThe Focused Application is {open_apps.focused_app}.\nFocused application is the application or window focused on the users machine.
+            If someone is asking to interct with the background app then most probably it is this app which is focused\n
+            eg: 
+            1)Hey, can you add new coloum to this sheet about the emails and provide the emails of this Founders in that coloum.\n
+            2)Make a sheet using this report.\n
+            3)Can you summarize this article for me, and suggest some key insights and make a markdown note.\n
+            Now looking at all this examples it is sure that they are looking for the app runing in the background, and want to interact with it.\n
+            In such conditions, after knowing which is the focused app. the app with is_foreground: true for the focused app and, in the config as well
+            gets the focused_app provides the name of the app that is focused/open in the background.
+            """)
+        
+        sections.append("\n".join(apps_lines))
+
+    #  ── Get Open APP Context For Interaction (windows) ─────────────────────────────────────
+    if open_apps:
+        sections.append(f"""
+        ## Application Context / Focused App Context
+        When the user's request is related to the application currently visible on their screen focused_app,
+        you must first understand what is open in that application before acting, you should first 
+        get the context of the application before acting on the user's request.
+
+        ### Rule: Get Context Before Acting on a Focused App
+        - If the user query is realted to the focused application and you dont have any prior context 
+        of what is open in that application use the get_app_context tool to get the context of the 
+        application and then act accordingly with the best tools/approach you have.
+        - Using this tool will give the following,
+            - Which file(s) are currently open in the app active_files could be one or many.
+            - Path of the active file.
+            - Root folder path if it is applicable.
+        - Once you have the context then file paths then you can treat as normal task using the best 
+            tools to complete the given task.
+
+        ### When to use the get_app_context tool
+        - The user's query is about something visible in the focused app
+        - You need to know which file is open to act on it or the context of the application.
+            
+        ### Skip get_app_context tool
+        - You already retrieved context for this app earlier in this conversation → reuse it
+        - The query has nothing to do with the focused app
+        - You already have the file path and content from earlier in the conversation or 
+        user has explicitly provided the file path to perform the task.
+
+        ### Examples
+
+        *Conditions you use the get_app_context tool:*
+        1)  Focused App: Any code editor like vscode, antigravity, cursor, etc
+            user: "Can You add the API end point for the google maps to search any loaction?"
+
+        2)  Focused App: Video edito like davinci resolve, premier pro, Final cut pro, etc
+            user: "Can You add the cenmatic effect to this clip?"
+
+        3)  Focused App: Powerpoint
+            user: "Can you add the problems slide next to the vision slide?"
+            
+        4)  Focused App: Excel Sheet
+            user: "Add the chart for geeting the top 10 sectors by market size/profit"
+            
+        5)  Focused App: Any browser like chrome, brave, opera, edge, comet etc
+            user: "Can you tell me more about this program?"
+            user: "Explain this mail to me"
+            
+        6)  Focused App: CAD like AutoCAD, DraftSight, Fusion 360 etc
+            user: "Add the dimension of 450mm for this length"
+
+        ### NOTE: If using this tool provide the correct name of the focused app dont provide any name of the application that is even not open.
+        use the {config.open_apps} for looking the open apps and focused app.
+    """)
 
     # ── Workspace & CWD differences ────────────────────────────────────────────
     sections.append(
