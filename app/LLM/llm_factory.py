@@ -486,6 +486,7 @@ class LLMFactory():
             attached_images: Optional[List[Dict[str, Any]]] = None,
             max_tokens: int = 128000,
             history: List[Dict] = [],
+            screenshot: Optional[Any] = None,
         ):
         """
         Method to run the aura agent with the given task in a loop till the task is not completed.
@@ -532,7 +533,8 @@ class LLMFactory():
                 llm_provider=llm_provider,
                 attached_files=attached_files or [],
                 attached_images=attached_images or [],
-                query=query
+                query=query,
+                screenshot=screenshot
             )
 
             # If formated_input is a list (multimodal), we append system_info and today to the first text block if possible

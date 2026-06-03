@@ -12,7 +12,6 @@ read_when:
 - **Name:** 
 - **What to call them:** 
 - **Pronouns:** *(optional)*
-- **Timezone:** 
 - **Notes:** 
 
 ## Context
