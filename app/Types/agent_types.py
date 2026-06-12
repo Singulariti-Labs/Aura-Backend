@@ -30,7 +30,7 @@ class AuraConfig(BaseModel):
 
 
 OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
-AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6']
+AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
 GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
 AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
