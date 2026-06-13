@@ -63,7 +63,11 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-                return ChatOpenAI(model=llm_config.model_name, api_key=api_key)
+                return ChatOpenAI(
+                    model=llm_config.model_name,
+                    api_key=api_key,
+                    stream_usage=True,
+                )
             
             elif llm_config.provider == "anthropic":
                 api_key = user_api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -315,16 +319,19 @@ class LLMFactory():
                     tools=tools,
                     llm_provider=llm_provider
                 )
+                handler = AgentCallbackHandler(self.memory)
 
                 executor = AgentExecutor(
                     agent=agent,
                     tools=tools,
                     verbose=True,
                     return_intermediate_steps=True,
-                    callbacks=[AgentCallbackHandler(self.memory)]
                 )
 
-                response = await executor.ainvoke({"input": formated_input, "chat_history": chat_history_for_llm})
+                response = await executor.ainvoke(
+                    {"input": formated_input, "chat_history": chat_history_for_llm},
+                    config=RunnableConfig(callbacks=handler.as_list()),
+                )
                 
                 return response
             else:
