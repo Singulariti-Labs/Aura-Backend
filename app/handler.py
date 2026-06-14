@@ -115,6 +115,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
 
         # Streaming buffer
         self._stream_buffer: List[str] = []
+        self._last_tool_call_batch_key: Optional[tuple[str, ...]] = None
 
     def as_list(self) -> List["AgentCallbackHandler"]:
         """Convenience — returns [self] for callbacks=handler.as_list()."""
@@ -278,11 +279,13 @@ class AgentCallbackHandler(BaseCallbackHandler):
     def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
         self._capture_from_agent_action(action, kwargs)
         self._print_action(action)
-        self._save(
-            content    = action.log.strip(),
-            tool_calls = [self._action_to_tool_call(action)],
+        self._save_tool_call_batch(
+            content=action.log.strip(),
+            tool_calls=(
+                self._tool_calls_from_action_context(action)
+                or [self._action_to_tool_call(action)]
+            ),
         )
-        self._reset()
 
     def on_agent_multi_action(self, actions: List[AgentAction], **kwargs: Any) -> Any:
         tool_calls, reasoning = [], ""
@@ -291,8 +294,9 @@ class AgentCallbackHandler(BaseCallbackHandler):
             self._print_action(action)
             tool_calls.append(self._action_to_tool_call(action))
             reasoning = reasoning or action.log.strip()
-        self._save(content=reasoning, tool_calls=tool_calls)
-        self._reset()
+        if actions:
+            tool_calls = self._tool_calls_from_action_context(actions[0]) or tool_calls
+        self._save_tool_call_batch(content=reasoning, tool_calls=tool_calls)
 
     def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> Any:
         content = (
@@ -620,13 +624,175 @@ class AgentCallbackHandler(BaseCallbackHandler):
         rates = PRICING.get(f"{provider}:{model}", (5.0, 15.0))
         return round((input_t * rates[0] + output_t * rates[1]) / 1_000_000, 6)
 
+    def _tool_calls_from_action_context(
+        self,
+        action: AgentAction,
+    ) -> List[Dict[str, Any]]:
+        """
+        Recover the full tool-call batch from the AI message that produced an action.
+
+        LangChain may call on_agent_action once per action even when the model
+        emitted multiple parallel tool calls. Each action still usually carries
+        the original AIMessage in message_log, where all sibling tool calls live.
+        """
+        messages = getattr(action, "message_log", None) or []
+        for msg in reversed(list(messages)):
+            tool_calls: List[Dict[str, Any]] = []
+
+            raw_tool_calls = getattr(msg, "tool_calls", None)
+            if raw_tool_calls:
+                tool_calls.extend(
+                    tc
+                    for tc in (
+                        self._normalize_tool_call(raw_call)
+                        for raw_call in raw_tool_calls
+                    )
+                    if tc
+                )
+
+            additional_kwargs = _safe_dict(getattr(msg, "additional_kwargs", {}))
+            extra_tool_calls = additional_kwargs.get("tool_calls")
+            if extra_tool_calls:
+                tool_calls.extend(
+                    tc
+                    for tc in (
+                        self._normalize_tool_call(raw_call)
+                        for raw_call in extra_tool_calls
+                    )
+                    if tc
+                )
+
+            content = getattr(msg, "content", None)
+            if isinstance(content, list):
+                tool_calls.extend(
+                    tc
+                    for tc in (
+                        self._normalize_tool_call(block)
+                        for block in content
+                        if isinstance(block, dict)
+                        and block.get("type") in ("tool_call", "tool_use")
+                    )
+                    if tc
+                )
+
+            tool_calls = self._dedupe_tool_calls(tool_calls)
+            if tool_calls:
+                return tool_calls
+
+        return []
+
     def _action_to_tool_call(self, action: AgentAction) -> Dict[str, Any]:
+        tool_call_id = getattr(action, "tool_call_id", None) or getattr(action, "id", None)
         return {
-            "type":  "tool_call",
-            "id":    getattr(action, "tool_call_id"),  #, f"call_{id(action)}"),
-            "name":  action.tool,
+            "type":         "tool_call",
+            "id":           tool_call_id,
+            "tool_call_id": tool_call_id,
+            "name":         action.tool,
             "input": action.tool_input,
         }
+
+    def _normalize_tool_call(self, raw_call: Any) -> Optional[Dict[str, Any]]:
+        if isinstance(raw_call, dict):
+            if "function" in raw_call:
+                function = _safe_dict(raw_call.get("function"))
+                tool_input = function.get("arguments", {})
+                if isinstance(tool_input, str):
+                    try:
+                        tool_input = json.loads(tool_input)
+                    except json.JSONDecodeError:
+                        pass
+                tool_call_id = raw_call.get("id") or raw_call.get("tool_call_id")
+                name = function.get("name")
+            else:
+                tool_input = (
+                    raw_call.get("input")
+                    if "input" in raw_call
+                    else raw_call.get("args", raw_call.get("arguments", {}))
+                )
+                if not tool_input and raw_call.get("partial_json"):
+                    try:
+                        tool_input = json.loads(raw_call["partial_json"])
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+                tool_call_id = raw_call.get("tool_call_id") or raw_call.get("id")
+                name = raw_call.get("name")
+        else:
+            tool_input = (
+                getattr(raw_call, "input", None)
+                if hasattr(raw_call, "input")
+                else getattr(raw_call, "args", getattr(raw_call, "arguments", {}))
+            )
+            tool_call_id = (
+                getattr(raw_call, "tool_call_id", None)
+                or getattr(raw_call, "id", None)
+            )
+            name = getattr(raw_call, "name", None)
+
+        if not tool_call_id and not name:
+            return None
+
+        return {
+            "type":         "tool_call",
+            "id":           tool_call_id,
+            "tool_call_id": tool_call_id,
+            "name":         name,
+            "input":        tool_input or {},
+        }
+
+    def _dedupe_tool_calls(
+        self,
+        tool_calls: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        seen = set()
+        deduped = []
+        for tool_call in tool_calls:
+            key = self._tool_call_key(tool_call)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(tool_call)
+        return deduped
+
+    def _tool_call_key(self, tool_call: Dict[str, Any]) -> str:
+        tool_call_id = tool_call.get("tool_call_id") or tool_call.get("id")
+        if tool_call_id:
+            return str(tool_call_id)
+        try:
+            input_key = json.dumps(
+                tool_call.get("input", {}),
+                sort_keys=True,
+                default=str,
+            )
+        except TypeError:
+            input_key = str(tool_call.get("input", {}))
+        return f"{tool_call.get('name')}:{input_key}"
+
+    def _tool_call_batch_key(
+        self,
+        tool_calls: List[Dict[str, Any]],
+    ) -> tuple[str, ...]:
+        batch_key = []
+        for tool_call in tool_calls:
+            tool_call_id = tool_call.get("tool_call_id") or tool_call.get("id")
+            if not tool_call_id:
+                return ()
+            batch_key.append(str(tool_call_id))
+        return tuple(batch_key)
+
+    def _save_tool_call_batch(
+        self,
+        content: str,
+        tool_calls: List[Dict[str, Any]],
+    ) -> None:
+        batch_key = self._tool_call_batch_key(tool_calls)
+        if batch_key and batch_key == self._last_tool_call_batch_key:
+            self._reset()
+            return
+
+        self._save(content=content, tool_calls=tool_calls)
+        if batch_key:
+            self._last_tool_call_batch_key = batch_key
+        self._reset()
 
     def _save(
         self,
