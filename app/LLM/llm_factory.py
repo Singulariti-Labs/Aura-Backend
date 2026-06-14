@@ -4,7 +4,7 @@ from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_classic.agents import create_openai_tools_agent, create_tool_calling_agent, AgentExecutor
+from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import Runnable
 from langchain_core.tools import Tool
@@ -24,6 +24,7 @@ from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler
 from app.utils.format_messages import format_to_langchain
+from app.utils.tool_message_formatter import format_multimodal_tool_messages
 from app.Adapters.format_message import prepareMessageForAI
 from datetime import datetime
 
@@ -160,9 +161,25 @@ class LLMFactory():
         """
         print(f"PROMT TYPE: {type(prompt)}")
         if isinstance(llm, ChatOpenAI):
-            return create_openai_tools_agent(llm, prompt, tools)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider="openai",
+                ),
+            )
         elif isinstance(llm, ChatAnthropic):
-            return create_tool_calling_agent(llm, prompt, tools)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider="anthropic",
+                ),
+            )
         else:
             raise ValueError(f"Unsupported LLM type: {type(llm)}")
     
@@ -310,7 +327,7 @@ class LLMFactory():
                 f"system_info: {system_info_str}\n"
             )
             
-            # If tools are provided, use create_openai_tools_agent
+            # If tools are provided, use a tool-calling agent.
             if tools:
                 # agent = self.get_agent_type(llm=llm, prompt=prompt, tools=tools)
                 agent = self.create_agent_for_provider(
@@ -564,7 +581,15 @@ class LLMFactory():
 
             # llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line
 
-            agent = create_tool_calling_agent(llm, tools, prompt)
+            agent = create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
 
             # Creating agent executor.
             executor = AgentExecutor(
@@ -632,31 +657,78 @@ class LLMFactory():
 
         # Create agent based on provider
         if llm_provider in ['openai', 'azure_openai', 'azure', 'open_router']:
-            # OpenAI-specific tool calling agent
-            return create_openai_tools_agent(llm, tools, prompt)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
     
         elif llm_provider in ['anthropic', 'claude']:
             # Anthropic supports tool calling through the generic create_tool_calling_agent
             # Ensure the LLM is bound with tools properly for Anthropic
-            return create_tool_calling_agent(llm, tools, prompt)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
     
         elif llm_provider in ['google', 'gemini', 'vertexai', 'vertex_ai']:
             # Google/Gemini also supports the generic tool calling agent
-            return create_tool_calling_agent(llm, tools, prompt)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
     
         elif llm_provider in ['cohere']:
             # Cohere supports tool calling
-            return create_tool_calling_agent(llm, tools, prompt)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
     
         elif llm_provider in ['mistral']:
             # Mistral AI supports tool calling
-            return create_tool_calling_agent(llm, tools, prompt)
+            return create_tool_calling_agent(
+                llm,
+                tools,
+                prompt,
+                message_formatter=lambda steps: format_multimodal_tool_messages(
+                    steps,
+                    provider=llm_provider,
+                ),
+            )
     
         else:
             # Default to generic tool calling agent for other providers
             # This should work for most modern LLMs that support function calling
             try:
-                return create_tool_calling_agent(llm, tools, prompt)
+                return create_tool_calling_agent(
+                    llm,
+                    tools,
+                    prompt,
+                    message_formatter=lambda steps: format_multimodal_tool_messages(
+                        steps,
+                        provider=llm_provider,
+                    ),
+                )
             except Exception as e:
                 raise ValueError(
                     f"Unsupported LLM provider: {llm_provider}. "

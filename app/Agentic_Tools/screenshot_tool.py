@@ -6,7 +6,6 @@ from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.helper import update_memory
 from app.DB.Queries.agent_event import create_agent_event
-from app.Adapters.format_tool_message import create_tool_response
 
 class ScreenshotToolExecutor():
     def __init__(self, llm, task_id: str, chat_id: str, memory: Optional[Memory] = None):
@@ -72,24 +71,6 @@ class ScreenshotToolExecutor():
                             "output": "Failed to capture the screenshot from client."
                         }
 
-                    # Construct ImageAttachment dictionary
-                    image_attachment = {
-                        "name": f"screenshot.{mime_type.split('/')[-1]}",
-                        "path": f"screenshot.{mime_type.split('/')[-1]}",
-                        "content": base64_image,
-                        "mime": mime_type
-                    }
-
-                    # Format for the specific provider using the adapter
-                    options = {
-                        "provider": llm_provider or "openai", # default to openai if none
-                        "text": "Screenshot captured successfully.",
-                        "files": [],
-                        "images": [image_attachment]
-                    }
-                    
-                    formatted_content = create_tool_response(options)
-
                     # Update local memory
                     assistant_message = "Capturing a screenshot of the user's screen..."
                     if reason:
@@ -110,17 +91,14 @@ class ScreenshotToolExecutor():
                         base64_images=[base64_image]
                     )
 
-                    # Return the structured tool result with media blocks
+                    # Return neutral screenshot data. The agent scratchpad formatter
+                    # turns this into provider-compatible multimodal messages.
                     return {
                         "success": True,
-                        "result": {
-                            "role": "user",
-                            "content": [{
-                                "type": "tool_result",
-                                "tool_use_id": tool_call_id,
-                                "content": formatted_content
-                            }]
-                        }
+                        "output": "Screenshot captured successfully.",
+                        "image_base64": base64_image,
+                        "mime_type": mime_type,
+                        "resolution": resolution,
                     }
 
             return {

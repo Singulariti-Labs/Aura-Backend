@@ -16,6 +16,7 @@ from app.helper import (
     _sent_aura_thinking_batches,
     _should_send_aura_thinking,
 )
+from app.utils.tool_message_formatter import format_multimodal_tool_messages
 
 
 class ParallelToolCallHandlerTests(unittest.TestCase):
@@ -116,6 +117,76 @@ class BaseToolRuntimeIdTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_call_result.tool_call_id, "call_exact")
         self.assertIn("call_exact", tool_call_result.content)
         self.assertIn('"value": "hello"', tool_call_result.content)
+
+
+class MultimodalToolMessageFormatterTests(unittest.TestCase):
+    def test_screenshot_observation_becomes_anthropic_safe_image_content(self):
+        action = SimpleNamespace(
+            tool="screenshot",
+            tool_call_id="toolu_screenshot",
+            message_log=[],
+            log="",
+        )
+        observation = {
+            "success": True,
+            "output": "Screenshot captured successfully.",
+            "image_base64": "abc123",
+            "mime_type": "image/png",
+        }
+
+        messages = format_multimodal_tool_messages(
+            [(action, observation)],
+            provider="anthropic",
+        )
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].tool_call_id, "toolu_screenshot")
+        self.assertIsInstance(messages[0].content, list)
+        self.assertEqual(messages[0].content[1]["type"], "image")
+        self.assertEqual(messages[0].content[1]["source_type"], "base64")
+        self.assertEqual(messages[0].content[1]["data"], "abc123")
+
+    def test_screenshot_observation_uses_user_image_for_openai(self):
+        action = SimpleNamespace(
+            tool="screenshot",
+            tool_call_id="call_screenshot",
+            message_log=[],
+            log="",
+        )
+        observation = {
+            "success": True,
+            "output": "Screenshot captured successfully.",
+            "image_base64": "abc123",
+            "mime_type": "image/png",
+        }
+
+        messages = format_multimodal_tool_messages(
+            [(action, observation)],
+            provider="openai",
+        )
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0].content, "Screenshot captured successfully.")
+        self.assertNotIn("abc123", messages[0].content)
+        self.assertEqual(messages[1].content[1]["type"], "image")
+        self.assertEqual(messages[1].content[1]["data"], "abc123")
+
+    def test_regular_tool_observation_stays_text_json(self):
+        action = SimpleNamespace(
+            tool="web_search",
+            tool_call_id="call_search",
+            message_log=[],
+            log="",
+        )
+
+        messages = format_multimodal_tool_messages(
+            [(action, {"success": True, "output": "done"})],
+            provider="anthropic",
+        )
+
+        self.assertEqual(len(messages), 1)
+        self.assertIsInstance(messages[0].content, str)
+        self.assertIn('"output": "done"', messages[0].content)
 
 
 class HelperToolCallMatchingTests(unittest.TestCase):
