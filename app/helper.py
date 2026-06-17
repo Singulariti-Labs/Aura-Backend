@@ -6,12 +6,35 @@ from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.DB.Queries.agent_event import create_agent_event
 from pathlib import Path
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 
 import json
 
 
 _sent_aura_thinking_batches: set[tuple[str, str, tuple[str, ...]]] = set()
+
+
+def format_reset_time(reset_at_utc: datetime, timezone_name: Optional[str] = None) -> str:
+    """
+    Formats a UTC reset timestamp for user-facing rate-limit messages.
+
+    Naive datetimes are treated as UTC because database timestamps in this
+    project are written with datetime.utcnow().
+    """
+    if reset_at_utc.tzinfo is None:
+        reset_at = reset_at_utc.replace(tzinfo=timezone.utc)
+    else:
+        reset_at = reset_at_utc.astimezone(timezone.utc)
+
+    if timezone_name:
+        try:
+            reset_at = reset_at.astimezone(ZoneInfo(timezone_name))
+        except Exception:
+            pass
+
+    return reset_at.strftime("%I:%M %p").lstrip("0")
 
 
 def _get_tool_call_value(tool_call: Any, key: str, default: Any = None) -> Any:

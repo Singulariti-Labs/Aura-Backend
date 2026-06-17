@@ -48,6 +48,7 @@ class Agent(BaseAgent):
         maxTokens: int = 128000,
         screenshot: Optional[Union[Dict[str, Any], List[str], str]] = None,
         pool: Pool | None = None,
+        user_id: Optional[str] = None,
         aura_config: Optional[AuraConfig] = None,
         history: List[Dict] = [],
         attached_files: Optional[List[Dict[str, Any]]] = None,
@@ -57,10 +58,15 @@ class Agent(BaseAgent):
         self.task_id = task_id
         self.chat_id = chat_id
         self.dbpool = pool
+        self.user_id = user_id
         self.llm_config = llm
         self.llm_provider = llm.provider
         self.memory = Memory()
-        self.llm_factory = LLMFactory(self.memory)
+        self.llm_factory = LLMFactory(
+            self.memory,
+            rate_limit_pool=self.dbpool,
+            user_id=self.user_id,
+        )
         self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
         self.system_info = system_info
@@ -78,7 +84,7 @@ class Agent(BaseAgent):
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id)
         self.payload = payload
         self.attached_files = attached_files
         self.attached_images = attached_images

@@ -37,7 +37,12 @@ class LLMFactory():
     and memory support for chat history.
     """
 
-    def __init__(self, memory: Memory):
+    def __init__(
+        self,
+        memory: Memory,
+        rate_limit_pool: Optional[Any] = None,
+        user_id: Optional[str] = None,
+    ):
         """
         Initializes the LLMFactory with a memory instance to track chat history and message flow.
 
@@ -45,6 +50,8 @@ class LLMFactory():
         - memory: An instance of the Memory class to persist user and assistant messages.
         """
         self.memory = memory
+        self.rate_limit_pool = rate_limit_pool
+        self.user_id = user_id
 
     @staticmethod
     def create_llm(llm_config: LLMConfig, user_api_key: str = None):
@@ -336,7 +343,11 @@ class LLMFactory():
                     tools=tools,
                     llm_provider=llm_provider
                 )
-                handler = AgentCallbackHandler(self.memory)
+                handler = AgentCallbackHandler(
+                    self.memory,
+                    rate_limit_pool=self.rate_limit_pool,
+                    user_id=self.user_id,
+                )
 
                 executor = AgentExecutor(
                     agent=agent,
@@ -576,7 +587,11 @@ class LLMFactory():
                 formated_input += system_info_text
 
             # Create callbacks list with rate limiting
-            handler = AgentCallbackHandler(self.memory)
+            handler = AgentCallbackHandler(
+                self.memory,
+                rate_limit_pool=self.rate_limit_pool,
+                user_id=self.user_id,
+            )
             # callbacks = handler.as_list()
 
             # llm_with_callbacks = llm.with_config({"callbacks": callbacks})  # ← key line

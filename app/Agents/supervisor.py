@@ -1,6 +1,7 @@
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.language_models.chat_models import BaseChatModel
+from asyncpg import Pool
 
 from app.Agents.base_agent import BaseAgent
 from app.Types.agent_types import SystemInfo, LLMConfig, StepStatus, ROLE_TYPE, AuraConfig
@@ -25,7 +26,7 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
@@ -36,7 +37,13 @@ class SupervisorAgent(BaseAgent):
         self.system_info = None
         self.memory = memory
         self.supervisor_tool_id = None
-        self.llm_factory = LLMFactory(self.memory)
+        self.dbpool = dbpool
+        self.user_id = user_id
+        self.llm_factory = LLMFactory(
+            self.memory,
+            rate_limit_pool=self.dbpool,
+            user_id=self.user_id,
+        )
         self.supervisor_prompt = SUPERVISOR_PROMPT
         self.tools = tools
         self.step_results = {}
@@ -343,6 +350,7 @@ class SupervisorAgent(BaseAgent):
                     tools=tools,
                     system_info=system_info,
                     llm=self.llm,
+                    llm_provider=self.llm_provider or self.llm_factory.detect_provider_from_llm(self.llm),
                     agent_type="aura",
                     history=self.history
                 )

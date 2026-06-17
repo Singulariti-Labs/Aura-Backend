@@ -10,6 +10,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult, ChatGeneration
 
 from app.LLM.memory import Memory
+from app.RateLimit.rate_limit_service import schedule_token_usage_update
 from app.helper import update_memory
 
 # Pricing per 1M tokens (input, output)
@@ -98,10 +99,18 @@ class AgentCallbackHandler(BaseCallbackHandler):
         )
     """
 
-    def __init__(self, memory: Memory, debug: bool = False):
+    def __init__(
+        self,
+        memory: Memory,
+        debug: bool = False,
+        rate_limit_pool: Optional[Any] = None,
+        user_id: Optional[str] = None,
+    ):
         super().__init__()
         self.memory = memory
         self.debug  = debug
+        self.rate_limit_pool = rate_limit_pool
+        self.user_id = user_id
 
         # LLM state — populated in _handle_llm_response
         self.latest_llm_usage:    Optional[Dict[str, Any]] = None
@@ -806,6 +815,12 @@ class AgentCallbackHandler(BaseCallbackHandler):
             tool_calls = tool_calls,
             usage      = self.latest_llm_usage,
             details    = self.latest_llm_details,
+        )
+        schedule_token_usage_update(
+            pool=self.rate_limit_pool,
+            user_id=self.user_id,
+            usage=self.latest_llm_usage,
+            details=self.latest_llm_details,
         )
 
     def _reset(self) -> None:
