@@ -42,6 +42,9 @@ class LLMFactory():
         memory: Memory,
         rate_limit_pool: Optional[Any] = None,
         user_id: Optional[str] = None,
+        fallback_provider: Optional[str] = None,
+        fallback_model_name: Optional[str] = None,
+        rate_limit_loop: Optional[Any] = None,
     ):
         """
         Initializes the LLMFactory with a memory instance to track chat history and message flow.
@@ -52,6 +55,9 @@ class LLMFactory():
         self.memory = memory
         self.rate_limit_pool = rate_limit_pool
         self.user_id = user_id
+        self.rate_limit_loop = rate_limit_loop
+        self.fallback_provider = fallback_provider
+        self.fallback_model_name = fallback_model_name
 
     @staticmethod
     def create_llm(llm_config: LLMConfig, user_api_key: str = None):
@@ -347,6 +353,9 @@ class LLMFactory():
                     self.memory,
                     rate_limit_pool=self.rate_limit_pool,
                     user_id=self.user_id,
+                    rate_limit_loop=self.rate_limit_loop,
+                    fallback_provider=self.fallback_provider,
+                    fallback_model_name=self.fallback_model_name,
                 )
 
                 executor = AgentExecutor(
@@ -591,6 +600,9 @@ class LLMFactory():
                 self.memory,
                 rate_limit_pool=self.rate_limit_pool,
                 user_id=self.user_id,
+                rate_limit_loop=self.rate_limit_loop,
+                fallback_provider=self.fallback_provider,
+                fallback_model_name=self.fallback_model_name,
             )
             # callbacks = handler.as_list()
 

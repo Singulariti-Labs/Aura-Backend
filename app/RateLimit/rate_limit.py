@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -44,7 +44,7 @@ async def check_rate_limit_for_request(
     request. If the active window has spent its full USD limit, this marks the
     row blocked and returns a blocked decision.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -81,7 +81,7 @@ async def check_rate_limit_for_request(
                     timezone_name=timezone_name,
                 )
 
-            window_start = row["window_start"] or now
+            window_start = _as_utc_datetime(row["window_start"] or now)
             reset_at = window_start + RATE_LIMIT_WINDOW
 
             if now - window_start >= RATE_LIMIT_WINDOW:
@@ -136,6 +136,7 @@ async def _create_default_window(
     """
     Creates the user's first rate-limit row with default active counters.
     """
+    db_now = _as_db_timestamp(now)
     await conn.execute(
         """
         INSERT INTO rate_limits (
@@ -149,16 +150,17 @@ async def _create_default_window(
             status,
             updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         """,
         str(uuid.uuid4()),
         user_id,
-        now,
+        db_now,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_SPENT_USD,
         DEFAULT_LIMIT_USD,
-        now,
+        "active",
+        db_now,
     )
 
     return _decision(
@@ -179,6 +181,7 @@ async def _refresh_window(
     """
     Resets an expired 12-hour window and reactivates the user.
     """
+    db_now = _as_db_timestamp(now)
     await conn.execute(
         """
         UPDATE rate_limits
@@ -188,17 +191,18 @@ async def _refresh_window(
             window_output_tokens = $4,
             window_spent_usd = $5,
             limit_usd = COALESCE(limit_usd, $6),
-            status = 'active',
-            updated_at = $7
+            status = $7,
+            updated_at = $8
         WHERE user_id = $1
         """,
         user_id,
-        now,
+        db_now,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_SPENT_USD,
         DEFAULT_LIMIT_USD,
-        now,
+        "active",
+        db_now,
     )
 
     return _decision(
@@ -219,6 +223,7 @@ async def _set_status(
     """
     Persists the current active/blocked status without changing usage counters.
     """
+    db_now = _as_db_timestamp(now)
     await conn.execute(
         """
         UPDATE rate_limits
@@ -227,7 +232,7 @@ async def _set_status(
         """,
         user_id,
         status,
-        now,
+        db_now,
     )
 
 
@@ -258,3 +263,22 @@ def _decimal_or_default(value, default: Decimal) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def _as_utc_datetime(value: datetime) -> datetime:
+    """
+    Normalizes database timestamps to timezone-aware UTC datetimes.
+
+    Postgres may return aware datetimes for TIMESTAMPTZ and naive datetimes for
+    TIMESTAMP. Naive values are treated as UTC because this project stores UTC.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _as_db_timestamp(value: datetime) -> datetime:
+    """
+    Converts an internal UTC datetime to naive UTC for existing DB columns.
+    """
+    return _as_utc_datetime(value).replace(tzinfo=None)

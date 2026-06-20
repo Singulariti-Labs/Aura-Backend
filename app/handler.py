@@ -11,16 +11,8 @@ from langchain_core.outputs import LLMResult, ChatGeneration
 
 from app.LLM.memory import Memory
 from app.RateLimit.rate_limit_service import schedule_token_usage_update
+from app.RateLimit.token_pricing import calculate_token_cost_usd_float
 from app.helper import update_memory
-
-# Pricing per 1M tokens (input, output)
-PRICING = {
-    'openai:gpt-4o':               (2.50, 10.00),
-    'openai:gpt-4o-mini':          (0.15,  0.60),
-    'anthropic:claude-3-5-sonnet': (3.00, 15.00),
-    'anthropic:claude-sonnet-4':   (3.00, 15.00),
-    'google:gemini-1.5-pro':       (3.50, 10.50),
-}
 
 
 def _safe_dict(value: Any) -> dict:
@@ -105,12 +97,18 @@ class AgentCallbackHandler(BaseCallbackHandler):
         debug: bool = False,
         rate_limit_pool: Optional[Any] = None,
         user_id: Optional[str] = None,
+        fallback_provider: Optional[str] = None,
+        fallback_model_name: Optional[str] = None,
+        rate_limit_loop: Optional[Any] = None,
     ):
         super().__init__()
         self.memory = memory
         self.debug  = debug
         self.rate_limit_pool = rate_limit_pool
         self.user_id = user_id
+        self.rate_limit_loop = rate_limit_loop
+        self.fallback_provider = fallback_provider
+        self.fallback_model_name = fallback_model_name
 
         # LLM state — populated in _handle_llm_response
         self.latest_llm_usage:    Optional[Dict[str, Any]] = None
@@ -530,11 +528,15 @@ class AgentCallbackHandler(BaseCallbackHandler):
             or llm_out.get("model")
             or self._model_from_response_metadata(response)
             or self._cached_model_name
+            or self.fallback_model_name
             or "unknown"
         )
+        inferred_provider = self._infer_provider(model_name)
         provider = (
             llm_out.get("provider")
-            or self._infer_provider(model_name)
+            or (inferred_provider if inferred_provider != "unknown" else None)
+            or self.fallback_provider
+            or inferred_provider
         )
         return provider, model_name
 
@@ -574,12 +576,16 @@ class AgentCallbackHandler(BaseCallbackHandler):
             or add_kwargs.get("model")
             or add_kwargs.get("model_name")
             or self._cached_model_name
+            or self.fallback_model_name
             or "unknown"
         )
+        inferred_provider = self._infer_provider(model_name)
         provider = (
             resp_meta.get("model_provider")
             or add_kwargs.get("provider")
-            or self._infer_provider(model_name)
+            or (inferred_provider if inferred_provider != "unknown" else None)
+            or self.fallback_provider
+            or inferred_provider
         )
         return provider, model_name
 
@@ -630,8 +636,12 @@ class AgentCallbackHandler(BaseCallbackHandler):
     def _compute_cost(
         self, input_t: int, output_t: int, provider: str, model: str
     ) -> float:
-        rates = PRICING.get(f"{provider}:{model}", (5.0, 15.0))
-        return round((input_t * rates[0] + output_t * rates[1]) / 1_000_000, 6)
+        return calculate_token_cost_usd_float(
+            provider=provider,
+            model_name=model,
+            input_tokens=input_t,
+            output_tokens=output_t,
+        )
 
     def _tool_calls_from_action_context(
         self,
@@ -821,6 +831,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
             user_id=self.user_id,
             usage=self.latest_llm_usage,
             details=self.latest_llm_details,
+            event_loop=self.rate_limit_loop,
         )
 
     def _reset(self) -> None:

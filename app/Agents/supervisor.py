@@ -26,7 +26,7 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None, rate_limit_loop: Optional[Any] = None):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
@@ -39,10 +39,18 @@ class SupervisorAgent(BaseAgent):
         self.supervisor_tool_id = None
         self.dbpool = dbpool
         self.user_id = user_id
+        self.rate_limit_loop = rate_limit_loop
+        self.llm_provider = llm_provider
         self.llm_factory = LLMFactory(
             self.memory,
             rate_limit_pool=self.dbpool,
             user_id=self.user_id,
+            rate_limit_loop=self.rate_limit_loop,
+            fallback_provider=self.llm_provider,
+            fallback_model_name=(
+                getattr(self.llm, "model_name", None)
+                or getattr(self.llm, "model", None)
+            ),
         )
         self.supervisor_prompt = SUPERVISOR_PROMPT
         self.tools = tools
@@ -50,7 +58,6 @@ class SupervisorAgent(BaseAgent):
         self.validate_response = False
         self.aura_config = aura_config or AuraConfig()
         self.history = history
-        self.llm_provider = llm_provider
         # self.task_manager = TaskManager()
 
 
