@@ -17,6 +17,7 @@ from app.DB.Queries.task import create_task, update_task_status
 from app.DB.Queries.agent_event import create_agent_event
 from app.DB.Queries.user import get_user_by_auth0_id
 from app.DB.Queries.user_settings import get_user_settings
+from app.RateLimit.rate_limit import check_rate_limit_for_request
 
 import asyncio
 import uuid
@@ -25,6 +26,39 @@ import logging
 # Configure logger for WebSocket routes
 logger = logging.getLogger(__name__)
 
+
+def _truncate_screenshot_for_log(value, preview_length: int = 24):
+    """Return a log-safe copy with screenshot data shortened."""
+    if isinstance(value, dict):
+        return {
+            key: _format_screenshot_preview(item, preview_length)
+            if key == "screenshot"
+            else _truncate_screenshot_for_log(item, preview_length)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, list):
+        return [_truncate_screenshot_for_log(item, preview_length) for item in value]
+
+    return value
+
+
+def _format_screenshot_preview(value, preview_length: int = 24):
+    if isinstance(value, str):
+        return f"{value[:preview_length]}...." if len(value) > preview_length else value
+
+    if isinstance(value, list):
+        return [_format_screenshot_preview(item, preview_length) for item in value]
+
+    if isinstance(value, dict):
+        return {
+            key: _format_screenshot_preview(item, preview_length)
+            for key, item in value.items()
+        }
+
+    return value
+
+
 # Initialize FastAPI router for WebSocket routes
 ws_router = APIRouter()
 
@@ -32,7 +66,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="google", model_name="gemini-3-flash-preview")
+llm_config = LLMConfig(provider="anthropic", model_name="claude-haiku-4-5-20251001")
 
 # task_manager = TaskManager()
 
@@ -70,6 +104,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # Initialize database pool
     pool = await get_pool()
+    rate_limit_loop = asyncio.get_running_loop()
 
     auth0_id = user_payload.get("sub")
     logger.info(f"🔍 Looking up user in database: {auth0_id}")
@@ -102,7 +137,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         try:
             payload = message.get("payload")
-            print(f"payload: {payload}")
+            print(f"payload: {_truncate_screenshot_for_log(payload)}")
             if payload:
                 query = payload.get("query")
 
@@ -111,6 +146,45 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 # Create task in the database
                 await create_task(pool, task_id, chat_id, query, user_id)
+
+                raw_aura_config_data = payload.get("aura_config") or {}
+                aura_config_data = (
+                    raw_aura_config_data
+                    if isinstance(raw_aura_config_data, dict)
+                    else {}
+                )
+                user_timezone = (
+                    aura_config_data.get("timezone", "Asia/Kolkata")
+                )
+
+                rate_limit_decision = await check_rate_limit_for_request(
+                    pool=pool,
+                    user_id=user_id,
+                    timezone_name=user_timezone,
+                )
+                if not rate_limit_decision.allowed:
+                    await send_ws_message(
+                        websocket,
+                        type="aura_message",
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        payload={
+                            "content": {
+                                "role": "assistant",
+                                "message": (
+                                    "You've reached your daily limits.  "
+                                    f"Your usage resets at {rate_limit_decision.reset_at_display}."
+                                )
+                            },
+                            "coming_from": "rate_limit/server"
+                        }
+                    )
+                    await update_task_status(
+                        pool=pool,
+                        task_id=task_id,
+                        status="failed",
+                    )
+                    return
 
                 # Extract system info from nested payload.system_info
                 sys_info_data = payload.get("system_info", {})
@@ -177,25 +251,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not using_custom:
                     logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
 
-                # IF USING SMART MODE WITHOUT OWN API KEY
-                # if not using_custom and payload.get("option") == "smart":
-                #     await send_ws_message(
-                #         websocket,
-                #         type="aura_message",
-                #         task_id=task_id,
-                #         chat_id=chat_id,
-                #         payload={
-                #             "content": {
-                #                 "role": "assistant",
-                #                 "tool": "aura",
-                #                 "message": "Please use your own API keys to access Smart Mode. You can use Gemini or OpenAI model"
-                #             },
-                #             "coming_from": "aura/server"
-                #         }
-                #     )
-                #     await update_task_status(pool=pool, task_id=task_id, status="failed")
-                #     return
-
                 # Extract attached files and images
                 attached_files = payload.get("attached_files", [])
                 attached_images = payload.get("attached_images", [])
@@ -204,7 +259,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 screenshot = payload.get("screenshot")
                 
                 # Extract aura_config from payload
-                aura_config_data = payload.get("aura_config", {})
                 aura_config = AuraConfig(
                     conscious_files=ConsciousFiles(**aura_config_data["conscious_files"]) if aura_config_data.get("conscious_files") else None,
                     open_apps=OpenApplications(**aura_config_data["open_apps"]) if aura_config_data.get("open_apps") else None,
@@ -217,7 +271,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Extract history from payload
                 history = payload.get("messages", [])
 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, aura_config=aura_config, history=history, attached_files=attached_files, attached_images=attached_images, screenshot=screenshot)
+                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, user_id=user_id, rate_limit_loop=rate_limit_loop, aura_config=aura_config, history=history, attached_files=attached_files, attached_images=attached_images, screenshot=screenshot)
 
                 # Notify client that processing has started
                 await send_ws_message(
