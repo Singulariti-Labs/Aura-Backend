@@ -1,5 +1,6 @@
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Literal
 from datetime import datetime
+from decimal import Decimal
 
 # ---------- Task ----------
 class Task(TypedDict, total=False):
@@ -76,3 +77,40 @@ class UserSettings(TypedDict, total=False):
     user_settings: str  # JSON String
     created_at: datetime
     updated_at: datetime
+
+
+# ---------- Rate Limit ----------
+class RateLimit(TypedDict, total=False):
+    """
+    Represents the current rate-limit window for a user.
+
+    Required fields:
+    - id, user_id, window_start, window_input_tokens, window_output_tokens,
+      window_spent_usd, limit_usd, status, updated_at
+    """
+    id: str  # UUID (primary key)
+    user_id: str  # Foreign key to User.id
+    window_start: datetime  # Start time for the active rate-limit window
+    window_input_tokens: int  # Input tokens used in the active window
+    window_output_tokens: int  # Output tokens used in the active window
+    window_spent_usd: Decimal  # USD spent in the active window
+    limit_usd: Decimal  # USD limit for the active window
+    status: Literal["active", "blocked"]  # Rate-limit status
+    updated_at: datetime  # Last update timestamp
+
+
+# ---------- User Token Usage ----------
+class UserTokenUsage(TypedDict, total=False):
+    """
+    Represents cumulative token usage for a user.
+
+    Required fields:
+    - id, user_id, total_input_tokens, total_output_tokens, total_spent_usd,
+      updated_at
+    """
+    id: str  # UUID (primary key)
+    user_id: str  # Foreign key to User.id
+    total_input_tokens: int  # Total input tokens used by the user
+    total_output_tokens: int  # Total output tokens used by the user
+    total_spent_usd: Decimal  # Total USD spent by the user
+    updated_at: datetime  # Last update timestamp

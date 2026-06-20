@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from fastapi import WebSocket
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -46,28 +46,53 @@ class Agent(BaseAgent):
         system_info: SystemInfo,
         llm: LLMConfig,
         maxTokens: int = 128000,
-        screenshot:  Optional[List[str]] = None,
+        screenshot: Optional[Union[Dict[str, Any], List[str], str]] = None,
         pool: Pool | None = None,
+        user_id: Optional[str] = None,
         aura_config: Optional[AuraConfig] = None,
-        history: List[Dict] = []
+        history: List[Dict] = [],
+        attached_files: Optional[List[Dict[str, Any]]] = None,
+        attached_images: Optional[List[Dict[str, Any]]] = None,
+        rate_limit_loop: Optional[Any] = None
     ):
         self.query = query
         self.task_id = task_id
         self.chat_id = chat_id
         self.dbpool = pool
+        self.user_id = user_id
+        self.rate_limit_loop = rate_limit_loop
         self.llm_config = llm
         self.llm_provider = llm.provider
         self.memory = Memory()
-        self.llm_factory = LLMFactory(self.memory)
+        self.llm_factory = LLMFactory(
+            self.memory,
+            rate_limit_pool=self.dbpool,
+            user_id=self.user_id,
+            rate_limit_loop=self.rate_limit_loop,
+            fallback_provider=self.llm_config.provider,
+            fallback_model_name=self.llm_config.model_name,
+        )
         self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
         self.system_info = system_info
-        self.screenshot = screenshot
+        
+        # Normalize screenshot parameter to List[str] of base64 strings
+        processed_screenshot = None
+        if screenshot:
+            if isinstance(screenshot, dict):
+                processed_screenshot = [screenshot.get("data") or screenshot.get("content") or screenshot.get("image_base64")]
+            elif isinstance(screenshot, str):
+                processed_screenshot = [screenshot]
+            else:
+                processed_screenshot = screenshot
+        self.screenshot = processed_screenshot
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop)
         self.payload = payload
+        self.attached_files = attached_files
+        self.attached_images = attached_images
         
     # Runs the Aura Agent.
     async def invoke(self):
@@ -121,6 +146,9 @@ class Agent(BaseAgent):
                 await task_manager.wait_if_paused(self.task_id)
                 result = None
 
+                #Get llm provider
+                llm_provider = self.llm_config.provider
+
                 # If the option is not complex_task or smart then run the main agent
                 if self.payload.get('option') not in ["complex_task", "smart"]:
                     context_agent = ContextAgent(
@@ -129,7 +157,6 @@ class Agent(BaseAgent):
                         task_id=self.task_id,
                         chat_id=self.chat_id,
                         llm=self.llm,
-                        screenshot=self.screenshot,
                         websocket=self.websocket,
                         llm_provider=self.llm_provider,
                         memory= self.memory,
@@ -178,10 +205,14 @@ class Agent(BaseAgent):
                         query=self.query,
                         system_prompt=prompt,
                         tools=tools,
+                        attached_files=self.attached_files,
+                        attached_images=self.attached_images,
                         system_info=self.system_info,
                         llm=self.llm,
                         agent_type="aura",
-                        history=self.history
+                        history=self.history,
+                        llm_provider=llm_provider,
+                        screenshot=self.screenshot
                     )
 
                     final_result = None

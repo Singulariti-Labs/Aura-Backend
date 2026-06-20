@@ -15,8 +15,6 @@ read_when:
   *(AI? robot? familiar? ghost in the machine? something weirder?)*
 - **Vibe:**
   *(how do you come across? sharp? warm? chaotic? calm?)*
-- **Emoji:**
-  *(your signature — pick one that feels right)*
                                                     
 ---
 

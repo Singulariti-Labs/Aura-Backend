@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from app.DB.pool import get_pool
 from app.DB.Queries.user import get_user_by_auth0_id, get_user
 from app.DB.Queries.task import get_tasks_by_user, get_task_by_id, delete_task_db, star_task_db, unstar_task_db
@@ -6,6 +6,7 @@ from app.DB.Queries.agent_event import get_events_by_task
 from app.api.auth_utils import get_current_user
 from app.DB.Queries.user_settings import upsert_user_settings, get_user_settings
 from asyncpg import Pool
+from app.STT.service import STTService
 
 from app.Prompts.Templates.aura_template import AURA_TEMPLATE
 from app.Prompts.Templates.id_template import ID_TEMPLATE
@@ -161,3 +162,67 @@ async def load_conscious():
         "soul": SOUL_TEMPLATE,
         "user": USER_TEMPLATE
     }
+
+@rest_router.post("/audio/input")
+async def audio_input(audio: UploadFile = File(...)):
+    """
+    API endpoint to accept an audio file, transcribe it using Gemini,
+    and return the polished transcript.
+    """
+    if not audio:
+        raise HTTPException(status_code=400, detail="No audio file provided.")
+    
+    try:
+        # Read the uploaded audio bytes
+        audio_bytes = await audio.read()
+        mime_type = audio.content_type or "audio/wav"
+        
+        # Process the transcription and polishing via STTService
+        stt_service = STTService()
+        transcript = await stt_service.transcribe_and_polish(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type
+        )
+        
+        return {
+            "status": "success",
+            "transcript": transcript
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Speech-to-text processing failed: {str(e)}"
+        )
+
+@rest_router.post("/audio/transcribe")
+async def audio_transcribe(audio: UploadFile = File(...)):
+    # Accepts an audio file, transcribes it, and converts it into polished dictation based on user intent.
+    if not audio:
+        raise HTTPException(status_code=400, detail="No audio file provided.")
+    
+    try:
+        # Read the uploaded audio bytes
+        audio_bytes = await audio.read()
+        mime_type = audio.content_type or "audio/wav"
+        
+        # Process the transcription via the intent-aware STTService method
+        stt_service = STTService()
+        transcript = await stt_service.stt_transcription(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type
+        )
+        
+        return {
+            "status": "success",
+            "transcript": transcript
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audio transcription processing failed: {str(e)}"
+        )
+

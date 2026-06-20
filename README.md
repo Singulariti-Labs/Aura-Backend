@@ -17,3 +17,25 @@ Client request example:
   }
 }
 ```
+
+Realtime STT environment:
+
+```env
+DEEPGRAM_API_KEY=your_deepgram_api_key
+STT_MAX_ACTIVE_SESSIONS=200
+STT_MAX_SESSIONS_PER_USER=2
+STT_AUDIO_QUEUE_SIZE=50
+STT_MAX_SESSION_SECONDS=600
+STT_POLISH_ENABLED=true
+STT_POLISH_PROVIDER=openai
+STT_POLISH_MODEL=gpt-4o-mini
+STT_CLIENT_FINAL_CLOSE_DELAY_SECONDS=10
+```
+
+Realtime STT websocket:
+
+```text
+/audio/realtime?token=<AUTH0_TOKEN>&mode=audio_input
+```
+
+Use `mode=audio_input` for prompt cleanup and `mode=audio_transcribe` for intent-aware dictation. The existing `/ws` agent websocket stays separate; send the `polished_final.text` to `/ws` only when the user submits.

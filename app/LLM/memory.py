@@ -66,11 +66,17 @@ class Message(BaseModel):
             for tc in self.tool_calls:
                 if isinstance(tc, dict):
                     if tc.get("type") == "tool_call":
-                        multimodal_content.append(tc)
+                        tool_call = dict(tc)
+                        tool_call_id = tool_call.get("tool_call_id") or tool_call.get("id")
+                        if tool_call_id:
+                            tool_call["id"] = tool_call_id
+                            tool_call["tool_call_id"] = tool_call_id
+                        multimodal_content.append(tool_call)
                     elif "function" in tc:  # OpenAI format
                         tool_call = {
                             "type": "tool_call",
                             "id": tc.get("id"),
+                            "tool_call_id": tc.get("id"),
                             "name": tc["function"].get("name"),
                             "input": tc["function"].get("arguments")
                         }
@@ -81,9 +87,11 @@ class Message(BaseModel):
                                 pass
                         multimodal_content.append(tool_call)
                 elif hasattr(tc, 'id'):  # Likely Langchain ToolCall-like object
+                    tool_call_id = getattr(tc, 'tool_call_id', None) or getattr(tc, 'id', None)
                     multimodal_content.append({
                         "type": "tool_call",
-                        "id": getattr(tc, 'id', None),
+                        "id": tool_call_id,
+                        "tool_call_id": tool_call_id,
                         "name": getattr(tc, 'name', None),
                         "input": getattr(tc, 'args', {}) if hasattr(tc, 'args') else getattr(tc, 'arguments', {})
                     })
@@ -258,6 +266,7 @@ class Message(BaseModel):
                 formatted_calls.append({
                     "type": "tool_call",
                     "id": call.id,
+                    "tool_call_id": call.id,
                     "name": call.name,
                     "input": call.args
                 })
@@ -267,6 +276,7 @@ class Message(BaseModel):
                     tool_call = {
                         "type": "tool_call",
                         "id": call.get("id"),
+                        "tool_call_id": call.get("id"),
                         "name": call["function"].get("name"),
                         "input": call["function"].get("arguments")
                     }
@@ -278,7 +288,12 @@ class Message(BaseModel):
                     formatted_calls.append(tool_call)
                 else:
                     # Assume it's already in tool_use format or similar
-                    formatted_calls.append(call)
+                    tool_call = dict(call)
+                    tool_call_id = tool_call.get("tool_call_id") or tool_call.get("id")
+                    if tool_call_id:
+                        tool_call["id"] = tool_call_id
+                        tool_call["tool_call_id"] = tool_call_id
+                    formatted_calls.append(tool_call)
             else:
                 # Fallback for other formats if any
                 formatted_calls.append(call)

@@ -1,7 +1,11 @@
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(), override=True)
+
 from fastapi import FastAPI
 from app.api.websocket_routes import ws_router
 from app.api.rest_routes import rest_router
 from app.api.auth_routes import auth_router
+from app.STT.realtime_routes import realtime_stt_router
 from app.DB.pool import init_db_pool, close_db_pool
 
 def create_app() -> FastAPI:
@@ -15,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_router)
     app.include_router(rest_router)
     app.include_router(auth_router)
+    app.include_router(realtime_stt_router)
 
     # -------------------------------
     # Startup & Shutdown events

@@ -1,7 +1,6 @@
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import Tool as LangchainTool
-import uuid
 
 from app.Tools.base_tool import BaseTool
 from app.Tools.tool_input_parser import ToolInputParser
@@ -34,10 +33,15 @@ class DeepResearchTool(BaseTool):
 
     async def run(self, inputs: DeepResearchToolInput):
 
-        # Sending the last assistant message to the client.
-        await send_last_assistant_message(memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, tool_name="deep_reasearch")
+        # Sending the last assistant message to the client and to get tool_call_id
+        tool_call_id = await send_last_assistant_message(
+            memory=self.memory, 
+            task_id=self.task_id, 
+            chat_id=self.chat_id, 
+            tool_name="deep_reasearch"
+        )
         query = inputs.query
-        tool_call_id = str(uuid.uuid4())
+        
         response = await self.deep_research_agent.invoke(
             query=query,
             tool_call_id=tool_call_id
