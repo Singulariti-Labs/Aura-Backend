@@ -66,7 +66,7 @@ ws_router = APIRouter()
 manager = ConnectionManager()
 
 # Default configuration for the LLM agent
-llm_config = LLMConfig(provider="anthropic", model_name="claude-haiku-4-5-20251001")
+llm_config = LLMConfig(provider="anthropic", model_name="claude-opus-4-8")
 
 # task_manager = TaskManager()
 
