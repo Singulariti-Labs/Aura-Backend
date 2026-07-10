@@ -3,13 +3,16 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel
 
+from app.LLM.llm_factory import LLMFactory
 from app.LLM.memory import Memory
+from app.LLM.model_token_limits import MAX_OUTPUT_TOKEN_LIMIT_MESSAGE
+from app.Types.agent_types import LLMConfig
 from app.Tools.base_tool import (
     BaseTool,
     get_current_tool_call_id,
     get_current_tool_input,
 )
-from app.handler import AgentCallbackHandler
+from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
 from app.helper import (
     _find_tool_call,
     _get_tool_call_id,
@@ -261,6 +264,124 @@ class HelperToolCallMatchingTests(unittest.TestCase):
 
         self.assertTrue(first)
         self.assertFalse(second)
+
+
+class ModelTokenLimitConfigTests(unittest.TestCase):
+    def test_model_specific_limits_are_applied_to_chat_wrappers(self):
+        anthropic_llm = LLMFactory.create_llm(
+            LLMConfig(
+                provider="anthropic",
+                model_name="claude-opus-4-8",
+                api_key="test-key",
+            )
+        )
+        self.assertEqual(anthropic_llm.model_dump()["max_tokens"], 16000)
+
+        openai_llm = LLMFactory.create_llm(
+            LLMConfig(
+                provider="openai",
+                model_name="gpt-4.1",
+                api_key="test-key",
+            )
+        )
+        self.assertEqual(openai_llm.model_dump()["max_tokens"], 16384)
+
+        google_llm = LLMFactory.create_llm(
+            LLMConfig(
+                provider="google",
+                model_name="gemini-3-flash-preview",
+                api_key="test-key",
+            )
+        )
+        self.assertEqual(google_llm.model_dump()["max_output_tokens"], 8192)
+
+        open_router_llm = LLMFactory.create_llm(
+            LLMConfig(
+                provider="open_router",
+                model_name="z-ai",
+                api_key="test-key",
+            )
+        )
+        dump = open_router_llm.model_dump()
+        self.assertEqual(dump["model_name"], "z-ai/glm-4.5-air:free")
+        self.assertEqual(dump["max_tokens"], 8192)
+
+
+class MaxTokensStopGuardTests(unittest.TestCase):
+    def test_max_tokens_stop_blocks_tool_action_before_memory_save(self):
+        memory = Memory()
+        handler = AgentCallbackHandler(memory=memory)
+        handler.latest_llm_details = {
+            "provider": "anthropic",
+            "model_name": "claude-opus-4-8",
+            "finish_reason": "max_tokens",
+        }
+        handler.latest_llm_usage = {
+            "input": 100,
+            "output": 16000,
+            "total_tokens": 16100,
+            "cost": 0,
+        }
+        handler._print_action = lambda action: self.fail("tool action should not print")
+        action = SimpleNamespace(
+            tool="create_file",
+            tool_input={"path": "index.html"},
+            tool_call_id="toolu_partial",
+            log="Invoking create_file with partial args",
+            message_log=[],
+        )
+
+        with self.assertRaises(MaxOutputTokenLimitError) as ctx:
+            handler.on_agent_action(action)
+
+        self.assertEqual(memory.messages, [])
+        self.assertEqual(ctx.exception.error_body["stop_reason"], "max_tokens")
+        self.assertEqual(
+            ctx.exception.error_body["message"],
+            MAX_OUTPUT_TOKEN_LIMIT_MESSAGE,
+        )
+
+    def test_max_tokens_stop_from_message_log_blocks_without_usage(self):
+        memory = Memory()
+        handler = AgentCallbackHandler(memory=memory)
+        handler._print_action = lambda action: self.fail("tool action should not print")
+        ai_message = SimpleNamespace(
+            content="",
+            additional_kwargs={},
+            response_metadata={
+                "stop_reason": "max_tokens",
+                "model": "claude-opus-4-8",
+            },
+            usage_metadata=None,
+            tool_calls=[],
+        )
+        action = SimpleNamespace(
+            tool="create_file",
+            tool_input={"path": "index.html"},
+            tool_call_id="toolu_partial",
+            log="Invoking create_file with partial args",
+            message_log=[ai_message],
+        )
+
+        with self.assertRaises(MaxOutputTokenLimitError):
+            handler.on_agent_action(action)
+
+        self.assertEqual(memory.messages, [])
+
+    def test_openai_length_finish_reason_is_treated_as_output_limit(self):
+        memory = Memory()
+        handler = AgentCallbackHandler(memory=memory)
+        handler.latest_llm_details = {
+            "provider": "openai",
+            "model_name": "gpt-4.1",
+            "finish_reason": "length",
+        }
+
+        with self.assertRaises(MaxOutputTokenLimitError) as ctx:
+            handler.on_agent_finish(SimpleNamespace(return_values={"output": "partial"}))
+
+        self.assertEqual(memory.messages, [])
+        self.assertEqual(ctx.exception.error_body["stop_reason"], "max_tokens")
 
 
 if __name__ == "__main__":

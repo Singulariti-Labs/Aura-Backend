@@ -22,7 +22,11 @@ from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
-from app.handler import AgentCallbackHandler
+from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
+from app.LLM.model_token_limits import (
+    get_model_max_output_tokens,
+    resolve_open_router_model,
+)
 from app.utils.format_messages import format_to_langchain
 from app.utils.tool_message_formatter import format_multimodal_tool_messages
 from app.Adapters.format_message import prepareMessageForAI
@@ -68,9 +72,14 @@ class LLMFactory():
         - llm_config: Configuration containing provider and model_name.
 
         Returns:
-        - An instance of ChatOpenAI or ChatAnthropic.
+        - An instance of ChatOpenAI, ChatAnthropic, or ChatGoogleGenerativeAI.
         """
         try:
+            max_output_tokens = get_model_max_output_tokens(
+                llm_config.provider,
+                llm_config.model_name,
+            )
+
             if llm_config.provider == "openai":
                 api_key = user_api_key or os.environ.get("OPENAI_API_KEY")
                 
@@ -81,6 +90,7 @@ class LLMFactory():
                     model=llm_config.model_name,
                     api_key=api_key,
                     stream_usage=True,
+                    max_tokens=max_output_tokens,
                 )
             
             elif llm_config.provider == "anthropic":
@@ -89,29 +99,24 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
-                return ChatAnthropic(model=llm_config.model_name, api_key=api_key)
+                return ChatAnthropic(
+                    model=llm_config.model_name,
+                    api_key=api_key,
+                    max_tokens_to_sample=max_output_tokens,
+                )
             
             elif llm_config.provider == "open_router":
                 api_key = user_api_key or os.environ.get("OPENROUTER_API_KEY")
                 
                 if not api_key:
                     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
-                if(llm_config.model_name == "z-ai"):
-                    return ChatOpenAI(model="z-ai/glm-4.5-air:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "x-ai"):
-                    return ChatOpenAI(model="x-ai/grok-4.1-fast:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "openai"):
-                    return ChatOpenAI(model="openai/gpt-oss-120b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "xiaomi"):
-                    return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "google"):
-                    return ChatOpenAI(model="google/gemini-2.0-flash-exp:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "qwen"):
-                    return ChatOpenAI(model="qwen/qwen3-next-80b-a3b-instruct:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "nvidia"):
-                    return ChatOpenAI(model="nvidia/nemotron-3-nano-30b-a3b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "upstage"):
-                    return ChatOpenAI(model="upstage/solar-pro-3:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+
+                return ChatOpenAI(
+                    model=resolve_open_router_model(llm_config.model_name),
+                    api_key=api_key,
+                    base_url="https://openrouter.ai/api/v1",
+                    max_tokens=max_output_tokens,
+                )
             
             elif llm_config.provider == "google":
                 api_key = user_api_key or os.environ.get("GOOGLE_API_KEY")
@@ -124,6 +129,7 @@ class LLMFactory():
                         model=llm_config.model_name, 
                         api_key=api_key,
                         thinking_level="low",
+                        max_tokens=max_output_tokens,
                         model_kwargs={
                             "tool_config": {
                                 "function_calling_config": {
@@ -135,6 +141,7 @@ class LLMFactory():
                 return ChatGoogleGenerativeAI(
                     model=llm_config.model_name,
                     api_key=api_key,
+                    max_tokens=max_output_tokens,
                     model_kwargs={
                         "tool_config": {
                             "function_calling_config": {
@@ -149,7 +156,12 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("AGENT_ROUTER_API_KEY environment variable is not set")
 
-                return ChatOpenAI(model=llm_config.model_name, api_key=api_key, base_url="https://api.agentrouter.com/v1")
+                return ChatOpenAI(
+                    model=llm_config.model_name,
+                    api_key=api_key,
+                    base_url="https://api.agentrouter.com/v1",
+                    max_tokens=max_output_tokens,
+                )
             
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
@@ -380,6 +392,8 @@ class LLMFactory():
                 self.memory.add_message(assistant_message);
                 return response
         
+        except MaxOutputTokenLimitError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
             
@@ -640,6 +654,8 @@ class LLMFactory():
             # returning response bac to the aura agent.
             return response
 
+        except MaxOutputTokenLimitError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
 
