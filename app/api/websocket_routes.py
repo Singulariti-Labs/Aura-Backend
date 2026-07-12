@@ -8,7 +8,7 @@ invoke the agent asynchronously, and send back standardized responses and status
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from .connection_manager import ConnectionManager
 from app.Agents.agent import Agent
-from app.Types.agent_types import LLMConfig, SystemInfo, DEFAULT_MODELS, PROVIDER_MAPPING, AuraConfig, ConsciousFiles, OpenApplications
+from app.Types.agent_types import LLMConfig, SystemInfo, AuraConfig, ConsciousFiles, OpenApplications
 from app.api.websocket_utils import send_ws_message
 from app.Task.task_manager import task_manager
 from app.DB.pool import get_pool
@@ -16,8 +16,8 @@ from app.api.auth_utils import token_verifier
 from app.DB.Queries.task import create_task, update_task_status
 from app.DB.Queries.agent_event import create_agent_event
 from app.DB.Queries.user import get_user_by_auth0_id
-from app.DB.Queries.user_settings import get_user_settings
 from app.RateLimit.rate_limit import check_rate_limit_for_request
+from app.api.llm_config_utils import resolve_llm_config
 
 import asyncio
 import uuid
@@ -128,13 +128,6 @@ async def websocket_endpoint(websocket: WebSocket):
         Args:
             message (dict): The incoming JSON message from the WebSocket client.
         """
-        # Refresh user settings for each query to ensure latest API keys are used
-        user_settings = await get_user_settings(pool, user_id)
-        if user_settings:
-            logger.info(f"📋 Loaded fresh user settings for user_id: {user_id}")
-        else:
-            logger.info(f"📋 No custom settings found for user_id: {user_id}, using defaults")
-
         try:
             payload = message.get("payload")
             print(f"payload: {_truncate_screenshot_for_log(payload)}")
@@ -201,55 +194,24 @@ async def websocket_endpoint(websocket: WebSocket):
                     cwd=cwd_path
                 )
                 
-                # Check for LLM config override
-                current_llm_config = llm_config
-                using_custom = False
-
-                # 1. Check for API_Config in the payload (per-message override)
-                api_config_payload = payload.get("API_Config")
-                if api_config_payload and isinstance(api_config_payload, dict):
-                    raw_provider = api_config_payload.get("provider")
-                    custom_api_key = api_config_payload.get("key")
-                    is_active = api_config_payload.get("is_active", False)
-
-                    if is_active and raw_provider and custom_api_key:
-                        target_provider = PROVIDER_MAPPING.get(raw_provider)
-                        if target_provider:
-                            default_model = DEFAULT_MODELS.get(target_provider)
-                            try:
-                                current_llm_config = LLMConfig(
-                                    provider=target_provider,
-                                    model_name=default_model,
-                                    api_key=custom_api_key
-                                )
-                                using_custom = True
-                                logger.info(f"Using custom LLM config from payload: {target_provider}")
-                            except Exception as e:
-                                logger.error(f"Failed to create custom LLM config from payload: {e}")
-
-                # 2. If not using custom from payload, check user settings from DB
-                if not using_custom and user_settings and "api_creds" in user_settings:
-                    api_creds = user_settings.get("api_creds", {})
-                    raw_provider = api_creds.get("provider")
-                    custom_api_key = api_creds.get("key")
-                    
-                    if raw_provider and custom_api_key:
-                        target_provider = PROVIDER_MAPPING.get(raw_provider)
-                        if target_provider:
-                            default_model = DEFAULT_MODELS.get(target_provider)
-                            try:
-                                current_llm_config = LLMConfig(
-                                    provider=target_provider,
-                                    model_name=default_model,
-                                    api_key=custom_api_key
-                                )
-                                using_custom = True
-                                logger.info(f"Using custom LLM config from user settings: {target_provider}")
-                            except Exception as e:
-                                logger.error(f"Failed to create custom LLM config from settings: {e}. Falling back to default.")
-                
-                if not using_custom:
-                    logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
+                # Resolve the model and credentials in one place. This keeps handle_query focused on orchestration and
+                # guarantees that every task receives a validated LLMConfig.
+                current_llm_config, using_task_config = resolve_llm_config(
+                    api_config=payload.get("api_config"),
+                    default_config=llm_config,
+                )
+                if using_task_config:
+                    logger.info(
+                        "Using task LLM config: provider=%s model=%s",
+                        current_llm_config.provider,
+                        current_llm_config.model_name,
+                    )
+                else:
+                    logger.info(
+                        "Using default LLM config: provider=%s model=%s",
+                        current_llm_config.provider,
+                        current_llm_config.model_name,
+                    )
 
                 # Extract attached files and images
                 attached_files = payload.get("attached_files", [])

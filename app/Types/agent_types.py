@@ -29,23 +29,47 @@ class AuraConfig(BaseModel):
     cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
 
 
-OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
-AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
+OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1', 'gpt-5.6-terra','gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5']
+AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-fable-5', 'claude-opus-4-5-20251101', 'claude-sonnet-5', 'claude-sonnet-4-5-20250929']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
-GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
+GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite']
 AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
 
-class LLMConfig(BaseModel) :
+# Backend model metadata used to validate the UI's provider/model selection.
+MODEL_NAMES_BY_PROVIDER = {
+    "openai": set(OpenAIModels.__args__),
+    "anthropic": set(AnthropicModels.__args__),
+    "open_router": set(OpenRouterModels.__args__),
+    "google": set(GoogleModels.__args__),
+    "agent_router": set(AgentRouterModels.__args__),
+}
+
+CredentialSource = Literal["platform", "custom"]
+ReasoningEffort = Literal["low", "medium", "high"]
+
+class LLMConfig(BaseModel):
+    """Validated LLM settings used to construct one task's LLM client."""
+
     provider: Literal['openai', 'anthropic', 'open_router', 'google', 'agent_router']
     model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels, AgentRouterModels]
     api_key: Optional[str] = None
+    reasoning_effort: Optional[ReasoningEffort] = Field(
+        default=None,
+        description="Optional reasoning level reserved for future use.",
+    )
+    credential_source: Optional[CredentialSource] = Field(
+        default=None,
+        description="Where the API credential is sourced from.",
+    )
 
     @model_validator(mode="after")
     def validate_model_for_provider(self) -> 'LLMConfig':
-        if self.provider == "openai" and self.model_name not in OpenAIModels.__args__:
-            raise ValueError(f"Invalid model '{self.model_name}' for provider '{self.provider}'. Allowed models: {OpenAIModels.__args__}")
-        if self.provider == "anthropic" and self.model_name not in AnthropicModels.__args__:
-            raise ValueError(f"Invalid model '{self.model_name}' for provider '{self.provider}'. Allowed models: {AnthropicModels.__args__}")
+        allowed_models = MODEL_NAMES_BY_PROVIDER[self.provider]
+        if self.model_name not in allowed_models:
+            raise ValueError(
+                f"Invalid model '{self.model_name}' for provider '{self.provider}'. "
+                f"Allowed models: {sorted(allowed_models)}"
+            )
         return self
 
 class Role(str, Enum):
@@ -69,7 +93,10 @@ PROVIDER_MAPPING = {
     "Open Router": "open_router",
     "open_router": "open_router",
     "Gemini": "google",
-    "gemini": "google"
+    "gemini": "google",
+    "google": "google",
+    "Agent Router": "agent_router",
+    "agent_router": "agent_router"
 }
 
 # Default models for each provider when user overrides
@@ -77,7 +104,8 @@ DEFAULT_MODELS = {
     "openai": "gpt-4.1",
     "anthropic": "claude-sonnet-4-6",
     "open_router": "z-ai",
-    "google": "gemini-3-flash-preview"
+    "google": "gemini-3-flash-preview",
+    "agent_router": "claude-opus-4-5-20251101"
 }
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server

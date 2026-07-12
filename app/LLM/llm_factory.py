@@ -69,12 +69,14 @@ class LLMFactory():
         Creates a language model instance based on the given provider and model name.
 
         Input:
-        - llm_config: Configuration containing provider and model_name.
+        - llm_config: Validated provider, model, and credential configuration.
 
         Returns:
         - An instance of ChatOpenAI, ChatAnthropic, or ChatGoogleGenerativeAI.
         """
         try:
+            # Output limits are controlled by the backend model table. They
+            # are intentionally not accepted from the task_request payload.
             max_output_tokens = get_model_max_output_tokens(
                 llm_config.provider,
                 llm_config.model_name,
