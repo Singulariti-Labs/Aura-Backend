@@ -1,5 +1,7 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from pydantic import BaseModel
 
@@ -13,6 +15,8 @@ from app.Tools.base_tool import (
     get_current_tool_input,
 )
 from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
+from app.Task.task_manager import TaskControlState, task_manager
+from app.Agentic_Tools.file_editor import FileEditor
 from app.helper import (
     _find_tool_call,
     _get_tool_call_id,
@@ -120,6 +124,252 @@ class BaseToolRuntimeIdTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tool_call_result.tool_call_id, "call_exact")
         self.assertIn("call_exact", tool_call_result.content)
         self.assertIn('"value": "hello"', tool_call_result.content)
+
+    async def test_parallel_same_tool_calls_keep_their_own_runtime_ids(self):
+        """Each invocation of the same tool receives its original model ID."""
+        tool = EchoTool().to_tool()
+
+        first_result, second_result = await asyncio.gather(
+            tool.ainvoke(
+                {
+                    "type": "tool_call",
+                    "name": "echo",
+                    "id": "call_first",
+                    "args": {"value": "first"},
+                }
+            ),
+            tool.ainvoke(
+                {
+                    "type": "tool_call",
+                    "name": "echo",
+                    "id": "call_second",
+                    "args": {"value": "second"},
+                }
+            ),
+        )
+
+        self.assertEqual(first_result.tool_call_id, "call_first")
+        self.assertEqual(second_result.tool_call_id, "call_second")
+        self.assertIn("call_first", first_result.content)
+        self.assertIn("call_second", second_result.content)
+        self.assertIn('"value": "first"', first_result.content)
+        self.assertIn('"value": "second"', second_result.content)
+
+
+class ToolResponseRoutingTests(unittest.IsolatedAsyncioTestCase):
+    """Verify parallel client responses are correlated by tool_call_id."""
+
+    async def test_same_tool_responses_can_arrive_in_reverse_order(self):
+        """Reverse completion order must not swap same-tool results."""
+        state = TaskControlState(websocket=None, dbpool=None)
+
+        first_waiter = asyncio.create_task(
+            state.wait_for_tool_response("toolu_first")
+        )
+        second_waiter = asyncio.create_task(
+            state.wait_for_tool_response("toolu_second")
+        )
+        await asyncio.sleep(0)
+
+        second_response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_second",
+                "result": {"success": True, "content": "second file"},
+            },
+        }
+        first_response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_first",
+                "result": {"success": True, "content": "first file"},
+            },
+        }
+
+        state.route_input(second_response)
+        state.route_input(first_response)
+        first_result, second_result = await asyncio.gather(
+            first_waiter,
+            second_waiter,
+        )
+
+        self.assertEqual(
+            first_result["payload"]["tool_call_id"],
+            "toolu_first",
+        )
+        self.assertEqual(
+            first_result["payload"]["result"]["content"],
+            "first file",
+        )
+        self.assertEqual(
+            second_result["payload"]["tool_call_id"],
+            "toolu_second",
+        )
+        self.assertEqual(
+            second_result["payload"]["result"]["content"],
+            "second file",
+        )
+        self.assertEqual(state.tool_response_queues, {})
+
+    async def test_response_is_buffered_when_it_arrives_before_waiter(self):
+        """A fast client response remains available for its exact call."""
+        state = TaskControlState(websocket=None, dbpool=None)
+        response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_fast",
+                "result": {"success": True, "content": "ready"},
+            },
+        }
+
+        state.route_input(response)
+        received = await state.wait_for_tool_response("toolu_fast")
+
+        self.assertIs(received, response)
+        self.assertEqual(state.tool_response_queues, {})
+
+    async def test_parallel_different_tools_keep_their_existing_ids(self):
+        """ID routing remains correct when parallel tool names are different."""
+        state = TaskControlState(websocket=None, dbpool=None)
+        read_waiter = asyncio.create_task(
+            state.wait_for_tool_response("toolu_read")
+        )
+        list_waiter = asyncio.create_task(
+            state.wait_for_tool_response("toolu_list")
+        )
+
+        state.route_input(
+            {
+                "type": "client_tool_response",
+                "payload": {
+                    "tool": "ls",
+                    "tool_call_id": "toolu_list",
+                    "result": {"success": True},
+                },
+            }
+        )
+        state.route_input(
+            {
+                "type": "client_tool_response",
+                "payload": {
+                    "tool": "read_file",
+                    "tool_call_id": "toolu_read",
+                    "result": {"success": True},
+                },
+            }
+        )
+        read_result, list_result = await asyncio.gather(
+            read_waiter,
+            list_waiter,
+        )
+
+        self.assertEqual(read_result["payload"]["tool_call_id"], "toolu_read")
+        self.assertEqual(list_result["payload"]["tool_call_id"], "toolu_list")
+
+    async def test_waiting_without_tool_call_id_is_rejected(self):
+        """An empty ID is rejected before an invalid tool result is stored."""
+        state = TaskControlState(websocket=None, dbpool=None)
+
+        with self.assertRaisesRegex(ValueError, "tool_call_id is required"):
+            await state.wait_for_tool_response("")
+
+    async def test_general_user_input_keeps_legacy_queue_behavior(self):
+        """Non-tool input must remain available to existing user-input flows."""
+        state = TaskControlState(websocket=None, dbpool=None)
+        user_input = {
+            "type": "user_input",
+            "data": {"answer": "continue"},
+        }
+
+        state.route_input(user_input)
+        received = await state.input_queue.get()
+
+        self.assertIs(received, user_input)
+
+
+class FileEditorParallelResponseTests(unittest.IsolatedAsyncioTestCase):
+    """Exercise the complete WebSocket round trip for duplicate tool names."""
+
+    async def test_parallel_read_file_calls_keep_ids_and_reverse_order_results(self):
+        """Each read_file result and event stays attached to its original ID."""
+        task_id = "parallel-read-file-test"
+        task_manager.create_task(task_id, websocket=None, pool=None)
+        editor = FileEditor(
+            llm=None,
+            task_id=task_id,
+            chat_id="chat-test",
+            memory=None,
+        )
+
+        first_response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_first",
+                "result": {"success": True, "content": "first file"},
+            },
+        }
+        second_response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_second",
+                "result": {"success": True, "content": "second file"},
+            },
+        }
+
+        try:
+            with (
+                patch(
+                    "app.Agentic_Tools.file_editor.send_ws_message",
+                    new_callable=AsyncMock,
+                ) as send_message,
+                patch(
+                    "app.Agentic_Tools.file_editor.create_agent_event",
+                    new_callable=AsyncMock,
+                ) as create_event,
+                patch("app.Agentic_Tools.file_editor.update_memory"),
+            ):
+                first_call = asyncio.create_task(
+                    editor.read_file(
+                        filePath="first.txt",
+                        tool_call_id="toolu_first",
+                    )
+                )
+                second_call = asyncio.create_task(
+                    editor.read_file(
+                        filePath="second.txt",
+                        tool_call_id="toolu_second",
+                    )
+                )
+                await asyncio.sleep(0)
+
+                # Deliberately complete the second invocation first.
+                task_manager.provide_input(task_id, second_response)
+                task_manager.provide_input(task_id, first_response)
+                first_result, second_result = await asyncio.gather(
+                    first_call,
+                    second_call,
+                )
+
+                self.assertEqual(first_result["output"], "first file")
+                self.assertEqual(second_result["output"], "second file")
+
+                request_ids = {
+                    call.kwargs["payload"]["tool_call_id"]
+                    for call in send_message.await_args_list
+                }
+                event_ids = {
+                    call.kwargs["payload"]["tool_call_id"]
+                    for call in create_event.await_args_list
+                }
+                self.assertEqual(request_ids, {"toolu_first", "toolu_second"})
+                self.assertEqual(event_ids, {"toolu_first", "toolu_second"})
+        finally:
+            task_manager.remove_task(task_id)
 
 
 class MultimodalToolMessageFormatterTests(unittest.TestCase):
@@ -275,7 +525,7 @@ class ModelTokenLimitConfigTests(unittest.TestCase):
                 api_key="test-key",
             )
         )
-        self.assertEqual(anthropic_llm.model_dump()["max_tokens"], 16000)
+        self.assertEqual(anthropic_llm.model_dump()["max_tokens"], 28000)
 
         openai_llm = LLMFactory.create_llm(
             LLMConfig(
@@ -293,7 +543,7 @@ class ModelTokenLimitConfigTests(unittest.TestCase):
                 api_key="test-key",
             )
         )
-        self.assertEqual(google_llm.model_dump()["max_output_tokens"], 8192)
+        self.assertEqual(google_llm.model_dump()["max_output_tokens"], 28000)
 
         open_router_llm = LLMFactory.create_llm(
             LLMConfig(
