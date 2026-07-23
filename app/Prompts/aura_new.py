@@ -45,6 +45,10 @@ TOOL_NAME_MAP = {
                                                 "first. Note: browser_navigate already returns a compact snapshot "
                                                 "\u2014 use this to refresh after interactions that change the page, "
                                                 "or with full=true for complete content."),
+    "browser_click_tool":    ("browser_click",    "Click on an element identified by its ref ID from the snapshot "
+                                                "(e.g., '@e5'). The ref IDs are shown in square brackets in the "
+                                                "snapshot output. Requires browser_navigate and browser_snapshot "
+                                                "to be called first."),
 }
 
 COMPRESSION_PROMPT = """

@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -332,4 +332,13 @@ class BrowserSnapshotToolInput(BaseModel):
             "If true, returns complete page content. If false (default), "
             "returns compact view with interactive elements only."
         ),
+    )
+
+
+class BrowserClickToolInput(BaseModel):
+    """Input accepted by the client-side browser click tool."""
+
+    ref: str = Field(
+        ...,
+        description="The element reference from the snapshot (e.g., '@e5', '@e12')",
     )

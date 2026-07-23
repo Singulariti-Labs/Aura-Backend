@@ -301,3 +301,126 @@ class BrowserTools:
                 "success": False,
                 "output": f"Error executing browser_snapshot: {error}",
             }
+
+    # --------------  Browser Click Tool -----------------------
+    async def browser_click(
+        self,
+        ref: str,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Click a snapshot element through the connected client browser.
+
+        Args:
+            ref: Element reference returned by browser_navigate or
+                browser_snapshot, such as ``@e5`` or ``e5``.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing the normalized clicked reference and optional
+            browser metadata, or the client's structured failure information.
+        """
+        input_params = {"ref": ref}
+
+        try:
+            # Ask the client browser to click the element identified by the ref.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_click",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_click_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_click",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to report the click result.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_click"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_click result received from client.",
+                }
+
+            if result.get("success") is True:
+                # Preserve the required normalized ref and optional success fields.
+                click_output = {"clicked": result.get("clicked", "")}
+                if result.get("url") is not None:
+                    click_output["url"] = result["url"]
+                if result.get("fallback_warning") is not None:
+                    click_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": click_output,
+                }
+            else:
+                # Keep the error structured so an optional fallback warning is not
+                # lost when the click fails.
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser click failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            # Save the exact LLM-facing result in shared conversation memory.
+            update_memory(
+                role="assistant",
+                content=f"Clicking browser element {ref}",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_click",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_click: {error}",
+            }
