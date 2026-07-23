@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -320,4 +320,16 @@ class BrowserNavigateToolInput(BaseModel):
     url: str = Field(
         ...,
         description="The URL to navigate to (e.g., 'https://example.com')",
+    )
+
+
+class BrowserSnapshotToolInput(BaseModel):
+    """Input accepted by the client-side browser snapshot tool."""
+
+    full: bool = Field(
+        default=False,
+        description=(
+            "If true, returns complete page content. If false (default), "
+            "returns compact view with interactive elements only."
+        ),
     )

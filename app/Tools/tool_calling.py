@@ -27,6 +27,7 @@ from app.Tools.get_app_context import GetAppContextTool
 from app.Tools.read_file import ReadFileTool
 from app.Tools.screenshot import ScreenshotTool
 from app.Tools.browser_navigate import BrowserNavigateTool
+from app.Tools.browser_snapshot import BrowserSnapshotTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -87,6 +88,7 @@ class Tools():
         self.read_file_tool = ReadFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
         self.screenshot_tool = ScreenshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
         self.browser_navigate_tool = BrowserNavigateTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_snapshot_tool = BrowserSnapshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -131,6 +133,7 @@ class Tools():
                  self.get_app_context_tool.to_tool(),
                  self.read_file_tool.to_tool(),
                  self.screenshot_tool.to_tool(),
-                 self.browser_navigate_tool.to_tool()
+                 self.browser_navigate_tool.to_tool(),
+                 self.browser_snapshot_tool.to_tool()
                 ]
         return tools

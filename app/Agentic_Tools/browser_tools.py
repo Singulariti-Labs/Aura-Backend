@@ -175,3 +175,129 @@ class BrowserTools:
                 "success": False,
                 "output": f"Error executing browser_navigate: {error}",
             }
+
+    # --------------  Browser Snapshot Tool -----------------------
+    async def browser_snapshot(
+        self,
+        full: bool = False,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Capture the current page's text accessibility tree.
+
+        Args:
+            full: Whether the client should return the complete accessibility
+                tree instead of the default compact interactive-element view.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing either the snapshot metadata or the client's
+            human-readable failure message.
+        """
+        input_params = {"full": full}
+
+        try:
+            # Ask the connected client to capture the current browser page.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_snapshot",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_snapshot_tool_func/server",
+                },
+            )
+
+            # Persist the request using the same event shape as browser_navigate.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_snapshot",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client-side browser implementation to return the tree.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_snapshot"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_snapshot result received from client.",
+                }
+
+            if result.get("success") is True:
+                # Required BrowserSnapshotOutput fields are always exposed to the
+                # LLM under the standard tool output envelope.
+                snapshot_output = {
+                    "snapshot": result.get("snapshot", ""),
+                    "element_count": result.get("element_count", 0),
+                }
+
+                # URL and title are optional client fields; omit them when absent.
+                if result.get("url") is not None:
+                    snapshot_output["url"] = result["url"]
+                if result.get("title") is not None:
+                    snapshot_output["title"] = result["title"]
+
+                final_result = {
+                    "success": True,
+                    "output": snapshot_output,
+                }
+            else:
+                # BrowserSnapshotOutput failures contain one actionable error.
+                final_result = {
+                    "success": False,
+                    "output": result.get(
+                        "error",
+                        "Browser snapshot failed without an error message.",
+                    ),
+                }
+
+            # Save the exact LLM-facing result in shared conversation memory.
+            update_memory(
+                role="assistant",
+                content=(
+                    "Capturing a full browser page snapshot"
+                    if full
+                    else "Refreshing the compact browser page snapshot"
+                ),
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_snapshot",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_snapshot: {error}",
+            }

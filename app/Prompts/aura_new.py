@@ -37,6 +37,14 @@ TOOL_NAME_MAP = {
     "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
     "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
     "browser_navigate_tool": ("browser_navigate", "Navigate to a URL, initialize the client browser session, and return a compact interactive page snapshot."),
+    "browser_snapshot_tool": ("browser_snapshot", "Get a text-based snapshot of the current page's accessibility "
+                                                "tree. Returns interactive elements with ref IDs (like @e1, @e2) "
+                                                "for browser_click and browser_type. full=false (default): compact "
+                                                "view with interactive elements. full=true: complete page content. "
+                                                "Snapshots over 8000 chars are truncated. Requires browser_navigate "
+                                                "first. Note: browser_navigate already returns a compact snapshot "
+                                                "\u2014 use this to refresh after interactions that change the page, "
+                                                "or with full=true for complete content."),
 }
 
 COMPRESSION_PROMPT = """
