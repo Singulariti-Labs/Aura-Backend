@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -312,3 +312,12 @@ class ReadFileToolInput(BaseModel):
 class ScreenshotToolInput(BaseModel):
     reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user")
+
+
+class BrowserNavigateToolInput(BaseModel):
+    """Input accepted by the client-side browser navigation tool."""
+
+    url: str = Field(
+        ...,
+        description="The URL to navigate to (e.g., 'https://example.com')",
+    )

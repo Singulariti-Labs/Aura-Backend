@@ -36,6 +36,7 @@ TOOL_NAME_MAP = {
     "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path. Dont give the random app name."),
     "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
     "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
+    "browser_navigate_tool": ("browser_navigate", "Navigate to a URL, initialize the client browser session, and return a compact interactive page snapshot."),
 }
 
 COMPRESSION_PROMPT = """
