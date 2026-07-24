@@ -49,6 +49,27 @@ TOOL_NAME_MAP = {
                                                 "(e.g., '@e5'). The ref IDs are shown in square brackets in the "
                                                 "snapshot output. Requires browser_navigate and browser_snapshot "
                                                 "to be called first."),
+    "browser_type_tool":     ("browser_type",     "Type text into an input field identified by its ref ID. Clears "
+                                                "the field first, then types the new text. Requires "
+                                                "browser_navigate and browser_snapshot to be called first."),
+    "browser_scroll_tool":   ("browser_scroll",   "Scroll the page in a direction. Use this to reveal more content "
+                                                "that may be below or above the current viewport. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_back_tool":     ("browser_back",     "Navigate back to the previous page in browser history. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_press_tool":    ("browser_press",    "Press a keyboard key. Useful for submitting forms (Enter), "
+                                                "navigating (Tab), or keyboard shortcuts. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_get_images_tool": ("browser_get_images", "Get a list of all images on the current page with their URLs "
+                                                "and alt text. Useful for finding images to analyze with the vision "
+                                                "tool. Requires browser_navigate to be called first."),
+    "browser_console_tool":  ("browser_console",  "Get browser console output and JavaScript errors from the current "
+                                                "page. Returns console.log/warn/error/info messages and uncaught JS "
+                                                "exceptions. Use this to detect silent JavaScript errors, failed API "
+                                                "calls, and application warnings. Requires browser_navigate to be "
+                                                "called first. When 'expression' is provided, evaluates JavaScript "
+                                                "in the page context and returns the result \u2014 use this for DOM "
+                                                "inspection, reading page state, or extracting data programmatically."),
 }
 
 COMPRESSION_PROMPT = """

@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_console"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -341,4 +341,58 @@ class BrowserClickToolInput(BaseModel):
     ref: str = Field(
         ...,
         description="The element reference from the snapshot (e.g., '@e5', '@e12')",
+    )
+
+
+class BrowserTypeToolInput(BaseModel):
+    """Input accepted by the client-side browser type tool."""
+
+    ref: str = Field(
+        ...,
+        description="The element reference from the snapshot (e.g., '@e3')",
+    )
+    text: str = Field(..., description="The text to type into the field")
+
+
+class BrowserScrollToolInput(BaseModel):
+    """Input accepted by the client-side browser scroll tool."""
+
+    direction: Literal["up", "down"] = Field(
+        ...,
+        description="Direction to scroll",
+    )
+
+
+class BrowserBackToolInput(BaseModel):
+    """Input for browser history navigation; no arguments are required."""
+
+
+class BrowserPressToolInput(BaseModel):
+    """Input accepted by the client-side browser key press tool."""
+
+    key: str = Field(
+        ...,
+        description="Key to press (e.g., 'Enter', 'Tab', 'Escape', 'ArrowDown')",
+    )
+
+
+class BrowserGetImagesToolInput(BaseModel):
+    """Input for browser image extraction; no arguments are required."""
+
+
+class BrowserConsoleToolInput(BaseModel):
+    """Input accepted by the client-side browser console tool."""
+
+    clear: bool = Field(
+        default=False,
+        description="If true, clear the message buffers after reading",
+    )
+    expression: Optional[str] = Field(
+        default=None,
+        description=(
+            "JavaScript expression to evaluate in the page context. Runs in the "
+            "browser like DevTools console \u2014 full access to DOM, window, document. "
+            "Return values are serialized to JSON. Example: 'document.title' or "
+            "'document.querySelectorAll(\"a\").length'"
+        ),
     )

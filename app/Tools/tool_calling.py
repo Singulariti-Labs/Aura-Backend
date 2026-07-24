@@ -29,6 +29,12 @@ from app.Tools.screenshot import ScreenshotTool
 from app.Tools.browser_navigate import BrowserNavigateTool
 from app.Tools.browser_snapshot import BrowserSnapshotTool
 from app.Tools.browser_click import BrowserClickTool
+from app.Tools.browser_type import BrowserTypeTool
+from app.Tools.browser_scroll import BrowserScrollTool
+from app.Tools.browser_back import BrowserBackTool
+from app.Tools.browser_press import BrowserPressTool
+from app.Tools.browser_get_images import BrowserGetImagesTool
+from app.Tools.browser_console import BrowserConsoleTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -91,6 +97,12 @@ class Tools():
         self.browser_navigate_tool = BrowserNavigateTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_snapshot_tool = BrowserSnapshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_click_tool = BrowserClickTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_type_tool = BrowserTypeTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_scroll_tool = BrowserScrollTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_back_tool = BrowserBackTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_press_tool = BrowserPressTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_get_images_tool = BrowserGetImagesTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_console_tool = BrowserConsoleTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -137,6 +149,12 @@ class Tools():
                  self.screenshot_tool.to_tool(),
                  self.browser_navigate_tool.to_tool(),
                  self.browser_snapshot_tool.to_tool(),
-                 self.browser_click_tool.to_tool()
+                 self.browser_click_tool.to_tool(),
+                 self.browser_type_tool.to_tool(),
+                 self.browser_scroll_tool.to_tool(),
+                 self.browser_back_tool.to_tool(),
+                 self.browser_press_tool.to_tool(),
+                 self.browser_get_images_tool.to_tool(),
+                 self.browser_console_tool.to_tool()
                 ]
         return tools

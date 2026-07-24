@@ -424,3 +424,798 @@ class BrowserTools:
                 "success": False,
                 "output": f"Error executing browser_click: {error}",
             }
+
+    # --------------  Browser Type Tool -----------------------
+    async def browser_type(
+        self,
+        ref: str,
+        text: str,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Clear and type text into a snapshot-identified input element.
+
+        Args:
+            ref: Element reference returned by browser_navigate or
+                browser_snapshot, such as ``@e3`` or ``e3``.
+            text: Replacement text that the client should type into the field.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing the typed text, normalized element ref, and
+            optional fallback warning, or structured failure information.
+        """
+        input_params = {"ref": ref, "text": text}
+
+        try:
+            # Ask the client browser to clear and fill the referenced input.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_type",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_type_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_type",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to report the typing result.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_type"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_type result received from client.",
+                }
+
+            if result.get("success") is True:
+                type_output = {
+                    "typed": result.get("typed", ""),
+                    "element": result.get("element", ""),
+                }
+                if result.get("fallback_warning") is not None:
+                    type_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": type_output,
+                }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser type failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            # Avoid copying potentially sensitive typed text into assistant memory.
+            update_memory(
+                role="assistant",
+                content=f"Typing text into browser element {ref}",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_type",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_type: {error}",
+            }
+
+    # --------------  Browser Scroll Tool -----------------------
+    async def browser_scroll(
+        self,
+        direction: str,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Scroll the current browser page up or down.
+
+        Args:
+            direction: Validated scroll direction, either ``up`` or ``down``.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing the completed scroll direction and optional
+            fallback warning, or structured failure information.
+        """
+        input_params = {"direction": direction}
+
+        try:
+            # Ask the client browser to scroll in the requested direction.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_scroll",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_scroll_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_scroll",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to report the scroll result.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_scroll"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_scroll result received from client.",
+                }
+
+            if result.get("success") is True:
+                scroll_output = {"scrolled": result.get("scrolled", direction)}
+                if result.get("fallback_warning") is not None:
+                    scroll_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": scroll_output,
+                }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser scroll failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            update_memory(
+                role="assistant",
+                content=f"Scrolling the browser page {direction}",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_scroll",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_scroll: {error}",
+            }
+
+    # --------------  Browser Back Tool -----------------------
+    async def browser_back(
+        self,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Navigate to the previous page in the client browser's history.
+
+        Args:
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing the current URL and optional fallback warning,
+            or structured failure information.
+        """
+        input_params: Dict[str, Any] = {}
+
+        try:
+            # Ask the client browser to navigate one history entry backward.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_back",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_back_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_back",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to report the history navigation result.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_back"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_back result received from client.",
+                }
+
+            if result.get("success") is True:
+                back_output = {"url": result.get("url", "")}
+                if result.get("fallback_warning") is not None:
+                    back_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": back_output,
+                }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser back failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            update_memory(
+                role="assistant",
+                content="Navigating back in browser history",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_back",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_back: {error}",
+            }
+
+    # --------------  Browser Press Tool -----------------------
+    async def browser_press(
+        self,
+        key: str,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Press a keyboard key in the current client browser page.
+
+        Args:
+            key: Keyboard key name, such as ``Enter``, ``Tab``, or ``Escape``.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing the pressed key and optional fallback warning,
+            or structured failure information.
+        """
+        input_params = {"key": key}
+
+        try:
+            # Ask the client browser to send the requested key press.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_press",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_press_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_press",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to report the key press result.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_press"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_press result received from client.",
+                }
+
+            if result.get("success") is True:
+                press_output = {"pressed": result.get("pressed", "")}
+                if result.get("fallback_warning") is not None:
+                    press_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": press_output,
+                }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser press failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            update_memory(
+                role="assistant",
+                content=f"Pressing the {key} key in the browser",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_press",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_press: {error}",
+            }
+
+    # --------------  Browser Get Images Tool -----------------------
+    async def browser_get_images(
+        self,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return image URLs and metadata from the current client browser page.
+
+        Args:
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing normalized image records, their count, and
+            optional warnings, or structured failure information.
+        """
+        input_params: Dict[str, Any] = {}
+
+        try:
+            # Ask the client browser to collect image metadata from the page.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_get_images",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_get_images_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_get_images",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to return the extracted image records.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_get_images"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_get_images result received from client.",
+                }
+
+            if result.get("success") is True:
+                # Normalize each image while preserving optional natural dimensions.
+                images = []
+                raw_images = result.get("images", [])
+                if isinstance(raw_images, list):
+                    for raw_image in raw_images:
+                        if not isinstance(raw_image, dict):
+                            continue
+                        image_info: Dict[str, Any] = {
+                            "src": raw_image.get("src", ""),
+                            "alt": raw_image.get("alt", ""),
+                        }
+                        if raw_image.get("width") is not None:
+                            image_info["width"] = raw_image["width"]
+                        if raw_image.get("height") is not None:
+                            image_info["height"] = raw_image["height"]
+                        images.append(image_info)
+
+                images_output = {
+                    "images": images,
+                    "count": result.get("count", len(images)),
+                }
+                if result.get("warning") is not None:
+                    images_output["warning"] = result["warning"]
+                if result.get("fallback_warning") is not None:
+                    images_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": True,
+                    "output": images_output,
+                }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser image extraction failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            update_memory(
+                role="assistant",
+                content="Getting images from the current browser page",
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_get_images",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_get_images: {error}",
+            }
+
+    # --------------  Browser Console Tool -----------------------
+    async def browser_console(
+        self,
+        clear: bool = False,
+        expression: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Read browser console messages or evaluate JavaScript in the page.
+
+        Args:
+            clear: Whether console and error buffers should be cleared after a
+                console-mode read. Defaults to ``False``.
+            expression: Optional JavaScript expression. When supplied, the client
+                switches from console-reading mode to expression-evaluation mode.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            A dictionary containing normalized console data, expression results,
+            or structured failure information.
+        """
+        input_params: Dict[str, Any] = {"clear": clear}
+        if expression is not None:
+            input_params["expression"] = expression
+
+        try:
+            # Ask the client to read console buffers or evaluate an expression.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_console",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_console_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared client-tool event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_console",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the client to return console or evaluation data.
+            tool_response = await task_manager.wait_for_input(self.task_id)
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_console"
+            ):
+                return {
+                    "success": False,
+                    "output": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "output": "Invalid browser_console result received from client.",
+                }
+
+            if result.get("success") is True:
+                if "console_messages" in result or "js_errors" in result:
+                    # Console mode has separate normalized log and exception lists.
+                    console_messages = []
+                    raw_messages = result.get("console_messages", [])
+                    if isinstance(raw_messages, list):
+                        for raw_message in raw_messages:
+                            if not isinstance(raw_message, dict):
+                                continue
+                            console_messages.append(
+                                {
+                                    "type": raw_message.get("type", ""),
+                                    "text": raw_message.get("text", ""),
+                                    "source": raw_message.get("source", "console"),
+                                }
+                            )
+
+                    js_errors = []
+                    raw_errors = result.get("js_errors", [])
+                    if isinstance(raw_errors, list):
+                        for raw_error in raw_errors:
+                            if not isinstance(raw_error, dict):
+                                continue
+                            js_errors.append(
+                                {
+                                    "message": raw_error.get("message", ""),
+                                    "source": raw_error.get(
+                                        "source",
+                                        "exception",
+                                    ),
+                                }
+                            )
+
+                    console_output = {
+                        "console_messages": console_messages,
+                        "js_errors": js_errors,
+                        "total_messages": result.get(
+                            "total_messages",
+                            len(console_messages),
+                        ),
+                        "total_errors": result.get(
+                            "total_errors",
+                            len(js_errors),
+                        ),
+                    }
+                    if result.get("note") is not None:
+                        console_output["note"] = result["note"]
+                    if result.get("fallback_warning") is not None:
+                        console_output["fallback_warning"] = result[
+                            "fallback_warning"
+                        ]
+
+                    final_result = {
+                        "success": True,
+                        "output": console_output,
+                    }
+                else:
+                    # Expression mode preserves an arbitrary JSON-serialized result.
+                    expression_output = {
+                        "result": result.get("result"),
+                        "result_type": result.get("result_type", ""),
+                    }
+                    if result.get("method") is not None:
+                        expression_output["method"] = result["method"]
+                    if result.get("fallback_warning") is not None:
+                        expression_output["fallback_warning"] = result[
+                            "fallback_warning"
+                        ]
+
+                    final_result = {
+                        "success": True,
+                        "output": expression_output,
+                    }
+            else:
+                failure_output = {
+                    "error": result.get(
+                        "error",
+                        "Browser console failed without an error message.",
+                    )
+                }
+                if result.get("fallback_warning") is not None:
+                    failure_output["fallback_warning"] = result["fallback_warning"]
+
+                final_result = {
+                    "success": False,
+                    "output": failure_output,
+                }
+
+            update_memory(
+                role="assistant",
+                content=(
+                    "Evaluating JavaScript in the current browser page"
+                    if expression is not None
+                    else "Reading browser console output and JavaScript errors"
+                ),
+                memory=self.memory,
+            )
+            update_memory(
+                role="tool",
+                name="browser_console",
+                tool_call_id=tool_call_id,
+                content=json.dumps(final_result),
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "output": f"Error executing browser_console: {error}",
+            }
