@@ -31,7 +31,7 @@ TOOL_NAME_MAP = {
     "execute_command_tool": ("execute_command",  "Execute a shell command on the system"),
     "grep_tool":            ("grep",             "Search file contents using pattern matching"),
     "ls_tool":              ("ls",               "List contents of a directory"),
-    "globe_tool":           ("glob",             "Find files matching a glob pattern"),
+    "glob_tool":           ("glob",             "Find files matching a glob pattern"),
     "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
     "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path. Dont give the random app name."),
     "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
