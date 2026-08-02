@@ -94,7 +94,7 @@ class BrowserTools:
             )
 
             # Wait for the browser implementation on the client to finish loading.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -225,7 +225,7 @@ class BrowserTools:
             )
 
             # Wait for the client-side browser implementation to return the tree.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -351,7 +351,7 @@ class BrowserTools:
             )
 
             # Wait for the client to report the click result.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -476,7 +476,7 @@ class BrowserTools:
             )
 
             # Wait for the client to report the typing result.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -596,7 +596,7 @@ class BrowserTools:
             )
 
             # Wait for the client to report the scroll result.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -710,7 +710,7 @@ class BrowserTools:
             )
 
             # Wait for the client to report the history navigation result.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -826,7 +826,7 @@ class BrowserTools:
             )
 
             # Wait for the client to report the key press result.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -940,7 +940,7 @@ class BrowserTools:
             )
 
             # Wait for the client to return the extracted image records.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 
@@ -1084,7 +1084,7 @@ class BrowserTools:
             )
 
             # Wait for the client to return console or evaluation data.
-            tool_response = await task_manager.wait_for_input(self.task_id)
+            tool_response = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_response.get("type")
             payload = tool_response.get("payload", {})
 

@@ -18,7 +18,7 @@ class Task(TypedDict, total=False):
     user_id: str  # User who owns the task
     chat_id: str  # Chat session this task belongs to
     query: str    # Initial query that triggered the task
-    status: str   # 'running' | 'completed' | 'failed'
+    status: str   # 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
     started_at: datetime  # When the task started
     finished_at: Optional[datetime]  # When the task finished (None if running)
     is_star: bool  # Whether the user star that task

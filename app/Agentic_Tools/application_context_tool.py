@@ -61,7 +61,7 @@ class GetAppContext():
             )
 
             # 4. Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_resp.get("type")
 
             if response_type == "client_tool_response":

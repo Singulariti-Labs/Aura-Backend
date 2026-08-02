@@ -222,7 +222,7 @@ class SupervisorAgent(BaseAgent):
                             step_status = StepStatus.COMPLETED
                         else:
                             step_status = StepStatus.FAILED
-                            print(f"Step: {description} Failed because {validator_result["reason"]}")
+                            print(f"Step: {description} Failed because {validator_result['reason']}")
                     else:
                         step_status = StepStatus.COMPLETED
                     break  # Exit retry loop on success

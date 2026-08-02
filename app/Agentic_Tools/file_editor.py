@@ -73,7 +73,7 @@ class FileEditor():
             )
 
             # Wait for client tool response 
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -141,6 +141,7 @@ class FileEditor():
                 message_type="client_tool_request",
                 tool="read_file",
                 payload= {
+                  "tool_call_id": tool_call_id,
                   "input": {
                         "filePath": filePath,
                         "offset": offset,
@@ -151,7 +152,7 @@ class FileEditor():
             )
 
             # Wait for client tool response 
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -167,6 +168,10 @@ class FileEditor():
                     attachment = result.get("attachment")
 
                     if attachment:
+                        # Support both 'content' and 'data' fields for attachments
+                        if not attachment.get("content") and attachment.get("data"):
+                            attachment["content"] = attachment["data"]
+
                         # Format for the specific provider using the adapter
                         options = {
                             "provider": llm_provider or "openai", # default to openai if none
@@ -265,7 +270,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -344,7 +349,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -417,7 +422,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -498,7 +503,7 @@ class FileEditor():
             
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -620,7 +625,7 @@ class FileEditor():
                     
                 
                     # Wait for client tool response
-                    tool_resp = await task_manager.wait_for_input(self.task_id)
+                    tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
                     response_type = tool_resp.get("type")
 
@@ -706,7 +711,7 @@ class FileEditor():
             
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
