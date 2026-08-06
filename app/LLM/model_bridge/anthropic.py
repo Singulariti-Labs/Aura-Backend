@@ -102,20 +102,47 @@ def anthropic_message_formater(
 
         if role == "tool":
             tool_results: List[Dict[str, Any]] = []
+            vision_content: List[Dict[str, Any]] = []
             while index < len(messages) and messages[index].get("role") == "tool":
                 tool_message = messages[index]
+                content_blocks = tool_message.get("content", [])
+                tool_content = content_blocks
+                if tool_message.get("tool_name") == "browser_vision":
+                    vision_prompts = [
+                        block
+                        for block in content_blocks
+                        if block.get("type") == "text"
+                        and str(block.get("text", "")).startswith(
+                            "Analyze this browser screenshot and answer:"
+                        )
+                    ]
+                    vision_media = [
+                        block
+                        for block in content_blocks
+                        if block.get("type") != "text"
+                    ]
+                    tool_content = [
+                        block
+                        for block in content_blocks
+                        if block not in vision_prompts and block not in vision_media
+                    ]
+                    vision_content.extend(
+                        _content_block(block)
+                        for block in [*vision_prompts, *vision_media]
+                    )
+
                 tool_results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_message.get("tool_call_id"),
-                        "content": [
-                            _content_block(block) for block in tool_message.get("content", [])
-                        ],
+                        "content": [_content_block(block) for block in tool_content],
                         "is_error": bool(tool_message.get("is_error", False)),
                     }
                 )
                 index += 1
             formatted.append({"role": "user", "content": tool_results})
+            if vision_content:
+                formatted.append({"role": "user", "content": vision_content})
             continue
 
         raise ValueError(f"Unsupported canonical role for Anthropic: {role!r}")

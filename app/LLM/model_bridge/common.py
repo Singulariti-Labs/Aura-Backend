@@ -170,7 +170,8 @@ def canonical_tool_result(
 ) -> Dict[str, Any]:
     """Convert a LangChain/native tool result to the client history schema.
 
-    Rich return dictionaries may contain ``image_base64``/``mime_type`` or a
+    Rich return dictionaries may contain ``image_base64``,
+    ``image_data_url``, or a
     canonical ``content`` block array. Large binary values are removed from the
     JSON text block after being promoted to their own media block.
     """
@@ -212,6 +213,28 @@ def canonical_tool_result(
                     }
                 )
 
+            image_data_url = raw_result.get("image_data_url")
+            if image_data_url:
+                media_type = raw_result.get("mime_type") or "image/png"
+                question = str(
+                    raw_result.get("question") or "What is visible on the page?"
+                )
+                blocks.extend(
+                    [
+                        {
+                            "type": "text",
+                            "text": f"Analyze this browser screenshot and answer: {question}",
+                        },
+                        {
+                            "type": "image",
+                            "media_type": media_type,
+                            "image_url": ensure_data_url(
+                                str(image_data_url),
+                                str(media_type),
+                            ),
+                        },
+                    ]
+                )
             base64_images = raw_result.get("base64_images")
             if isinstance(base64_images, list):
                 for image_data in base64_images:
@@ -226,8 +249,15 @@ def canonical_tool_result(
             text_value = {
                 key: value
                 for key, value in raw_result.items()
-                if key not in {"content", "image_base64", "base64_images"}
+                if key not in {
+                    "content",
+                    "image_base64",
+                    "image_data_url",
+                    "base64_images",
+                }
             }
+            if image_data_url:
+                text_value["note"] = "Screenshot attached as native image content."
             if text_value or not blocks:
                 blocks.insert(0, {"type": "text", "text": json_text(text_value)})
             is_error = raw_result.get("success") is False

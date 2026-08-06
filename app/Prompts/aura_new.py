@@ -63,6 +63,10 @@ TOOL_NAME_MAP = {
     "browser_get_images_tool": ("browser_get_images", "Get a list of all images on the current page with their URLs "
                                                 "and alt text. Useful for finding images to analyze with the vision "
                                                 "tool. Requires browser_navigate to be called first."),
+    "browser_vision_tool":     ("browser_vision",     "Take a screenshot of the current page for visual inspection. "
+                                                "Use it for CAPTCHAs, visual verification challenges, complex layouts, "
+                                                "or when the text snapshot misses important visual information. "
+                                                "Requires browser_navigate to be called first."),
     "browser_console_tool":  ("browser_console",  "Get browser console output and JavaScript errors from the current "
                                                 "page. Returns console.log/warn/error/info messages and uncaught JS "
                                                 "exceptions. Use this to detect silent JavaScript errors, failed API "

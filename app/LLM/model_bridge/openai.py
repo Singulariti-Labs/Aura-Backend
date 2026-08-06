@@ -127,21 +127,41 @@ def openai_message_formater(
             rich_names: List[str] = []
             while index < len(messages) and messages[index].get("role") == "tool":
                 tool_message = messages[index]
+                content_blocks = tool_message.get("content", [])
+                vision_prompts = []
+                if tool_message.get("tool_name") == "browser_vision":
+                    vision_prompts = [
+                        block
+                        for block in content_blocks
+                        if block.get("type") == "text"
+                        and str(block.get("text", "")).startswith(
+                            "Analyze this browser screenshot and answer:"
+                        )
+                    ]
+                text_tool_message = {
+                    **tool_message,
+                    "content": [
+                        block for block in content_blocks if block not in vision_prompts
+                    ],
+                }
                 formatted.append(
                     {
                         "role": "tool",
                         "tool_call_id": tool_message.get("tool_call_id"),
-                        "content": _tool_text(tool_message),
+                        "content": _tool_text(text_tool_message),
                     }
                 )
                 media_blocks = [
                     block
-                    for block in tool_message.get("content", [])
+                    for block in content_blocks
                     if block.get("type") != "text"
                 ]
                 if media_blocks:
                     rich_names.append(str(tool_message.get("tool_name") or "tool"))
-                    rich_parts.extend(_user_content_block(block) for block in media_blocks)
+                    rich_parts.extend(
+                        _user_content_block(block)
+                        for block in [*vision_prompts, *media_blocks]
+                    )
                 index += 1
 
             if rich_parts:

@@ -1030,6 +1030,207 @@ class BrowserTools:
                 "output": f"Error executing browser_get_images: {error}",
             }
 
+    # --------------  Browser Vision Tool -----------------------
+    async def browser_vision(
+        self,
+        question: str,
+        annotate: bool = False,
+        tool_call_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Capture the current browser page for native visual inspection.
+
+        The client returns a PNG data URL alongside screenshot metadata. The
+        data URL remains a distinct media value so downstream model adapters can
+        attach it as an image instead of serializing it into text tokens.
+
+        Args:
+            question: Visual question the model should answer from the screenshot.
+            annotate: Whether the client should label interactive page elements.
+            tool_call_id: Optional model tool-call ID used to correlate the result.
+
+        Returns:
+            The documented BrowserVisionOutput success or failure dictionary.
+        """
+        input_params = {
+            "question": question,
+            "annotate": annotate,
+        }
+
+        try:
+            # Ask the client browser to capture and optionally annotate the page.
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "browser_vision",
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                    "coming_from": "browser_vision_tool_func/server",
+                },
+            )
+
+            # Persist the outgoing request using the shared browser event shape.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="browser_vision",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": input_params,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Wait for the screenshot response matching this exact tool call.
+            tool_response = await task_manager.wait_for_tool_response(
+                self.task_id,
+                tool_call_id,
+            )
+            response_type = tool_response.get("type")
+            payload = tool_response.get("payload", {})
+
+            if (
+                response_type != "client_tool_response"
+                or payload.get("tool") != "browser_vision"
+            ):
+                return {
+                    "success": False,
+                    "error": (
+                        "Unexpected client tool response: "
+                        f"type={response_type}, tool={payload.get('tool')}"
+                    ),
+                }
+
+            result = payload.get("result", {})
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "error": "Invalid browser_vision result received from client.",
+                }
+
+            if result.get("success") is True:
+                screenshot_path = result.get("screenshot_path")
+                image_data_url = result.get("image_data_url")
+                mime_type = result.get("mime_type")
+                image_size_bytes = result.get("image_size_bytes")
+
+                missing_fields = []
+                if not isinstance(screenshot_path, str) or not screenshot_path:
+                    missing_fields.append("screenshot_path")
+                if (
+                    not isinstance(image_data_url, str)
+                    or not image_data_url.startswith("data:image/png;base64,")
+                ):
+                    missing_fields.append("image_data_url")
+                if mime_type != "image/png":
+                    missing_fields.append("mime_type")
+                if (
+                    not isinstance(image_size_bytes, int)
+                    or isinstance(image_size_bytes, bool)
+                    or image_size_bytes < 0
+                ):
+                    missing_fields.append("image_size_bytes")
+
+                if missing_fields:
+                    final_result: Dict[str, Any] = {
+                        "success": False,
+                        "error": (
+                            "Invalid browser_vision success result; missing or "
+                            "invalid fields: " + ", ".join(missing_fields)
+                        ),
+                    }
+                    if isinstance(screenshot_path, str) and screenshot_path:
+                        final_result["screenshot_path"] = screenshot_path
+                    if result.get("fallback_warning") is not None:
+                        final_result["fallback_warning"] = result[
+                            "fallback_warning"
+                        ]
+                else:
+                    # Preserve the documented output fields at the tool boundary.
+                    final_result = {
+                        "success": True,
+                        "question": question,
+                        "screenshot_path": screenshot_path,
+                        "image_data_url": image_data_url,
+                        "mime_type": "image/png",
+                        "image_size_bytes": image_size_bytes,
+                        "native_vision": True,
+                    }
+                    if result.get("annotations") is not None:
+                        final_result["annotations"] = result["annotations"]
+                    if result.get("fallback_warning") is not None:
+                        final_result["fallback_warning"] = result[
+                            "fallback_warning"
+                        ]
+            else:
+                final_result = {
+                    "success": False,
+                    "error": result.get(
+                        "error",
+                        "Browser vision capture failed without an error message.",
+                    ),
+                }
+                if result.get("screenshot_path") is not None:
+                    final_result["screenshot_path"] = result["screenshot_path"]
+                if result.get("fallback_warning") is not None:
+                    final_result["fallback_warning"] = result[
+                        "fallback_warning"
+                    ]
+
+            update_memory(
+                role="assistant",
+                content=f"Capturing the browser page to answer: {question}",
+                memory=self.memory,
+            )
+
+            # Store screenshot metadata as text and image bytes as a media block.
+            # This prevents the base64 data URL from being tokenized as JSON.
+            memory_result = {
+                key: value
+                for key, value in final_result.items()
+                if key != "image_data_url"
+            }
+            memory_content: Any = json.dumps(memory_result)
+            if final_result.get("success") is True:
+                encoded_image = final_result["image_data_url"].split(",", 1)[1]
+                memory_result["note"] = "Screenshot attached as image content."
+                memory_content = [
+                    {"type": "text", "text": json.dumps(memory_result)},
+                    {
+                        "type": "text",
+                        "text": (
+                            "Analyze this browser screenshot and answer: "
+                            f"{final_result['question']}"
+                        ),
+                    },
+                    {
+                        "type": "image",
+                        "source_type": "base64",
+                        "mime_type": "image/png",
+                        "data": encoded_image,
+                    },
+                ]
+
+            update_memory(
+                role="tool",
+                name="browser_vision",
+                tool_call_id=tool_call_id,
+                content=memory_content,
+                memory=self.memory,
+            )
+
+            return final_result
+
+        except Exception as error:
+            return {
+                "success": False,
+                "error": f"Error executing browser_vision: {error}",
+            }
+
     # --------------  Browser Console Tool -----------------------
     async def browser_console(
         self,

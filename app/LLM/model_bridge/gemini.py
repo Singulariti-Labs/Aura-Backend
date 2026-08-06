@@ -135,10 +135,43 @@ def gemini_message_formater(
 
         if role == "tool":
             parts: List[Dict[str, Any]] = []
+            vision_parts: List[Dict[str, Any]] = []
             while index < len(messages) and messages[index].get("role") == "tool":
-                parts.append(_function_response(messages[index]))
+                tool_message = messages[index]
+                function_message = tool_message
+                if tool_message.get("tool_name") == "browser_vision":
+                    content_blocks = tool_message.get("content", [])
+                    vision_prompts = [
+                        block
+                        for block in content_blocks
+                        if block.get("type") == "text"
+                        and str(block.get("text", "")).startswith(
+                            "Analyze this browser screenshot and answer:"
+                        )
+                    ]
+                    vision_media = [
+                        block
+                        for block in content_blocks
+                        if block.get("type") != "text"
+                    ]
+                    function_message = {
+                        **tool_message,
+                        "content": [
+                            block
+                            for block in content_blocks
+                            if block not in vision_prompts and block not in vision_media
+                        ],
+                    }
+                    vision_parts.extend(
+                        _user_part(block)
+                        for block in [*vision_prompts, *vision_media]
+                    )
+
+                parts.append(_function_response(function_message))
                 index += 1
             contents.append({"role": "user", "parts": parts})
+            if vision_parts:
+                contents.append({"role": "user", "parts": vision_parts})
             continue
 
         raise ValueError(f"Unsupported canonical role for Gemini: {role!r}")

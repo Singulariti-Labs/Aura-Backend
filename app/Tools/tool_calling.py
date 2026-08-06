@@ -34,6 +34,7 @@ from app.Tools.browser_scroll import BrowserScrollTool
 from app.Tools.browser_back import BrowserBackTool
 from app.Tools.browser_press import BrowserPressTool
 from app.Tools.browser_get_images import BrowserGetImagesTool
+from app.Tools.browser_vision import BrowserVisionTool
 from app.Tools.browser_console import BrowserConsoleTool
 
 if TYPE_CHECKING:
@@ -102,6 +103,7 @@ class Tools():
         self.browser_back_tool = BrowserBackTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_press_tool = BrowserPressTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_get_images_tool = BrowserGetImagesTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_vision_tool = BrowserVisionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_console_tool = BrowserConsoleTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
@@ -155,6 +157,7 @@ class Tools():
                  self.browser_back_tool.to_tool(),
                  self.browser_press_tool.to_tool(),
                  self.browser_get_images_tool.to_tool(),
+                 self.browser_vision_tool.to_tool(),
                  self.browser_console_tool.to_tool()
                 ]
         return tools

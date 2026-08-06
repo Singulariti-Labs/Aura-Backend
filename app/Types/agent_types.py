@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_console"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -378,6 +378,25 @@ class BrowserPressToolInput(BaseModel):
 
 class BrowserGetImagesToolInput(BaseModel):
     """Input for browser image extraction; no arguments are required."""
+
+
+class BrowserVisionInput(BaseModel):
+    """Input accepted by the client-side browser vision tool."""
+
+    question: str = Field(
+        ...,
+        description=(
+            "What you want to know about the page visually. Be specific about "
+            "what you're looking for."
+        ),
+    )
+    annotate: bool = Field(
+        default=False,
+        description=(
+            "If true, overlay numbered labels on interactive elements. Useful "
+            "for QA and spatial reasoning about page layout."
+        ),
+    )
 
 
 class BrowserConsoleToolInput(BaseModel):
