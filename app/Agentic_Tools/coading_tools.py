@@ -58,7 +58,7 @@ class CoadingTools():
             )
 
             # 3. Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_resp.get("type")
 
             if response_type == "client_tool_response":
@@ -141,7 +141,7 @@ class CoadingTools():
             )
 
             # 3. Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_resp.get("type")
 
             if response_type == "client_tool_response":
@@ -185,7 +185,7 @@ class CoadingTools():
                 "output": f"Error executing ls: {str(e)}"
             }
 
-    async def globe(self, pattern: List[str], path: str, currentWorkDir: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None) -> Dict[str, Any]:
+    async def glob(self, pattern: List[str], path: str, currentWorkDir: str, hide: Optional[str] = "false", tool_call_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Search for files using glob patterns.
         """
@@ -204,10 +204,10 @@ class CoadingTools():
                 chat_id=self.chat_id,
                 task_id=self.task_id,
                 payload={
-                    "tool": "globe",
+                    "tool": "glob",
                     "tool_call_id": tool_call_id,
                     "input": input_params,
-                    "coming_from": "globe_tool_func/server"
+                    "coming_from": "glob_tool_func/server"
                 }
             )
 
@@ -217,18 +217,18 @@ class CoadingTools():
                 task_id=self.task_id,
                 role="tool",
                 message_type="client_tool_request",
-                tool="globe",
+                tool="glob",
                 payload={"input": input_params},
                 seq=self.task_state.get_next_seq()
             )
 
             # 3. Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
             response_type = tool_resp.get("type")
 
             if response_type == "client_tool_response":
                 payload = tool_resp.get("payload", {})
-                if payload.get("tool") == "globe":
+                if payload.get("tool") == "glob":
                     result = payload.get("result", {})
                     
                     # Grouping title, metadata, and message as tool_output
@@ -248,7 +248,7 @@ class CoadingTools():
                     update_memory(role="assistant", content=assistant_message, memory=self.memory)
                     update_memory(
                         role="tool",
-                        name="globe",
+                        name="glob",
                         tool_call_id=tool_call_id,
                         content=json.dumps(final_result),
                         memory=self.memory
@@ -264,6 +264,6 @@ class CoadingTools():
         except Exception as e:
             return {
                 "success": False,
-                "output": f"Error executing globe: {str(e)}"
+                "output": f"Error executing glob: {str(e)}"
             }
 

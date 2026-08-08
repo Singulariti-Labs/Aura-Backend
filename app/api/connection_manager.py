@@ -1,54 +1,37 @@
-"""
-Connection Manager for handling multiple WebSocket connections.
+"""Connection registry and per-WebSocket send synchronization."""
 
-This module defines a ConnectionManager class that manages active WebSocket connections,
-supports adding/removing clients, and broadcasting messages to all connected clients.
-"""
+import asyncio
+from typing import List
 
 from fastapi import WebSocket
-from typing import List
 
 
 class ConnectionManager:
-    """
-    Manages WebSocket connections.
-
-    Provides methods to accept new connections, remove disconnected ones,
-    and broadcast messages to all currently connected WebSocket clients.
-    """
+    """Accept, track, and safely broadcast to active WebSocket clients."""
 
     def __init__(self):
-        """
-        Initialize the ConnectionManager with an empty list of active connections.
-        """
         self.active_connections: List[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket):
-        """
-        Accept a new WebSocket connection and add it to the list of active connections.
+    async def connect(self, websocket: WebSocket) -> None:
+        """Accept a socket and install the lock shared by all task writers."""
 
-        Args:
-            websocket (WebSocket): The WebSocket instance representing the client.
-        """
         await websocket.accept()
+        websocket.state.send_lock = asyncio.Lock()
         self.active_connections.append(websocket)
 
-    def disconnect(self, websocket: WebSocket):
-        """
-        Remove a WebSocket connection from the list of active connections.
+    def disconnect(self, websocket: WebSocket) -> None:
+        """Remove a socket from the active connection registry."""
 
-        Args:
-            websocket (WebSocket): The WebSocket instance to remove.
-        """
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
 
-    async def broadcast(self, message: str):
-        """
-        Send a text message to all currently connected WebSocket clients.
+    async def broadcast(self, message: str) -> None:
+        """Send text to all clients while serializing writes per connection."""
 
-        Args:
-            message (str): The message to broadcast.
-        """
-        for connection in self.active_connections:
-            await connection.send_text(message)
+        for connection in tuple(self.active_connections):
+            send_lock = getattr(connection.state, "send_lock", None)
+            if send_lock is None:
+                send_lock = asyncio.Lock()
+                connection.state.send_lock = send_lock
+            async with send_lock:
+                await connection.send_text(message)

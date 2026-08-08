@@ -20,12 +20,22 @@ from app.Tools.str_replace import StrReplaceTool
 from app.Tools.execute_command import ExecuteCommandTool
 from app.Tools.grep import GrepTool
 from app.Tools.ls import LSTool
-from app.Tools.globe import GlobeTool
+from app.Tools.glob import GlobTool
 from app.Tools.ask_user import AskUserTool
 from app.Tools.read_skill import ReadSkillTool
 from app.Tools.get_app_context import GetAppContextTool
 from app.Tools.read_file import ReadFileTool
 from app.Tools.screenshot import ScreenshotTool
+from app.Tools.browser_navigate import BrowserNavigateTool
+from app.Tools.browser_snapshot import BrowserSnapshotTool
+from app.Tools.browser_click import BrowserClickTool
+from app.Tools.browser_type import BrowserTypeTool
+from app.Tools.browser_scroll import BrowserScrollTool
+from app.Tools.browser_back import BrowserBackTool
+from app.Tools.browser_press import BrowserPressTool
+from app.Tools.browser_get_images import BrowserGetImagesTool
+from app.Tools.browser_vision import BrowserVisionTool
+from app.Tools.browser_console import BrowserConsoleTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -79,12 +89,22 @@ class Tools():
         self.execute_command_tool = ExecuteCommandTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.grep_tool = GrepTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ls_tool = LSTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
-        self.globe_tool = GlobeTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.glob_tool = GlobTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ask_user_tool = AskUserTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.read_skill_tool = ReadSkillTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.get_app_context_tool = GetAppContextTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.read_file_tool = ReadFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
         self.screenshot_tool = ScreenshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, llm_provider=self.llm_provider)
+        self.browser_navigate_tool = BrowserNavigateTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_snapshot_tool = BrowserSnapshotTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_click_tool = BrowserClickTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_type_tool = BrowserTypeTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_scroll_tool = BrowserScrollTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_back_tool = BrowserBackTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_press_tool = BrowserPressTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_get_images_tool = BrowserGetImagesTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_vision_tool = BrowserVisionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.browser_console_tool = BrowserConsoleTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -123,11 +143,21 @@ class Tools():
                  self.execute_command_tool.to_tool(),
                  self.grep_tool.to_tool(),
                  self.ls_tool.to_tool(),
-                 self.globe_tool.to_tool(),
+                 self.glob_tool.to_tool(),
                  self.ask_user_tool.to_tool(),
                  self.read_skill_tool.to_tool(),
                  self.get_app_context_tool.to_tool(),
                  self.read_file_tool.to_tool(),
-                 self.screenshot_tool.to_tool()
+                 self.screenshot_tool.to_tool(),
+                 self.browser_navigate_tool.to_tool(),
+                 self.browser_snapshot_tool.to_tool(),
+                 self.browser_click_tool.to_tool(),
+                 self.browser_type_tool.to_tool(),
+                 self.browser_scroll_tool.to_tool(),
+                 self.browser_back_tool.to_tool(),
+                 self.browser_press_tool.to_tool(),
+                 self.browser_get_images_tool.to_tool(),
+                 self.browser_vision_tool.to_tool(),
+                 self.browser_console_tool.to_tool()
                 ]
         return tools

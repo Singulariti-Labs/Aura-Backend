@@ -5,6 +5,7 @@ from app.DB.Queries.task import get_tasks_by_user, get_task_by_id, delete_task_d
 from app.DB.Queries.agent_event import get_events_by_task
 from app.api.auth_utils import get_current_user
 from app.DB.Queries.user_settings import upsert_user_settings, get_user_settings
+from app.RateLimit.usage_service import fetch_user_usage
 from asyncpg import Pool
 from app.STT.service import STTService
 
@@ -23,6 +24,19 @@ async def fetch_user_profile(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User record not found. Please sync first.")
     return user
+
+@rest_router.get("/user/usage")
+async def fetch_my_usage(current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    auth0_id = current_user.get("sub")
+    user = await get_user_by_auth0_id(pool, auth0_id)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User record not found. Please sync first.",
+        )
+
+    return await fetch_user_usage(pool, user["id"])
 
 @rest_router.get("/get_tasks")
 async def fetch_my_tasks(current_user: dict = Depends(get_current_user)):

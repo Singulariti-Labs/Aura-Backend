@@ -15,7 +15,12 @@ from app.Tools.base_tool import (
     get_current_tool_input,
 )
 from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
-from app.Task.task_manager import TaskControlState, task_manager
+from app.Task.task_manager import (
+    ClientToolResponseTimeoutError,
+    TaskControlState,
+    task_manager,
+)
+from app.api.websocket_utils import send_ws_message
 from app.Agentic_Tools.file_editor import FileEditor
 from app.helper import (
     _find_tool_call,
@@ -211,11 +216,12 @@ class ToolResponseRoutingTests(unittest.IsolatedAsyncioTestCase):
             second_result["payload"]["result"]["content"],
             "second file",
         )
-        self.assertEqual(state.tool_response_queues, {})
+        self.assertEqual(state.pending_tool_calls, {})
 
-    async def test_response_is_buffered_when_it_arrives_before_waiter(self):
-        """A fast client response remains available for its exact call."""
+    async def test_response_after_registration_before_waiter_is_preserved(self):
+        """A fast response resolves the Future registered before WebSocket send."""
         state = TaskControlState(websocket=None, dbpool=None)
+        state.register_tool_call("toolu_fast", tool_name="read_file")
         response = {
             "type": "client_tool_response",
             "payload": {
@@ -225,11 +231,11 @@ class ToolResponseRoutingTests(unittest.IsolatedAsyncioTestCase):
             },
         }
 
-        state.route_input(response)
+        self.assertEqual(state.route_input(response), "delivered")
         received = await state.wait_for_tool_response("toolu_fast")
 
         self.assertIs(received, response)
-        self.assertEqual(state.tool_response_queues, {})
+        self.assertEqual(state.pending_tool_calls, {})
 
     async def test_parallel_different_tools_keep_their_existing_ids(self):
         """ID routing remains correct when parallel tool names are different."""
@@ -241,6 +247,7 @@ class ToolResponseRoutingTests(unittest.IsolatedAsyncioTestCase):
             state.wait_for_tool_response("toolu_list")
         )
 
+        await asyncio.sleep(0)
         state.route_input(
             {
                 "type": "client_tool_response",
@@ -290,6 +297,113 @@ class ToolResponseRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(received, user_input)
 
 
+    async def test_timeout_cleans_call_and_discards_late_response(self):
+        state = TaskControlState(websocket=None, dbpool=None)
+        state.register_tool_call(
+            "toolu_timeout",
+            tool_name="read_file",
+            timeout_seconds=0.01,
+        )
+
+        with self.assertRaises(ClientToolResponseTimeoutError) as ctx:
+            await state.wait_for_tool_response("toolu_timeout")
+
+        self.assertEqual(ctx.exception.tool_name, "read_file")
+        self.assertEqual(state.pending_tool_calls, {})
+        self.assertIn("toolu_timeout", state.expired_tool_call_ids)
+
+        late_response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "toolu_timeout",
+                "result": {"success": True, "content": "too late"},
+            },
+        }
+        self.assertEqual(state.route_input(late_response), "late")
+        self.assertTrue(state.input_queue.empty())
+
+    async def test_unknown_tool_response_is_not_put_in_general_queue(self):
+        state = TaskControlState(websocket=None, dbpool=None)
+        response = {
+            "type": "client_tool_response",
+            "payload": {
+                "tool": "read_file",
+                "tool_call_id": "never_registered",
+                "result": {"success": True},
+            },
+        }
+
+        self.assertEqual(state.route_input(response), "unknown")
+        self.assertTrue(state.input_queue.empty())
+
+    async def test_cancellation_cleans_pending_future(self):
+        state = TaskControlState(websocket=None, dbpool=None)
+        state.register_tool_call("toolu_cancel", tool_name="browser_navigate")
+        waiter = asyncio.create_task(
+            state.wait_for_tool_response("toolu_cancel")
+        )
+        await asyncio.sleep(0)
+
+        state.cancel_pending_tool_calls(reason="test_cancel")
+
+        with self.assertRaises(asyncio.CancelledError):
+            await waiter
+        self.assertEqual(state.pending_tool_calls, {})
+
+
+class ImmediateResponseWebSocket:
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+        self.state = SimpleNamespace()
+        self.sent_messages = []
+
+    async def send_json(self, message):
+        self.sent_messages.append(message)
+        payload = message["payload"]
+        task_manager.provide_input(
+            self.task_id,
+            {
+                "type": "client_tool_response",
+                "payload": {
+                    "tool": payload["tool"],
+                    "tool_call_id": payload["tool_call_id"],
+                    "result": {"success": True, "content": "immediate"},
+                },
+            },
+        )
+
+
+class ClientToolRequestLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_waiter_is_registered_before_websocket_send(self):
+        task_id = "immediate-client-response"
+        websocket = ImmediateResponseWebSocket(task_id)
+        task_manager.create_task(task_id, websocket=websocket, pool=None)
+        try:
+            tool_call_id = await send_ws_message(
+                websocket=websocket,
+                type="client_tool_request",
+                task_id=task_id,
+                chat_id="chat-test",
+                payload={"tool": "read_file", "input": {"path": "a.pdf"}},
+            )
+            response = await task_manager.wait_for_tool_response(
+                task_id,
+                tool_call_id,
+            )
+
+            self.assertEqual(
+                response["payload"]["result"]["content"],
+                "immediate",
+            )
+            self.assertEqual(
+                websocket.sent_messages[0]["payload"]["tool_call_id"],
+                tool_call_id,
+            )
+        finally:
+            task_manager.remove_task(task_id)
+
+
 class FileEditorParallelResponseTests(unittest.IsolatedAsyncioTestCase):
     """Exercise the complete WebSocket round trip for duplicate tool names."""
 
@@ -333,6 +447,17 @@ class FileEditorParallelResponseTests(unittest.IsolatedAsyncioTestCase):
                 ) as create_event,
                 patch("app.Agentic_Tools.file_editor.update_memory"),
             ):
+                async def register_request(**kwargs):
+                    payload = kwargs["payload"]
+                    response_id = payload["tool_call_id"]
+                    task_manager.register_tool_call(
+                        task_id,
+                        response_id,
+                        tool_name=payload["tool"],
+                    )
+                    return response_id
+
+                send_message.side_effect = register_request
                 first_call = asyncio.create_task(
                     editor.read_file(
                         filePath="first.txt",
@@ -368,6 +493,57 @@ class FileEditorParallelResponseTests(unittest.IsolatedAsyncioTestCase):
                 }
                 self.assertEqual(request_ids, {"toolu_first", "toolu_second"})
                 self.assertEqual(event_ids, {"toolu_first", "toolu_second"})
+        finally:
+            task_manager.remove_task(task_id)
+
+
+    async def test_read_file_timeout_is_returned_to_llm_without_cancelling_task(self):
+        """A stalled PDF read becomes a tool failure while its task remains usable."""
+        task_id = "read-file-timeout-test"
+        task_manager.create_task(task_id, websocket=None, pool=None)
+        editor = FileEditor(
+            llm=None,
+            task_id=task_id,
+            chat_id="chat-test",
+            memory=None,
+        )
+
+        try:
+            with (
+                patch(
+                    "app.Agentic_Tools.file_editor.send_ws_message",
+                    new_callable=AsyncMock,
+                ) as send_message,
+                patch(
+                    "app.Agentic_Tools.file_editor.create_agent_event",
+                    new_callable=AsyncMock,
+                ),
+                patch("app.Agentic_Tools.file_editor.update_memory"),
+            ):
+                async def register_stalled_request(**kwargs):
+                    payload = kwargs["payload"]
+                    response_id = payload["tool_call_id"]
+                    task_manager.register_tool_call(
+                        task_id,
+                        response_id,
+                        tool_name=payload["tool"],
+                        timeout_seconds=0.01,
+                    )
+                    return response_id
+
+                send_message.side_effect = register_stalled_request
+                result = await editor.read_file(
+                    filePath="slow-resume.pdf",
+                    tool_call_id="toolu_timeout",
+                )
+
+                self.assertFalse(result["success"])
+                self.assertIn("CLIENT_TOOL_TIMEOUT", result["output"])
+                self.assertIsNotNone(task_manager.get_state_or_none(task_id))
+                self.assertNotIn(
+                    "toolu_timeout",
+                    task_manager.get_state(task_id).pending_tool_calls,
+                )
         finally:
             task_manager.remove_task(task_id)
 

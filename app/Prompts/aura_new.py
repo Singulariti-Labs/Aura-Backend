@@ -31,11 +31,49 @@ TOOL_NAME_MAP = {
     "execute_command_tool": ("execute_command",  "Execute a shell command on the system"),
     "grep_tool":            ("grep",             "Search file contents using pattern matching"),
     "ls_tool":              ("ls",               "List contents of a directory"),
-    "globe_tool":           ("glob",             "Find files matching a glob pattern"),
+    "glob_tool":           ("glob",             "Find files matching a glob pattern"),
     "read_skill_tool":      ("read_skill",       "Read a specified skill to make its specialized capabilities and domain knowledge available for the current task."),
     "get_app_context_tool": ("get_app_context",  "Gets the context of the application open on the screen by passing name, pid, hwnd, and exe_path. Dont give the random app name."),
     "read_file_tool":       ("read_file",        "Read a specified file to make its contents available for the current task."),
     "screenshot_tool":      ("screenshot",       "Capture a screenshot of the user's screen, when required to understand the visual context of the user's screen."),
+    "browser_navigate_tool": ("browser_navigate", "Navigate to a URL, initialize the client browser session, and return a compact interactive page snapshot."),
+    "browser_snapshot_tool": ("browser_snapshot", "Get a text-based snapshot of the current page's accessibility "
+                                                "tree. Returns interactive elements with ref IDs (like @e1, @e2) "
+                                                "for browser_click and browser_type. full=false (default): compact "
+                                                "view with interactive elements. full=true: complete page content. "
+                                                "Snapshots over 8000 chars are truncated. Requires browser_navigate "
+                                                "first. Note: browser_navigate already returns a compact snapshot "
+                                                "\u2014 use this to refresh after interactions that change the page, "
+                                                "or with full=true for complete content."),
+    "browser_click_tool":    ("browser_click",    "Click on an element identified by its ref ID from the snapshot "
+                                                "(e.g., '@e5'). The ref IDs are shown in square brackets in the "
+                                                "snapshot output. Requires browser_navigate and browser_snapshot "
+                                                "to be called first."),
+    "browser_type_tool":     ("browser_type",     "Type text into an input field identified by its ref ID. Clears "
+                                                "the field first, then types the new text. Requires "
+                                                "browser_navigate and browser_snapshot to be called first."),
+    "browser_scroll_tool":   ("browser_scroll",   "Scroll the page in a direction. Use this to reveal more content "
+                                                "that may be below or above the current viewport. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_back_tool":     ("browser_back",     "Navigate back to the previous page in browser history. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_press_tool":    ("browser_press",    "Press a keyboard key. Useful for submitting forms (Enter), "
+                                                "navigating (Tab), or keyboard shortcuts. Requires "
+                                                "browser_navigate to be called first."),
+    "browser_get_images_tool": ("browser_get_images", "Get a list of all images on the current page with their URLs "
+                                                "and alt text. Useful for finding images to analyze with the vision "
+                                                "tool. Requires browser_navigate to be called first."),
+    "browser_vision_tool":     ("browser_vision",     "Take a screenshot of the current page for visual inspection. "
+                                                "Use it for CAPTCHAs, visual verification challenges, complex layouts, "
+                                                "or when the text snapshot misses important visual information. "
+                                                "Requires browser_navigate to be called first."),
+    "browser_console_tool":  ("browser_console",  "Get browser console output and JavaScript errors from the current "
+                                                "page. Returns console.log/warn/error/info messages and uncaught JS "
+                                                "exceptions. Use this to detect silent JavaScript errors, failed API "
+                                                "calls, and application warnings. Requires browser_navigate to be "
+                                                "called first. When 'expression' is provided, evaluates JavaScript "
+                                                "in the page context and returns the result \u2014 use this for DOM "
+                                                "inspection, reading page state, or extracting data programmatically."),
 }
 
 COMPRESSION_PROMPT = """
