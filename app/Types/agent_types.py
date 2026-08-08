@@ -29,23 +29,47 @@ class AuraConfig(BaseModel):
     cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
 
 
-OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1']
-AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
+OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1', 'gpt-5.6-terra','gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5']
+AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-fable-5', 'claude-opus-4-5-20251101', 'claude-sonnet-5', 'claude-sonnet-4-5-20250929']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
-GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview']
+GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite']
 AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
 
-class LLMConfig(BaseModel) :
+# Backend model metadata used to validate the UI's provider/model selection.
+MODEL_NAMES_BY_PROVIDER = {
+    "openai": set(OpenAIModels.__args__),
+    "anthropic": set(AnthropicModels.__args__),
+    "open_router": set(OpenRouterModels.__args__),
+    "google": set(GoogleModels.__args__),
+    "agent_router": set(AgentRouterModels.__args__),
+}
+
+CredentialSource = Literal["platform", "custom"]
+ReasoningEffort = Literal["low", "medium", "high"]
+
+class LLMConfig(BaseModel):
+    """Validated LLM settings used to construct one task's LLM client."""
+
     provider: Literal['openai', 'anthropic', 'open_router', 'google', 'agent_router']
     model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels, AgentRouterModels]
     api_key: Optional[str] = None
+    reasoning_effort: Optional[ReasoningEffort] = Field(
+        default=None,
+        description="Optional reasoning level reserved for future use.",
+    )
+    credential_source: Optional[CredentialSource] = Field(
+        default=None,
+        description="Where the API credential is sourced from.",
+    )
 
     @model_validator(mode="after")
     def validate_model_for_provider(self) -> 'LLMConfig':
-        if self.provider == "openai" and self.model_name not in OpenAIModels.__args__:
-            raise ValueError(f"Invalid model '{self.model_name}' for provider '{self.provider}'. Allowed models: {OpenAIModels.__args__}")
-        if self.provider == "anthropic" and self.model_name not in AnthropicModels.__args__:
-            raise ValueError(f"Invalid model '{self.model_name}' for provider '{self.provider}'. Allowed models: {AnthropicModels.__args__}")
+        allowed_models = MODEL_NAMES_BY_PROVIDER[self.provider]
+        if self.model_name not in allowed_models:
+            raise ValueError(
+                f"Invalid model '{self.model_name}' for provider '{self.provider}'. "
+                f"Allowed models: {sorted(allowed_models)}"
+            )
         return self
 
 class Role(str, Enum):
@@ -57,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -69,7 +93,10 @@ PROVIDER_MAPPING = {
     "Open Router": "open_router",
     "open_router": "open_router",
     "Gemini": "google",
-    "gemini": "google"
+    "gemini": "google",
+    "google": "google",
+    "Agent Router": "agent_router",
+    "agent_router": "agent_router"
 }
 
 # Default models for each provider when user overrides
@@ -77,7 +104,8 @@ DEFAULT_MODELS = {
     "openai": "gpt-4.1",
     "anthropic": "claude-sonnet-4-6",
     "open_router": "z-ai",
-    "google": "gemini-3-flash-preview"
+    "google": "gemini-3-flash-preview",
+    "agent_router": "claude-opus-4-5-20251101"
 }
 
 # WS_MESSAGE_TYPE is the types of web socket messages between client and the server
@@ -265,7 +293,7 @@ class LSToolInput(BaseModel):
     currentWorkDir: str = Field(..., description="The current working directory or the directory of the project or root, where path is subdirectory(absolute path) inside currentWorkDir, it is an absolute path.")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing, ie, Memory and Conscious Files")
 
-class GlobeToolInput(BaseModel):
+class GlobToolInput(BaseModel):
     pattern: List[str] = Field(..., description="Glob pattern for matching filenames. It is a list of strings and could be one or multiple patterns. e.g.: pattern: ['**/*.ts'] or pattern: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js']")
     path: str = Field(..., description="Absolute path inside currentWorkDir where the search begins or where the pattern should be searched. Must be the subdirectory of currentWorkDir or same as currentWorkDir.")
     currentWorkDir: str = Field(..., description="Absolute path to the current working directory. All operations must stay inside this directory. Used as the security boundary. consider it is the root of the project.")
@@ -284,3 +312,106 @@ class ReadFileToolInput(BaseModel):
 class ScreenshotToolInput(BaseModel):
     reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user")
+
+
+class BrowserNavigateToolInput(BaseModel):
+    """Input accepted by the client-side browser navigation tool."""
+
+    url: str = Field(
+        ...,
+        description="The URL to navigate to (e.g., 'https://example.com')",
+    )
+
+
+class BrowserSnapshotToolInput(BaseModel):
+    """Input accepted by the client-side browser snapshot tool."""
+
+    full: bool = Field(
+        default=False,
+        description=(
+            "If true, returns complete page content. If false (default), "
+            "returns compact view with interactive elements only."
+        ),
+    )
+
+
+class BrowserClickToolInput(BaseModel):
+    """Input accepted by the client-side browser click tool."""
+
+    ref: str = Field(
+        ...,
+        description="The element reference from the snapshot (e.g., '@e5', '@e12')",
+    )
+
+
+class BrowserTypeToolInput(BaseModel):
+    """Input accepted by the client-side browser type tool."""
+
+    ref: str = Field(
+        ...,
+        description="The element reference from the snapshot (e.g., '@e3')",
+    )
+    text: str = Field(..., description="The text to type into the field")
+
+
+class BrowserScrollToolInput(BaseModel):
+    """Input accepted by the client-side browser scroll tool."""
+
+    direction: Literal["up", "down"] = Field(
+        ...,
+        description="Direction to scroll",
+    )
+
+
+class BrowserBackToolInput(BaseModel):
+    """Input for browser history navigation; no arguments are required."""
+
+
+class BrowserPressToolInput(BaseModel):
+    """Input accepted by the client-side browser key press tool."""
+
+    key: str = Field(
+        ...,
+        description="Key to press (e.g., 'Enter', 'Tab', 'Escape', 'ArrowDown')",
+    )
+
+
+class BrowserGetImagesToolInput(BaseModel):
+    """Input for browser image extraction; no arguments are required."""
+
+
+class BrowserVisionInput(BaseModel):
+    """Input accepted by the client-side browser vision tool."""
+
+    question: str = Field(
+        ...,
+        description=(
+            "What you want to know about the page visually. Be specific about "
+            "what you're looking for."
+        ),
+    )
+    annotate: bool = Field(
+        default=False,
+        description=(
+            "If true, overlay numbered labels on interactive elements. Useful "
+            "for QA and spatial reasoning about page layout."
+        ),
+    )
+
+
+class BrowserConsoleToolInput(BaseModel):
+    """Input accepted by the client-side browser console tool."""
+
+    clear: bool = Field(
+        default=False,
+        description="If true, clear the message buffers after reading",
+    )
+    expression: Optional[str] = Field(
+        default=None,
+        description=(
+            "JavaScript expression to evaluate in the page context. Runs in the "
+            "browser like DevTools console \u2014 full access to DOM, window, document. "
+            "Return values are serialized to JSON. Example: 'document.title' or "
+            "'document.querySelectorAll(\"a\").length'"
+        ),
+    )

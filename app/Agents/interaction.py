@@ -91,7 +91,10 @@ class InteractionAgent():
             # WIP** - The screenshot is the type client_tool_response it is not the user_input (chage how we are accessing screenshot)
     
             # Waiting for base64 image (screenshot)
-            user_input = await task_manager.wait_for_input(self.task_id)
+            user_input = await task_manager.wait_for_tool_response(
+                self.task_id,
+                tool_call_id,
+            )
             response_type = user_input.get("type")
 
 
@@ -252,7 +255,7 @@ class InteractionAgent():
                 # WIP** - Just provide the actions array to the client tool
                 # SEND_RESPONSE_TO_CLINET - Interaction agent output
                 # 🐤 Send actions to the client
-                await send_ws_message(
+                step_tool_call_id = await send_ws_message(
                     websocket=self.websocket,
                     type= "client_tool_request",
                     task_id=self.task_id, # New Parameter task_id
@@ -264,7 +267,10 @@ class InteractionAgent():
                 )
                 
                 # Waiting for base64 image (screenshot)
-                tool_resp = await task_manager.wait_for_input(self.task_id)
+                tool_resp = await task_manager.wait_for_tool_response(
+                    self.task_id,
+                    step_tool_call_id,
+                )
 
                 response_type = tool_resp.get("type")
 
@@ -305,16 +311,6 @@ class InteractionAgent():
                     "message": f"Exception occurred: {str(e)}",
                     "result": None
                 }
-                # WIP**: Why we are triggering screenshot tool here? 
-                await send_ws_message(
-                    websocket=self.websocket,
-                    type = "client_tool_request",
-                    task_id=self.task_id,
-                    chat_id=self.chat_id,
-                    payload={
-                        "tool": "screenshot",
-                    }
-                )
 
                 return response
 

@@ -12,6 +12,7 @@ from langchain_core.outputs import LLMResult, ChatGeneration
 from app.LLM.memory import Memory
 from app.RateLimit.rate_limit_service import schedule_token_usage_update
 from app.RateLimit.token_pricing import calculate_token_cost_usd_float
+from app.LLM.model_token_limits import MAX_OUTPUT_TOKEN_LIMIT_MESSAGE
 from app.helper import update_memory
 
 
@@ -72,6 +73,22 @@ def _safe_dict(value: Any) -> dict:
             if not key.startswith("_") and not callable(val)
         }
     return {}
+
+
+class MaxOutputTokenLimitError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        details: Optional[Dict[str, Any]] = None,
+        usage: Optional[Dict[str, Any]] = None,
+    ):
+        self.error_body = {
+            "message": MAX_OUTPUT_TOKEN_LIMIT_MESSAGE,
+            "stop_reason": "max_tokens",
+            "details": details or {},
+            "usage": usage or {},
+        }
+        super().__init__(json.dumps(self.error_body, default=str))
 
 
 class AgentCallbackHandler(BaseCallbackHandler):
@@ -283,8 +300,20 @@ class AgentCallbackHandler(BaseCallbackHandler):
     # AGENT HOOKS
     # ─────────────────────────────────────────────────────────────
 
+    def _raise_if_max_tokens_stop(self) -> None:
+        details = self.latest_llm_details or {}
+        finish_reason = str(details.get("finish_reason") or "").lower()
+        if finish_reason not in {"max_tokens", "length"}:
+            return
+
+        raise MaxOutputTokenLimitError(
+            details=details,
+            usage=self.latest_llm_usage,
+        )
+
     def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
         self._capture_from_agent_action(action, kwargs)
+        self._raise_if_max_tokens_stop()
         self._print_action(action)
         self._save_tool_call_batch(
             content=action.log.strip(),
@@ -298,6 +327,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
         tool_calls, reasoning = [], ""
         for action in actions:
             self._capture_from_agent_action(action, kwargs)
+            self._raise_if_max_tokens_stop()
             self._print_action(action)
             tool_calls.append(self._action_to_tool_call(action))
             reasoning = reasoning or action.log.strip()
@@ -306,6 +336,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
         self._save_tool_call_batch(content=reasoning, tool_calls=tool_calls)
 
     def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> Any:
+        self._raise_if_max_tokens_stop()
         content = (
             self.latest_llm_content
             or finish.return_values.get("output", "")
@@ -318,6 +349,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
         Safety net: if an LLM was called directly inside a chain
         (no on_agent_action / on_agent_finish fired), flush pending data.
         """
+        self._raise_if_max_tokens_stop()
         if self.latest_llm_usage and self.latest_llm_content:
             self._save(content=self.latest_llm_content)
             self._reset()
@@ -340,7 +372,9 @@ class AgentCallbackHandler(BaseCallbackHandler):
         messages = getattr(action, "message_log", None) or []
         for msg in reversed(list(messages)):
             input_t, output_t = self._extract_tokens_from_message(msg)
-            if not (input_t or output_t):
+            finish_reason = self._extract_finish_reason_from_message(msg)
+            is_output_limit = str(finish_reason or "").lower() in {"max_tokens", "length"}
+            if not (input_t or output_t or is_output_limit):
                 continue
 
             end_time = time.time()
@@ -349,7 +383,6 @@ class AgentCallbackHandler(BaseCallbackHandler):
             provider, model_name = self._extract_provider_model_from_message(
                 msg, kwargs
             )
-            finish_reason = self._extract_finish_reason_from_message(msg)
             cost = self._compute_cost(input_t, output_t, provider, model_name)
 
             self.latest_llm_usage = {

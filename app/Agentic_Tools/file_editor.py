@@ -73,7 +73,7 @@ class FileEditor():
             )
 
             # Wait for client tool response 
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -141,6 +141,7 @@ class FileEditor():
                 message_type="client_tool_request",
                 tool="read_file",
                 payload= {
+                  "tool_call_id": tool_call_id,
                   "input": {
                         "filePath": filePath,
                         "offset": offset,
@@ -151,7 +152,7 @@ class FileEditor():
             )
 
             # Wait for client tool response 
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -167,6 +168,10 @@ class FileEditor():
                     attachment = result.get("attachment")
 
                     if attachment:
+                        # Support both 'content' and 'data' fields for attachments
+                        if not attachment.get("content") and attachment.get("data"):
+                            attachment["content"] = attachment["data"]
+
                         # Format for the specific provider using the adapter
                         options = {
                             "provider": llm_provider or "openai", # default to openai if none
@@ -265,7 +270,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -344,7 +349,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -417,7 +422,7 @@ class FileEditor():
             )
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -498,7 +503,7 @@ class FileEditor():
             
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 
@@ -545,7 +550,7 @@ class FileEditor():
         new_content = None
         error_message = None
         try:
-            original_content = await self.get_file_content(target_file= target_file, tool_call_id=str(uuid.uuid4()))
+            original_content = await self.get_file_content(target_file= target_file, tool_call_id=str(uuid.uuid4()), coming_from="edit_file_tool_func/server")
 
             if original_content:
                 new_content, error_message = await self._call_ai_editor(file_content=original_content, code_edit=code_edit, instructions=instructions, path=target_file)
@@ -620,7 +625,7 @@ class FileEditor():
                     
                 
                     # Wait for client tool response
-                    tool_resp = await task_manager.wait_for_input(self.task_id)
+                    tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
                     response_type = tool_resp.get("type")
 
@@ -670,7 +675,7 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Unknown error while editing file: {str(e)}"}
 
-    async def get_file_content(self, target_file: str, tool_call_id: Optional[str] = None):
+    async def get_file_content(self, target_file: str, tool_call_id: Optional[str] = None, coming_from: Optional[str] = None):
         """Get the content of the file from client"""
         try:
             await send_ws_message(
@@ -684,7 +689,7 @@ class FileEditor():
                     "input": {
                         "path": target_file,
                     },
-                    "coming_from": "get_file_content_tool_func/server"
+                    "coming_from": coming_from or "get_file_content_tool_func/server"
                 }
             )
 
@@ -706,7 +711,7 @@ class FileEditor():
             
 
             # Wait for client tool response
-            tool_resp = await task_manager.wait_for_input(self.task_id)
+            tool_resp = await task_manager.wait_for_tool_response(self.task_id, tool_call_id)
 
             response_type = tool_resp.get("type")
 

@@ -201,7 +201,21 @@ class Agent(BaseAgent):
                     )
 
                     result = None
-                    result = await self.llm_factory.aura_executor(
+                    # result = await self.llm_factory.aura_executor(
+                    #     query=self.query,
+                    #     system_prompt=prompt,
+                    #     tools=tools,
+                    #     attached_files=self.attached_files,
+                    #     attached_images=self.attached_images,
+                    #     system_info=self.system_info,
+                    #     llm=self.llm,
+                    #     agent_type="aura",
+                    #     history=self.history,
+                    #     llm_provider=llm_provider,
+                    #     screenshot=self.screenshot
+                    # )
+
+                    result = await self.llm_factory.aura_invoker(
                         query=self.query,
                         system_prompt=prompt,
                         tools=tools,
@@ -212,7 +226,8 @@ class Agent(BaseAgent):
                         agent_type="aura",
                         history=self.history,
                         llm_provider=llm_provider,
-                        screenshot=self.screenshot
+                        screenshot=self.screenshot,
+                        max_tokens=self.max_tokens,
                     )
 
                     final_result = None

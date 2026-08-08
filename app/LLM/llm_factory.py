@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
+import asyncio
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,6 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import os
 import re
 import json
+import time
 
 
 from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
@@ -22,10 +24,42 @@ from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
 from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
-from app.handler import AgentCallbackHandler
+from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
+from app.LLM.model_token_limits import (
+    get_model_max_output_tokens,
+    resolve_open_router_model,
+)
 from app.utils.format_messages import format_to_langchain
 from app.utils.tool_message_formatter import format_multimodal_tool_messages
 from app.Adapters.format_message import prepareMessageForAI
+from app.LLM.model_bridge.anthropic import (
+    anthropic_message_formater,
+    anthropic_response_formater,
+    anthropic_tool_formater,
+    invoke_anthropic_messages,
+)
+from app.LLM.model_bridge.common import (
+    build_user_message,
+    canonical_tool_result,
+    configured_output_limit,
+    model_name_from_llm,
+    normalize_history,
+)
+from app.LLM.model_bridge.gemini import (
+    gemini_message_formater,
+    gemini_response_formater,
+    gemini_tool_formater,
+    gemini_tool_result_formater,
+    invoke_gemini_generate_content,
+)
+from app.LLM.model_bridge.openai import (
+    openai_message_formater,
+    openai_response_formater,
+    openai_tool_formater,
+    invoke_openai_chat_completions,
+)
+from app.RateLimit.rate_limit_service import schedule_token_usage_update
+from app.RateLimit.token_pricing import calculate_token_cost_usd_float
 from datetime import datetime
 
 
@@ -65,12 +99,19 @@ class LLMFactory():
         Creates a language model instance based on the given provider and model name.
 
         Input:
-        - llm_config: Configuration containing provider and model_name.
+        - llm_config: Validated provider, model, and credential configuration.
 
         Returns:
-        - An instance of ChatOpenAI or ChatAnthropic.
+        - An instance of ChatOpenAI, ChatAnthropic, or ChatGoogleGenerativeAI.
         """
         try:
+            # Output limits are controlled by the backend model table. They
+            # are intentionally not accepted from the task_request payload.
+            max_output_tokens = get_model_max_output_tokens(
+                llm_config.provider,
+                llm_config.model_name,
+            )
+
             if llm_config.provider == "openai":
                 api_key = user_api_key or os.environ.get("OPENAI_API_KEY")
                 
@@ -81,6 +122,7 @@ class LLMFactory():
                     model=llm_config.model_name,
                     api_key=api_key,
                     stream_usage=True,
+                    max_tokens=max_output_tokens,
                 )
             
             elif llm_config.provider == "anthropic":
@@ -89,29 +131,24 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
                 
-                return ChatAnthropic(model=llm_config.model_name, api_key=api_key)
+                return ChatAnthropic(
+                    model=llm_config.model_name,
+                    api_key=api_key,
+                    max_tokens_to_sample=max_output_tokens,
+                )
             
             elif llm_config.provider == "open_router":
                 api_key = user_api_key or os.environ.get("OPENROUTER_API_KEY")
                 
                 if not api_key:
                     raise ValueError("OPENROUTER_API_KEY environment variable is not set")
-                if(llm_config.model_name == "z-ai"):
-                    return ChatOpenAI(model="z-ai/glm-4.5-air:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "x-ai"):
-                    return ChatOpenAI(model="x-ai/grok-4.1-fast:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "openai"):
-                    return ChatOpenAI(model="openai/gpt-oss-120b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "xiaomi"):
-                    return ChatOpenAI(model="xiaomi/mimo-v2-flash:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "google"):
-                    return ChatOpenAI(model="google/gemini-2.0-flash-exp:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "qwen"):
-                    return ChatOpenAI(model="qwen/qwen3-next-80b-a3b-instruct:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "nvidia"):
-                    return ChatOpenAI(model="nvidia/nemotron-3-nano-30b-a3b:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
-                if(llm_config.model_name == "upstage"):
-                    return ChatOpenAI(model="upstage/solar-pro-3:free", api_key=api_key, base_url="https://openrouter.ai/api/v1")
+
+                return ChatOpenAI(
+                    model=resolve_open_router_model(llm_config.model_name),
+                    api_key=api_key,
+                    base_url="https://openrouter.ai/api/v1",
+                    max_tokens=max_output_tokens,
+                )
             
             elif llm_config.provider == "google":
                 api_key = user_api_key or os.environ.get("GOOGLE_API_KEY")
@@ -124,6 +161,7 @@ class LLMFactory():
                         model=llm_config.model_name, 
                         api_key=api_key,
                         thinking_level="low",
+                        max_tokens=max_output_tokens,
                         model_kwargs={
                             "tool_config": {
                                 "function_calling_config": {
@@ -135,6 +173,7 @@ class LLMFactory():
                 return ChatGoogleGenerativeAI(
                     model=llm_config.model_name,
                     api_key=api_key,
+                    max_tokens=max_output_tokens,
                     model_kwargs={
                         "tool_config": {
                             "function_calling_config": {
@@ -149,7 +188,12 @@ class LLMFactory():
                 if not api_key:
                     raise ValueError("AGENT_ROUTER_API_KEY environment variable is not set")
 
-                return ChatOpenAI(model=llm_config.model_name, api_key=api_key, base_url="https://api.agentrouter.com/v1")
+                return ChatOpenAI(
+                    model=llm_config.model_name,
+                    api_key=api_key,
+                    base_url="https://api.agentrouter.com/v1",
+                    max_tokens=max_output_tokens,
+                )
             
             else:
                 raise ValueError(f"Unsupported provider: {llm_config}")
@@ -380,6 +424,8 @@ class LLMFactory():
                 self.memory.add_message(assistant_message);
                 return response
         
+        except MaxOutputTokenLimitError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
             
@@ -515,6 +561,462 @@ class LLMFactory():
             raise RuntimeError(f"Falied To Validate Response: {e}")
 
 
+    async def aura_invoker(
+            self,
+            system_prompt: str,
+            llm: BaseChatModel,
+            query: str,
+            llm_provider: str,
+            agent_type: AGENT_TYPE,
+            system_info: Optional[SystemInfo | str] = None,
+            tools: Optional[List[Tool]] = None,
+            chat_history: Optional[List[Message]] = None,
+            base_64_image: Optional[List[str]] = None,
+            attached_files: Optional[List[Dict[str, Any]]] = None,
+            attached_images: Optional[List[Dict[str, Any]]] = None,
+            max_tokens: int = 128000,
+            history: Optional[List[Dict[str, Any]]] = None,
+            screenshot: Optional[Any] = None,
+        ) -> Dict[str, Any]:
+        """Run Aura's lightweight native model-and-tool orchestration loop.
+
+        This method coordinates only the high-level lifecycle: prepare the
+        provider request, invoke the model, track usage, execute requested
+        tools, and return the final response. The detailed routing, formatting,
+        parsing, and accounting logic lives in the focused helpers immediately
+        below this method.
+
+        ``chat_history`` remains for drop-in compatibility. The provider-neutral
+        ``history`` argument is the authoritative conversation history.
+        """
+
+        del chat_history
+        provider = self._route_aura_provider(llm_provider, llm)
+
+        user_message = self._build_aura_user_message(
+            query=query,
+            system_info=system_info,
+            attached_files=attached_files,
+            attached_images=attached_images,
+            base_64_image=base_64_image,
+            screenshot=screenshot,
+        )
+        canonical_messages, native_messages = self._normalize_aura_conversation(
+            history=history,
+            user_message=user_message,
+            provider=provider,
+            system_prompt=system_prompt,
+        )
+
+        tool_map, native_tools = self._build_aura_tool_registry(tools, provider)
+        model_name = model_name_from_llm(llm)
+        output_limit = configured_output_limit(llm, max_tokens)
+
+        generated_messages: List[Dict[str, Any]] = []
+        intermediate_steps: List[Dict[str, Any]] = []
+        aggregate_usage = self._empty_aura_usage()
+
+        for iteration in range(200):
+            started_at = time.perf_counter()
+            raw_response = await self._invoke_aura_model(
+                provider=provider,
+                llm=llm,
+                model_name=model_name,
+                system_prompt=system_prompt,
+                native_messages=native_messages,
+                native_tools=native_tools,
+                output_limit=output_limit,
+            )
+            parsed = self._parse_aura_response(provider, raw_response)
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            tool_calls = parsed.get("tool_calls") or []
+            usage, details = self._track_aura_usage_and_cost(
+                provider=provider,
+                model_name=model_name,
+                parsed_response=parsed,
+                duration_ms=duration_ms,
+                aggregate_usage=aggregate_usage,
+            )
+
+            finish_reason = str(parsed.get("finish_reason") or "").lower()
+            if finish_reason in {"max_tokens", "max_token", "length"}:
+                raise MaxOutputTokenLimitError(details=details, usage=usage)
+
+            assistant_message = parsed["message"]
+            canonical_messages.append(assistant_message)
+            generated_messages.append(assistant_message)
+
+            if not tool_calls:
+                return self._build_aura_result(
+                    parsed_response=parsed,
+                    generated_messages=generated_messages,
+                    intermediate_steps=intermediate_steps,
+                    aggregate_usage=aggregate_usage,
+                    provider=provider,
+                    model_name=model_name,
+                    iterations=iteration + 1,
+                    agent_type=agent_type,
+                )
+
+            tool_results = await asyncio.gather(
+                *[
+                    self._execute_native_tool_call(tool_call, tool_map)
+                    for tool_call in tool_calls
+                ]
+            )
+            self._record_aura_tool_exchange(
+                provider=provider,
+                parsed_response=parsed,
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+                canonical_messages=canonical_messages,
+                native_messages=native_messages,
+                generated_messages=generated_messages,
+                intermediate_steps=intermediate_steps,
+            )
+
+        raise RuntimeError(
+            "aura_invoker reached the maximum of 100 model/tool iterations "
+            "without receiving a final response."
+        )
+
+
+    def _route_aura_provider(self, llm_provider: str, llm: BaseChatModel) -> str:
+        """Resolve provider aliases and validate Aura's supported providers.
+
+        An explicitly supplied provider wins; otherwise the provider is inferred
+        from the LLM instance. Claude aliases map to Anthropic, while Gemini and
+        Vertex AI aliases map to Google.
+        """
+
+        provider = (llm_provider or self.detect_provider_from_llm(llm)).lower()
+        if provider == "claude":
+            provider = "anthropic"
+        elif provider in {"gemini", "vertexai", "vertex_ai"}:
+            provider = "google"
+
+        if provider not in {"anthropic", "openai", "google"}:
+            raise ValueError(
+                "aura_invoker supports only Anthropic, OpenAI, and Gemini/Google. "
+                f"Received {llm_provider!r}."
+            )
+        return provider
+
+
+    @staticmethod
+    def _build_aura_user_message(
+        *,
+        query: str,
+        system_info: Optional[SystemInfo | str],
+        attached_files: Optional[List[Dict[str, Any]]],
+        attached_images: Optional[List[Dict[str, Any]]],
+        base_64_image: Optional[List[str]],
+        screenshot: Optional[Any],
+    ) -> Dict[str, Any]:
+        """Build Aura's canonical user message and all multimodal context.
+
+        System information is converted to readable text before the shared
+        message builder combines it with the query, current time, screenshots,
+        uploaded images, text files, and PDF documents.
+        """
+
+        if isinstance(system_info, SystemInfo):
+            system_info_text = (
+                f"OS: {system_info.os}, Version: {system_info.version}, "
+                f"Workspace: {system_info.workspace}, CWD: {system_info.cwd}"
+            )
+        elif system_info is None:
+            system_info_text = None
+        else:
+            system_info_text = str(system_info)
+
+        return build_user_message(
+            query=query,
+            attached_files=attached_files,
+            attached_images=attached_images,
+            base_64_images=base_64_image,
+            screenshot=screenshot,
+            system_info=system_info_text,
+            today=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+
+
+    @staticmethod
+    def _normalize_aura_conversation(
+        *,
+        history: Optional[List[Dict[str, Any]]],
+        user_message: Dict[str, Any],
+        provider: str,
+        system_prompt: str,
+    ) -> tuple[List[Dict[str, Any]], List[Any]]:
+        """Normalize client history and format the conversation for a provider.
+
+        Canonical messages remain provider-neutral for Aura's internal loop.
+        Native messages are the equivalent Anthropic, OpenAI, or Gemini request
+        representation used only at the provider boundary.
+        """
+
+        canonical_messages = normalize_history(history)
+        canonical_messages.append(user_message)
+
+        if provider == "anthropic":
+            native_messages = anthropic_message_formater(canonical_messages)
+        elif provider == "openai":
+            native_messages = openai_message_formater(
+                canonical_messages,
+                system_prompt=system_prompt,
+            )
+        else:
+            native_messages = gemini_message_formater(canonical_messages)
+        return canonical_messages, native_messages
+
+
+    @staticmethod
+    def _build_aura_tool_registry(
+        tools: Optional[List[Tool]],
+        provider: str,
+    ) -> tuple[Dict[str, Tool], List[Dict[str, Any]]]:
+        """Index Aura tools and format their schemas for the provider.
+
+        The name-to-tool registry is used during execution. The native tool list
+        exposes those same tools using the selected provider's request schema.
+        """
+
+        selected_tools = list(tools or [])
+        tool_map = {
+            str(getattr(tool, "name", "")): tool
+            for tool in selected_tools
+            if getattr(tool, "name", None)
+        }
+
+        if provider == "anthropic":
+            native_tools = anthropic_tool_formater(selected_tools)
+        elif provider == "openai":
+            native_tools = openai_tool_formater(selected_tools)
+        else:
+            native_tools = gemini_tool_formater(selected_tools)
+        return tool_map, native_tools
+
+
+    @staticmethod
+    async def _invoke_aura_model(
+        *,
+        provider: str,
+        llm: BaseChatModel,
+        model_name: str,
+        system_prompt: str,
+        native_messages: List[Any],
+        native_tools: List[Dict[str, Any]],
+        output_limit: int,
+    ) -> Any:
+        """Send one Aura request through the selected provider's native API."""
+
+        if provider == "anthropic":
+            return await invoke_anthropic_messages(
+                llm=llm,
+                model=model_name,
+                system_prompt=system_prompt,
+                messages=native_messages,
+                tools=native_tools,
+                max_tokens=output_limit,
+            )
+        if provider == "openai":
+            return await invoke_openai_chat_completions(
+                llm=llm,
+                model=model_name,
+                messages=native_messages,
+                tools=native_tools,
+                max_tokens=output_limit,
+            )
+        return await invoke_gemini_generate_content(
+            llm=llm,
+            model=model_name,
+            system_prompt=system_prompt,
+            contents=native_messages,
+            tools=native_tools,
+            max_tokens=output_limit,
+        )
+
+
+    @staticmethod
+    def _parse_aura_response(provider: str, raw_response: Any) -> Dict[str, Any]:
+        """Convert a native provider response into Aura's canonical response."""
+
+        if provider == "anthropic":
+            return anthropic_response_formater(raw_response)
+        if provider == "openai":
+            return openai_response_formater(raw_response)
+        return gemini_response_formater(raw_response)
+
+
+    def _track_aura_usage_and_cost(
+        self,
+        *,
+        provider: str,
+        model_name: str,
+        parsed_response: Dict[str, Any],
+        duration_ms: float,
+        aggregate_usage: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Calculate, persist, and aggregate usage, cost, and timing details.
+
+        Assistant tool-call messages are also saved to memory before tool
+        execution, preserving the behavior expected by client-side tools.
+        """
+
+        usage = dict(parsed_response.get("usage") or {})
+        input_tokens = int(usage.get("input") or 0)
+        output_tokens = int(usage.get("output") or 0)
+        usage["total_tokens"] = int(
+            usage.get("total_tokens") or input_tokens + output_tokens
+        )
+        usage["cost"] = calculate_token_cost_usd_float(
+            provider=provider,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        details = {
+            "provider": provider,
+            "model_name": model_name,
+            "finish_reason": parsed_response.get("finish_reason"),
+            "llm_duration_ms": round(duration_ms, 2),
+        }
+
+        schedule_token_usage_update(
+            pool=self.rate_limit_pool,
+            user_id=self.user_id,
+            usage=usage,
+            details=details,
+            event_loop=self.rate_limit_loop,
+        )
+
+        tool_calls = parsed_response.get("tool_calls") or []
+        if tool_calls:
+            update_memory(
+                role="assistant",
+                content=parsed_response.get("text") or "",
+                memory=self.memory,
+                tool_calls=tool_calls,
+                usage=usage,
+                details=details,
+            )
+
+        for key in ("input", "output", "total_tokens"):
+            aggregate_usage[key] += int(usage.get(key) or 0)
+        aggregate_usage["cost"] += float(usage.get("cost") or 0.0)
+        return usage, details
+
+
+    @staticmethod
+    def _empty_aura_usage() -> Dict[str, Any]:
+        """Create the usage accumulator for one Aura invocation."""
+
+        return {"input": 0, "output": 0, "total_tokens": 0, "cost": 0.0}
+
+
+    @staticmethod
+    async def _execute_native_tool_call(
+        tool_call: Dict[str, Any],
+        tool_map: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Execute one native tool request and return a canonical tool result.
+
+        Passing a LangChain ToolCall object preserves ``tool_call_id`` inside
+        AuraStructuredTool, allowing client-side tools to route websocket
+        responses correctly. Unknown tools and execution failures are returned
+        to the model as structured errors instead of ending the Aura loop.
+        """
+
+        tool = tool_map.get(str(tool_call.get("name") or ""))
+        if tool is None:
+            return canonical_tool_result(
+                tool_call=tool_call,
+                error=ValueError(f"Unknown tool requested: {tool_call.get('name')!r}"),
+            )
+
+        invocation = {
+            "name": tool_call.get("name"),
+            "args": tool_call.get("input") or {},
+            "id": tool_call.get("tool_call_id"),
+            "type": "tool_call",
+        }
+        try:
+            result = await tool.ainvoke(invocation)
+            return canonical_tool_result(tool_call=tool_call, result=result)
+        except Exception as exc:
+            return canonical_tool_result(tool_call=tool_call, error=exc)
+
+
+    @staticmethod
+    def _record_aura_tool_exchange(
+        *,
+        provider: str,
+        parsed_response: Dict[str, Any],
+        tool_calls: List[Dict[str, Any]],
+        tool_results: List[Dict[str, Any]],
+        canonical_messages: List[Dict[str, Any]],
+        native_messages: List[Any],
+        generated_messages: List[Dict[str, Any]],
+        intermediate_steps: List[Dict[str, Any]],
+    ) -> None:
+        """Add completed tool calls and results to Aura's conversation state.
+
+        The native assistant message is retained exactly so Anthropic thinking
+        blocks and Gemini thought signatures survive the next model iteration.
+        """
+
+        canonical_messages.extend(tool_results)
+        generated_messages.extend(tool_results)
+        intermediate_steps.extend(
+            {
+                "tool_call": tool_call,
+                "tool_result": tool_result,
+            }
+            for tool_call, tool_result in zip(tool_calls, tool_results)
+        )
+
+        native_messages.append(parsed_response["native_message"])
+        if provider == "anthropic":
+            native_messages.extend(anthropic_message_formater(tool_results))
+        elif provider == "openai":
+            native_messages.extend(openai_message_formater(tool_results))
+        else:
+            native_messages.extend(
+                gemini_tool_result_formater(
+                    tool_results,
+                    parsed_response.get("native_tool_call_ids"),
+                )
+            )
+
+
+    @staticmethod
+    def _build_aura_result(
+        *,
+        parsed_response: Dict[str, Any],
+        generated_messages: List[Dict[str, Any]],
+        intermediate_steps: List[Dict[str, Any]],
+        aggregate_usage: Dict[str, Any],
+        provider: str,
+        model_name: str,
+        iterations: int,
+        agent_type: AGENT_TYPE,
+    ) -> Dict[str, Any]:
+        """Build the stable response returned after Aura produces final text."""
+
+        aggregate_usage["cost"] = round(aggregate_usage["cost"], 6)
+        return {
+            "output": parsed_response.get("text") or "",
+            "messages": generated_messages,
+            "intermediate_steps": intermediate_steps,
+            "usage": aggregate_usage,
+            "provider": provider,
+            "model": model_name,
+            "iterations": iterations,
+            "agent_type": agent_type,
+        }
+
+
     async def aura_executor(
             self,
             system_prompt: str,
@@ -640,6 +1142,8 @@ class LLMFactory():
             # returning response bac to the aura agent.
             return response
 
+        except MaxOutputTokenLimitError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Failed to execute agent or LLM call: {str(e)}")
 

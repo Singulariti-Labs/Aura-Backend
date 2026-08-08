@@ -17,7 +17,7 @@ def format_multimodal_tool_messages(
 
     LangChain's default formatter JSON-serializes non-string tool observations. That is
     fine for normal tools, but it turns screenshot base64 into text tokens. For the
-    screenshot tool, we convert the observation into native multimodal message blocks.
+    screenshot-producing tools, we convert observations into native media blocks.
     """
     messages: List[BaseMessage] = []
     provider_name = (provider or "generic").lower()
@@ -50,7 +50,7 @@ def _create_tool_messages(
     tool_name = getattr(agent_action, "tool", "")
     tool_call_id = _tool_call_id(agent_action, observation)
 
-    if tool_name != "screenshot":
+    if tool_name not in {"screenshot", "browser_vision"}:
         if isinstance(observation, ToolMessage):
             return [observation]
         return [
@@ -61,6 +61,44 @@ def _create_tool_messages(
             )
         ]
 
+    if tool_name == "browser_vision":
+        vision = _extract_browser_vision_observation(observation)
+        if not vision:
+            return [
+                ToolMessage(
+                    tool_call_id=tool_call_id,
+                    content=_default_tool_content(observation),
+                    name=tool_name,
+                )
+            ]
+
+        image_block = {
+            "type": "image",
+            "source_type": "base64",
+            "mime_type": vision["mime_type"],
+            "data": vision["image_base64"],
+        }
+        metadata_text = json.dumps(vision["metadata"], ensure_ascii=False)
+        question_text = (
+            "Analyze this browser screenshot and answer: "
+            f"{vision['question']}"
+        )
+
+        # Keep the tool acknowledgement text-only for every provider, then send
+        # the visual prompt and screenshot together as a separate user message.
+        return [
+            ToolMessage(
+                tool_call_id=tool_call_id,
+                content=metadata_text,
+                name=tool_name,
+            ),
+            HumanMessage(
+                content=[
+                    {"type": "text", "text": question_text},
+                    image_block,
+                ]
+            ),
+        ]
     screenshot = _extract_screenshot_observation(observation)
     if not screenshot or not screenshot.get("image_base64"):
         return [
@@ -125,6 +163,33 @@ def _default_tool_content(observation: Any) -> str:
         return json.dumps(observation, ensure_ascii=False)
     except TypeError:
         return str(observation)
+
+
+def _extract_browser_vision_observation(observation: Any) -> Optional[dict]:
+    """Extract browser vision metadata without retaining base64 as text."""
+
+    payload = _observation_payload(observation)
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return None
+
+    image_data_url = payload.get("image_data_url")
+    image_base64, mime_type = _extract_data_uri(image_data_url, "image/png")
+    if not image_base64:
+        return None
+
+    question = str(payload.get("question") or "What is visible on the page?")
+    metadata = {
+        key: value
+        for key, value in payload.items()
+        if key != "image_data_url"
+    }
+    metadata["note"] = "Screenshot attached as image content."
+    return {
+        "image_base64": image_base64,
+        "mime_type": mime_type,
+        "question": question,
+        "metadata": metadata,
+    }
 
 
 def _extract_screenshot_observation(observation: Any) -> Optional[dict]:

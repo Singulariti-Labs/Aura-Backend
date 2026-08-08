@@ -33,6 +33,11 @@ def create_tool_response(options: CreateToolResponseOptions) -> List[Dict[str, A
     files = options.get("files", [])
     images = options.get("images", [])
 
+    # Normalise content / data fallback for attachments
+    for item in list(files) + list(images):
+        if isinstance(item, dict) and not item.get("content") and item.get("data"):
+            item["content"] = item["data"]
+
     # Normalise text into array
     text_blocks: List[str] = []
     if text:

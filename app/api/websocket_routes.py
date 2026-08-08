@@ -1,151 +1,184 @@
-"""
-WebSocket routes for handling real-time client interactions using FastAPI.
-
-This module sets up a WebSocket endpoint (`/ws`) to receive messages from clients,
-invoke the agent asynchronously, and send back standardized responses and status updates.
-"""
-
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
-from .connection_manager import ConnectionManager
-from app.Agents.agent import Agent
-from app.Types.agent_types import LLMConfig, SystemInfo, DEFAULT_MODELS, PROVIDER_MAPPING, AuraConfig, ConsciousFiles, OpenApplications
-from app.api.websocket_utils import send_ws_message
-from app.Task.task_manager import task_manager
-from app.DB.pool import get_pool
-from app.api.auth_utils import token_verifier
-from app.DB.Queries.task import create_task, update_task_status
-from app.DB.Queries.agent_event import create_agent_event
-from app.DB.Queries.user import get_user_by_auth0_id
-from app.DB.Queries.user_settings import get_user_settings
-from app.RateLimit.rate_limit import check_rate_limit_for_request
+"""WebSocket endpoint for concurrent, task-scoped agent execution."""
 
 import asyncio
-import uuid
 import logging
+import uuid
+from typing import Optional
 
-# Configure logger for WebSocket routes
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+
+from app.Agents.agent import Agent
+from app.DB.Queries.user import get_user_by_auth0_id
+from app.DB.pool import get_pool
+from app.RateLimit.rate_limit import check_rate_limit_for_request
+from app.Task.TaskCoordinator import RejectionReason, TaskStatus
+from app.Task.task_scheduler import task_scheduler
+from app.Types.agent_types import (
+    AuraConfig,
+    ConsciousFiles,
+    LLMConfig,
+    OpenApplications,
+    SystemInfo,
+)
+from app.api.auth_utils import token_verifier
+from app.api.connection_manager import ConnectionManager
+from app.api.llm_config_utils import resolve_llm_config
+from app.api.websocket_utils import send_ws_message
+
+
 logger = logging.getLogger(__name__)
+ws_router = APIRouter()
+manager = ConnectionManager()
+llm_config = LLMConfig(provider="anthropic", model_name="claude-opus-4-8")
 
 
 def _truncate_screenshot_for_log(value, preview_length: int = 24):
-    """Return a log-safe copy with screenshot data shortened."""
+    """Return a log-safe payload copy with screenshot data shortened."""
+
     if isinstance(value, dict):
         return {
-            key: _format_screenshot_preview(item, preview_length)
-            if key == "screenshot"
-            else _truncate_screenshot_for_log(item, preview_length)
+            key: (
+                _format_screenshot_preview(item, preview_length)
+                if key == "screenshot"
+                else _truncate_screenshot_for_log(item, preview_length)
+            )
             for key, item in value.items()
         }
-
     if isinstance(value, list):
         return [_truncate_screenshot_for_log(item, preview_length) for item in value]
-
     return value
 
 
 def _format_screenshot_preview(value, preview_length: int = 24):
-    if isinstance(value, str):
-        return f"{value[:preview_length]}...." if len(value) > preview_length else value
+    """Shorten base64 screenshot values before logging."""
 
+    if isinstance(value, str):
+        return (
+            f"{value[:preview_length]}...."
+            if len(value) > preview_length
+            else value
+        )
     if isinstance(value, list):
         return [_format_screenshot_preview(item, preview_length) for item in value]
-
     if isinstance(value, dict):
         return {
             key: _format_screenshot_preview(item, preview_length)
             for key, item in value.items()
         }
-
     return value
 
 
-# Initialize FastAPI router for WebSocket routes
-ws_router = APIRouter()
+async def _send_error(
+    websocket: WebSocket,
+    *,
+    task_id: Optional[str],
+    chat_id: Optional[str],
+    error_code: str,
+    message: str,
+) -> None:
+    """Send a standardized task-scoped error message."""
 
-# Global connection manager instance to handle active WebSocket connections
-manager = ConnectionManager()
+    await send_ws_message(
+        websocket,
+        type="error_message",
+        task_id=task_id,
+        chat_id=chat_id,
+        payload={
+            "error_code": error_code,
+            "message": message,
+        },
+    )
 
-# Default configuration for the LLM agent
-llm_config = LLMConfig(provider="anthropic", model_name="claude-haiku-4-5-20251001")
 
-# task_manager = TaskManager()
+def _admission_error(reason: RejectionReason) -> tuple[str, str]:
+    """Map coordinator rejection reasons to stable client errors."""
+
+    errors = {
+        RejectionReason.DUPLICATE_TASK_ID: (
+            "DUPLICATE_TASK_ID",
+            "A task with this task_id is already active",
+        ),
+        RejectionReason.CHAT_ALREADY_RUNNING: (
+            "CHAT_ALREADY_RUNNING",
+            "This chat already has a queued or running task",
+        ),
+        RejectionReason.QUEUE_FULL: (
+            "TASK_QUEUE_FULL",
+            "The server task queue is full; please retry shortly",
+        ),
+        RejectionReason.INVALID_REQUEST: (
+            "INVALID_TASK_REQUEST",
+            "task_id, user_id, and chat_id are required",
+        ),
+    }
+    return errors[reason]
+
 
 @ws_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """
-    Handle WebSocket connections at /ws.`
+    """Authenticate one client and multiplex its independently tracked tasks."""
 
-    Accepts JSON messages from the client containing a query and optional system info.
-    Each message triggers an asynchronous agent invocation, with status updates sent
-    back to the client throughout the lifecycle of the request.
-    """
     client_host = websocket.client.host if websocket.client else "unknown"
     client_port = websocket.client.port if websocket.client else "unknown"
-    logger.info(f"🔌 WebSocket connection attempt from {client_host}:{client_port}")
-    
+    logger.info(
+        "WebSocket connection attempt from %s:%s",
+        client_host,
+        client_port,
+    )
+
     await manager.connect(websocket)
-    logger.info(f"✅ WebSocket connection established for {client_host}:{client_port}")
+    logger.info("WebSocket connected for %s:%s", client_host, client_port)
 
-    # Auth0 Token Validation
-    token = websocket.query_params.get("token")
-    if not token:
-        logger.warning(f"❌ Auth failed: No token provided from {client_host}:{client_port}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-    
-    logger.info(f"🔐 Verifying Auth0 token for {client_host}:{client_port}")
     try:
-        user_payload = token_verifier.verify(token)
-        logger.info(f"✅ Token verified successfully for user: {user_payload.get('sub', 'unknown')}")
-    except Exception as e:
-        logger.error(f"❌ Token verification failed from {client_host}:{client_port}: {str(e)}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
-    # Initialize database pool
-    pool = await get_pool()
-    rate_limit_loop = asyncio.get_running_loop()
-
-    auth0_id = user_payload.get("sub")
-    logger.info(f"🔍 Looking up user in database: {auth0_id}")
-    
-    user = await get_user_by_auth0_id(pool, auth0_id)
-    if not user:
-        logger.error(f"❌ User not found in database: {auth0_id} from {client_host}:{client_port}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-    
-    user_id = user["id"]
-    logger.info(f"✅ User authenticated successfully: {user.get('email', 'unknown')} (ID: {user_id})")
-    
-    async def handle_query(message: dict, task_id: str, chat_id: str):
-        """
-        Handle an individual query message from the client.
-
-        Extracts parameters, invokes the agent asynchronously, and sends structured
-        responses and status updates back to the client.
-
-        Args:
-            message (dict): The incoming JSON message from the WebSocket client.
-        """
-        # Refresh user settings for each query to ensure latest API keys are used
-        user_settings = await get_user_settings(pool, user_id)
-        if user_settings:
-            logger.info(f"📋 Loaded fresh user settings for user_id: {user_id}")
-        else:
-            logger.info(f"📋 No custom settings found for user_id: {user_id}, using defaults")
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
 
         try:
-            payload = message.get("payload")
-            print(f"payload: {_truncate_screenshot_for_log(payload)}")
-            if payload:
-                query = payload.get("query")
+            user_payload = token_verifier.verify(token)
+        except Exception:
+            logger.warning(
+                "WebSocket token verification failed for %s:%s",
+                client_host,
+                client_port,
+                exc_info=True,
+            )
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
 
-                if query is None:
-                    raise ValueError("Missing required field: 'query'")
-                
-                # Create task in the database
-                await create_task(pool, task_id, chat_id, query, user_id)
+        pool = await get_pool()
+        rate_limit_loop = asyncio.get_running_loop()
+        auth0_id = user_payload.get("sub")
+        user = await get_user_by_auth0_id(pool, auth0_id)
+        if not user:
+            logger.warning("Authenticated Auth0 user is absent from the database")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        user_id = str(user["id"])
+        logger.info(
+            "WebSocket user authenticated: email=%s user_id=%s",
+            user.get("email", "unknown"),
+            user_id,
+        )
+
+        async def handle_query(
+            message: dict,
+            task_id: str,
+            chat_id: str,
+            query: str,
+        ) -> None:
+            """Execute one admitted request and always perform terminal cleanup."""
+
+            terminal_status = TaskStatus.FAILED
+            try:
+                payload = message["payload"]
+                logger.debug(
+                    "Starting task %s payload=%s",
+                    task_id,
+                    _truncate_screenshot_for_log(payload),
+                )
 
                 raw_aura_config_data = payload.get("aura_config") or {}
                 aura_config_data = (
@@ -153,9 +186,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if isinstance(raw_aura_config_data, dict)
                     else {}
                 )
-                user_timezone = (
-                    aura_config_data.get("timezone", "Asia/Kolkata")
-                )
+                user_timezone = aura_config_data.get("timezone", "Asia/Kolkata")
 
                 rate_limit_decision = await check_rate_limit_for_request(
                     pool=pool,
@@ -172,268 +203,289 @@ async def websocket_endpoint(websocket: WebSocket):
                             "content": {
                                 "role": "assistant",
                                 "message": (
-                                    "You've reached your daily limits.  "
-                                    f"Your usage resets at {rate_limit_decision.reset_at_display}."
-                                )
+                                    "You've reached your daily limits. "
+                                    "Your usage resets at "
+                                    f"{rate_limit_decision.reset_at_display}."
+                                ),
                             },
-                            "coming_from": "rate_limit/server"
-                        }
-                    )
-                    await update_task_status(
-                        pool=pool,
-                        task_id=task_id,
-                        status="failed",
+                            "coming_from": "rate_limit/server",
+                        },
                     )
                     return
 
-                # Extract system info from nested payload.system_info
-                sys_info_data = payload.get("system_info", {})
-                os_info = sys_info_data.get("os", "windows")
-                version_info = sys_info_data.get("os_version", "11")
-                workspace_path = sys_info_data.get("workspace", "")
-                cwd_path = sys_info_data.get("cwd", "")
-
-                # Prepare agent with system and LLM configuration
+                sys_info_data = payload.get("system_info") or {}
                 system_info = SystemInfo(
-                    os=os_info, 
-                    version=version_info,
-                    workspace=workspace_path,
-                    cwd=cwd_path
+                    os=sys_info_data.get("os", "windows"),
+                    version=sys_info_data.get("os_version", "11"),
+                    workspace=sys_info_data.get("workspace", ""),
+                    cwd=sys_info_data.get("cwd", ""),
                 )
-                
-                # Check for LLM config override
-                current_llm_config = llm_config
-                using_custom = False
 
-                # 1. Check for API_Config in the payload (per-message override)
-                api_config_payload = payload.get("API_Config")
-                if api_config_payload and isinstance(api_config_payload, dict):
-                    raw_provider = api_config_payload.get("provider")
-                    custom_api_key = api_config_payload.get("key")
-                    is_active = api_config_payload.get("is_active", False)
+                current_llm_config, using_task_config = resolve_llm_config(
+                    api_config=payload.get("api_config"),
+                    default_config=llm_config,
+                )
+                logger.info(
+                    "Task %s using %s LLM config: provider=%s model=%s",
+                    task_id,
+                    "request" if using_task_config else "default",
+                    current_llm_config.provider,
+                    current_llm_config.model_name,
+                )
 
-                    if is_active and raw_provider and custom_api_key:
-                        target_provider = PROVIDER_MAPPING.get(raw_provider)
-                        if target_provider:
-                            default_model = DEFAULT_MODELS.get(target_provider)
-                            try:
-                                current_llm_config = LLMConfig(
-                                    provider=target_provider,
-                                    model_name=default_model,
-                                    api_key=custom_api_key
-                                )
-                                using_custom = True
-                                logger.info(f"Using custom LLM config from payload: {target_provider}")
-                            except Exception as e:
-                                logger.error(f"Failed to create custom LLM config from payload: {e}")
-
-                # 2. If not using custom from payload, check user settings from DB
-                if not using_custom and user_settings and "api_creds" in user_settings:
-                    api_creds = user_settings.get("api_creds", {})
-                    raw_provider = api_creds.get("provider")
-                    custom_api_key = api_creds.get("key")
-                    
-                    if raw_provider and custom_api_key:
-                        target_provider = PROVIDER_MAPPING.get(raw_provider)
-                        if target_provider:
-                            default_model = DEFAULT_MODELS.get(target_provider)
-                            try:
-                                current_llm_config = LLMConfig(
-                                    provider=target_provider,
-                                    model_name=default_model,
-                                    api_key=custom_api_key
-                                )
-                                using_custom = True
-                                logger.info(f"Using custom LLM config from user settings: {target_provider}")
-                            except Exception as e:
-                                logger.error(f"Failed to create custom LLM config from settings: {e}. Falling back to default.")
-                
-                if not using_custom:
-                    logger.info(f"Using default LLM config for user using, {current_llm_config.provider}")
-
-                # Extract attached files and images
-                attached_files = payload.get("attached_files", [])
-                attached_images = payload.get("attached_images", [])
-                
-                # Extract screenshot from payload
-                screenshot = payload.get("screenshot")
-                
-                # Extract aura_config from payload
                 aura_config = AuraConfig(
-                    conscious_files=ConsciousFiles(**aura_config_data["conscious_files"]) if aura_config_data.get("conscious_files") else None,
-                    open_apps=OpenApplications(**aura_config_data["open_apps"]) if aura_config_data.get("open_apps") else None,
-                    timezone=aura_config_data.get("timezone", "Asia/Kolkata"),
+                    conscious_files=(
+                        ConsciousFiles(**aura_config_data["conscious_files"])
+                        if aura_config_data.get("conscious_files")
+                        else None
+                    ),
+                    open_apps=(
+                        OpenApplications(**aura_config_data["open_apps"])
+                        if aura_config_data.get("open_apps")
+                        else None
+                    ),
+                    timezone=user_timezone,
                     compression=aura_config_data.get("compression", False),
                     boot_me=aura_config_data.get("boot_me", False),
                     local_skills=aura_config_data.get("local_skills"),
                 )
 
-                # Extract history from payload
-                history = payload.get("messages", [])
+                agent = Agent(
+                    llm=current_llm_config,
+                    query=query,
+                    payload=payload,
+                    system_info=system_info,
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    pool=pool,
+                    user_id=user_id,
+                    rate_limit_loop=rate_limit_loop,
+                    aura_config=aura_config,
+                    history=payload.get("messages", []),
+                    attached_files=payload.get("attached_files", []),
+                    attached_images=payload.get("attached_images", []),
+                    screenshot=payload.get("screenshot"),
+                )
 
-                agent = Agent(llm=current_llm_config, query=query, payload=payload, system_info=system_info, task_id=task_id, chat_id=chat_id, pool=pool, user_id=user_id, rate_limit_loop=rate_limit_loop, aura_config=aura_config, history=history, attached_files=attached_files, attached_images=attached_images, screenshot=screenshot)
-
-                # Notify client that processing has started
                 await send_ws_message(
                     websocket,
                     type="aura_status",
-                    task_id=task_id, # New Parameter task_id
-                    chat_id=chat_id,
-                    payload= {
-                        "query": query,
-                        "message": "Agent is processing the request",
-                        "status": "processing",
-                    }
-                )
-
-                # Invoke the agent
-                response = await agent.invoke()
-
-                # Robust response handling
-                if response is None:
-                    final_result = {
-                        "input": query,
-                        "output": ""
-                    }
-                elif isinstance(response, str):
-                    final_result = {
-                        "input": query,
-                        "output": response
-                    }
-                elif isinstance(response, dict):
-                    final_result = {
-                        "input": response.get("input", query),
-                        "output": response.get("output", "")
-                    }
-                else:
-                    final_result = {
-                        "input": query,
-                        "output": str(response)
-                    }
-                
-                # Retrieve task state for event logging
-                # task_state = task_manager.get_state(task_id)
-
-                # UPDATE TASK STATUS TO COMPLETED
-                await update_task_status(pool=pool, task_id=task_id, status="completed")
-
-            else:
-                await send_ws_message(
-                    websocket,
-                    type="error_message",
                     task_id=task_id,
                     chat_id=chat_id,
                     payload={
-                        "error_code": "PAYLOAD_NOT_FOUND",
-                        "message": "Error due to payload not found in the task request"
-                    }
+                        "query": query,
+                        "message": "Agent is processing the request",
+                        "status": "processing",
+                    },
                 )
 
-        except asyncio.CancelledError:
-            await send_ws_message(
-                websocket,
-                type="aura_status",
-                task_id=task_id,
-                chat_id=chat_id,
-                payload= {
-                    "query": query,
-                    "message": "Task is cancled by the user",
-                    "status": "cancelled",
-                }
-            )
+                await agent.invoke()
+                terminal_status = TaskStatus.COMPLETED
 
-        except KeyError:
-            # Handle missing 'query' field
-            await send_ws_message(
-                websocket,
-                type="error_message",
-                task_id=task_id,
-                chat_id=chat_id,
-                payload={
-                    "error_code": "MISSING_REQUIRED_FIELD",
-                    "message": "Missing required field 'query' in the payload"
-                }
-            )
-        except Exception as e:
-            # Catch-all for unexpected runtime errors
-            await send_ws_message(
-                websocket,
-                type="error_message",
-                task_id=task_id,
-                chat_id=chat_id,
-                payload={
-                    "error_code": "SYSTEM_ERROR",
-                    "message": f"ERROR: {str(e)}"
-                }            
-            )
-        finally:
-            task_manager.remove_task(task_id)
-
-    try:
-        while True:
-            try:
-                # Wait for the next incoming JSON message from the client
-                message = await websocket.receive_json()
-                msg_type = message.get("type")
-                task_id = message.get("task_id") or str(uuid.uuid4())
-                chat_id = message.get("chat_id")
-
-                if msg_type in ("task_request", "boot_me", "compress_context"):
-
-                    # Create task state with WebSocket and DB Pool
-                    task_manager.create_task(task_id, websocket, pool)
-                    # Handle each message in its own asynchronous task
-                    task = asyncio.create_task(handle_query(message, task_id, chat_id))
-                    task_manager.set_task(task_id, task)
-                
-                elif msg_type == "cancel":
-                    task_id = message.get("task_id")
-                    task_manager.cancel_task(task_id)
-
-                elif msg_type == "pause":
-                    task_id = message.get("task_id")
-                    task_manager.pause_task(task_id)
-
-                elif msg_type == "resume":
-                    task_id = message.get("task_id")
-                    task_manager.resume_task(task_id)
-
-                elif msg_type == "user_input":
-                    task_id = message.get("task_id")
-                    input_data = message.get("data")
-                    task_manager.provide_input(task_id, input_data)
-
-                elif msg_type == "client_tool_response":
-                    task_id = message.get("task_id")
-                    input_data = message
-                    task_manager.provide_input(task_id, input_data)
-                
-                else:
+            except asyncio.CancelledError:
+                terminal_status = TaskStatus.CANCELLED
+                try:
                     await send_ws_message(
                         websocket,
-                        type="error_message",
-                        task_id=message.get("task_id"),
+                        type="aura_status",
+                        task_id=task_id,
                         chat_id=chat_id,
                         payload={
-                            "error_code": "INTERNAL_ERROR",
-                            "message": f"Unknown message type: {msg_type}"
-                        }    
+                            "query": query,
+                            "message": "Task was cancelled",
+                            "status": "cancelled",
+                        },
+                    )
+                except Exception:
+                    logger.debug(
+                        "Client disconnected before cancellation status delivery",
+                        exc_info=True,
+                    )
+            except Exception as exc:
+                logger.exception("Task %s failed", task_id)
+                try:
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="SYSTEM_ERROR",
+                        message=f"ERROR: {exc}",
+                    )
+                except Exception:
+                    logger.debug(
+                        "Client disconnected before task error delivery",
+                        exc_info=True,
+                    )
+            finally:
+                await task_scheduler.finalize(task_id, terminal_status)
+
+        while True:
+            try:
+                message = await websocket.receive_json()
+            except ValueError:
+                await _send_error(
+                    websocket,
+                    task_id=None,
+                    chat_id=None,
+                    error_code="INVALID_JSON",
+                    message="Invalid JSON message",
+                )
+                continue
+
+            if not isinstance(message, dict):
+                await _send_error(
+                    websocket,
+                    task_id=None,
+                    chat_id=None,
+                    error_code="INVALID_MESSAGE",
+                    message="WebSocket messages must be JSON objects",
+                )
+                continue
+
+            msg_type = message.get("type")
+            task_id = message.get("task_id")
+            chat_id = message.get("chat_id")
+
+            if msg_type in ("task_request", "boot_me", "compress_context"):
+                task_id = str(task_id or uuid.uuid4())
+                if not isinstance(chat_id, str) or not chat_id.strip():
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="MISSING_CHAT_ID",
+                        message="A non-empty chat_id is required",
+                    )
+                    continue
+
+                payload = message.get("payload")
+                if not isinstance(payload, dict):
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="PAYLOAD_NOT_FOUND",
+                        message="A task request payload is required",
+                    )
+                    continue
+
+                query = payload.get("query")
+                if not isinstance(query, str) or not query.strip():
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="MISSING_REQUIRED_FIELD",
+                        message="A non-empty payload.query is required",
+                    )
+                    continue
+
+                runner_factory = (
+                    lambda request=message,
+                    current_task_id=task_id,
+                    current_chat_id=chat_id,
+                    current_query=query: handle_query(
+                        request,
+                        current_task_id,
+                        current_chat_id,
+                        current_query,
+                    )
                 )
 
-            except ValueError:
-                # Notify client of JSON decode errors
-                await send_ws_message(
+                try:
+                    admission = await task_scheduler.submit(
+                        task_id=task_id,
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        query=query,
+                        websocket=websocket,
+                        pool=pool,
+                        runner_factory=runner_factory,
+                    )
+                except Exception:
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="TASK_CREATION_FAILED",
+                        message="The task could not be created",
+                    )
+                    continue
+
+                if not admission.accepted:
+                    error_code, error_message = _admission_error(admission.reason)
+                    if admission.conflicting_task_id:
+                        error_message += (
+                            f" (active task: {admission.conflicting_task_id})"
+                        )
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code=error_code,
+                        message=error_message,
+                    )
+                continue
+
+            if not isinstance(task_id, str) or not task_id:
+                await _send_error(
                     websocket,
-                    type="error_message",
-                    task_id=message.get("task_id"),
+                    task_id=None,
                     chat_id=chat_id,
-                    payload={
-                        "error_code": "INTERNAL_ERROR",
-                        "message": f"Invalid JSON format"
-                    }
+                    error_code="MISSING_TASK_ID",
+                    message=f"task_id is required for message type {msg_type!r}",
+                )
+                continue
+
+            handled = False
+            if msg_type == "cancel":
+                handled = await task_scheduler.cancel(task_id, user_id)
+            elif msg_type == "pause":
+                handled = await task_scheduler.pause(task_id, user_id)
+            elif msg_type == "resume":
+                handled = await task_scheduler.resume(task_id, user_id)
+            elif msg_type == "user_input":
+                handled = await task_scheduler.provide_input(
+                    task_id,
+                    user_id,
+                    message.get("data"),
+                )
+            elif msg_type == "client_tool_response":
+                handled = await task_scheduler.provide_input(
+                    task_id,
+                    user_id,
+                    message,
+                )
+                if not handled:
+                    # A response can legitimately arrive after its task or
+                    # tool-call deadline. It is stale, not a new UI error.
+                    logger.info(
+                        "Ignoring stale client tool response task_id=%s tool_call_id=%s",
+                        task_id,
+                        (message.get("payload") or {}).get("tool_call_id"),
+                    )
+                    continue
+            else:
+                await _send_error(
+                    websocket,
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    error_code="UNKNOWN_MESSAGE_TYPE",
+                    message=f"Unknown message type: {msg_type}",
+                )
+                continue
+
+            if not handled:
+                await _send_error(
+                    websocket,
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    error_code="TASK_NOT_FOUND",
+                    message="Task was not found, is not active, or is not owned by you",
                 )
 
     except WebSocketDisconnect:
-        # Cleanly remove disconnected WebSocket from the manager
-        logger.info(f"🔌 WebSocket disconnected: {client_host}:{client_port}")
+        logger.info("WebSocket disconnected: %s:%s", client_host, client_port)
+    finally:
+        await task_scheduler.disconnect(websocket)
         manager.disconnect(websocket)
