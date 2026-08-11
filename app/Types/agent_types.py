@@ -394,9 +394,16 @@ class BrowserVisionInput(BaseModel):
         default=False,
         description=(
             "If true, overlay numbered labels on interactive elements. Useful "
-            "for QA and spatial reasoning about page layout."
+            "for QA , testing and spatial reasoning about page layout."
         ),
     )
+    full: bool = Field(
+        default=False,
+        description=(
+            "Capture full page if true, visible viewport only if false."
+        ),
+    )
+
 
 
 class BrowserConsoleToolInput(BaseModel):

@@ -34,8 +34,13 @@ class BrowserVisionInputTests(unittest.TestCase):
 
         self.assertEqual(inputs.question, "What is visible?")
         self.assertFalse(inputs.annotate)
+        self.assertFalse(inputs.full)
         with self.assertRaises(ValidationError):
             BrowserVisionInput()
+
+    def test_full_parameter_can_be_set_true(self):
+        inputs = BrowserVisionInput(question="What is visible?", full=True)
+        self.assertTrue(inputs.full)
 
 
 class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
@@ -76,6 +81,7 @@ class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
         result = await browser.browser_vision(
             question="Is there a CAPTCHA?",
             annotate=True,
+            full=True,
             tool_call_id="call-vision",
         )
 
@@ -84,7 +90,7 @@ class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request["payload"]["tool"], "browser_vision")
         self.assertEqual(
             request["payload"]["input"],
-            {"question": "Is there a CAPTCHA?", "annotate": True},
+            {"question": "Is there a CAPTCHA?", "annotate": True, "full": True},
         )
         create_agent_event_mock.assert_awaited_once()
 

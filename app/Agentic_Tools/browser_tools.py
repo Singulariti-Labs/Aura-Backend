@@ -1035,6 +1035,7 @@ class BrowserTools:
         self,
         question: str,
         annotate: bool = False,
+        full: bool = False,
         tool_call_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Capture the current browser page for native visual inspection.
@@ -1046,6 +1047,7 @@ class BrowserTools:
         Args:
             question: Visual question the model should answer from the screenshot.
             annotate: Whether the client should label interactive page elements.
+            full: Capture full page if true, visible viewport only if false.
             tool_call_id: Optional model tool-call ID used to correlate the result.
 
         Returns:
@@ -1054,6 +1056,7 @@ class BrowserTools:
         input_params = {
             "question": question,
             "annotate": annotate,
+            "full": full,
         }
 
         try:

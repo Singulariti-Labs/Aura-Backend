@@ -71,5 +71,6 @@ class BrowserVisionTool(BaseTool):
         return await self.browser_tools.browser_vision(
             question=inputs.question,
             annotate=inputs.annotate,
+            full=inputs.full,
             tool_call_id=tool_call_id,
         )
