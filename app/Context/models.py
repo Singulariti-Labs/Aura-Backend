@@ -23,8 +23,8 @@ class CompressionConfig(BaseModel):
     # model currently running the agent loop.
     compressor_provider: Literal["anthropic"] = "anthropic"
     compressor_model: str = "claude-haiku-4-5-20251001"
-    threshold: float = Field(default=0.10, gt=0, lt=1)
-    hard_threshold: float = Field(default=0.25, gt=0, le=1)
+    threshold: float = Field(default=0.70, gt=0, lt=1)
+    hard_threshold: float = Field(default=0.85, gt=0, le=1)
     target_ratio: float = Field(default=0.40, gt=0, lt=1)       # Target ratio is used to get the context size after compression.
     tail_ratio: float = Field(default=0.20, gt=0, lt=1)
     tail_overflow_multiplier: float = Field(default=1.50, ge=1)
@@ -33,7 +33,7 @@ class CompressionConfig(BaseModel):
     # larger selection cannot fit below the tail soft ceiling.
     min_tail_blocks: int = Field(default=3, ge=1)
     safety_margin_ratio: float = Field(default=0.05, ge=0, lt=0.25)
-    compressor_max_output_tokens: int = Field(default=4096, ge=256)
+    compressor_max_output_tokens: int = Field(default=8000, ge=256)
 
     @model_validator(mode="after")
     def validate_policy(self):
