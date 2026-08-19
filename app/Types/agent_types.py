@@ -23,7 +23,7 @@ class AuraConfig(BaseModel):
     conscious_files: Optional[ConsciousFiles] = None
     open_apps: Optional[OpenApplications] = None
     timezone: str = Field(default="Asia/Kolkata", description="User timezone")
-    compression: bool = Field(default=False, description="Enable context compression")
+    compression: bool = Field(default=True, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
     local_skills: Optional[str] = Field(default=None, description="String containing local skills metadata")
     cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
@@ -116,7 +116,7 @@ DEFAULT_MODELS = {
 #   "user_input",               // User's raw input
 #   "aura_status",              // Status messages send to aura frontend.
 #   "task_request"              // Request coming from the aura frontend for new task.
-WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input", "aura_status", "aura_message", "task_request", "aura_thinking", "aura_context_message", "aura_context_tool_response", "aura_context_tool_request"]
+WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input", "aura_status", "aura_message", "task_request", "aura_thinking", "aura_context_message", "aura_context_tool_response", "aura_context_tool_request", "compression", "context_sequence"]
 
 class StepStatus(Enum):
     PENDING = "pending"

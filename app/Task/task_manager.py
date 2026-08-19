@@ -71,12 +71,20 @@ class TaskControlState:
         user_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         runner_factory: Optional[TaskRunnerFactory] = None,
+        emit_status: bool = True,
+        compression_trigger: Optional[str] = None,
+        client_task_id: Optional[str] = None,
+        compression_id: Optional[str] = None,
     ):
         self.websocket = websocket
         self.dbpool = dbpool
         self.user_id = user_id
         self.chat_id = chat_id
         self.runner_factory = runner_factory
+        self.emit_status = emit_status
+        self.compression_trigger = compression_trigger
+        self.client_task_id = client_task_id
+        self.compression_id = compression_id
         self.task: Optional[asyncio.Task] = None
         self.connection_closed = False
         self.cancelled = False
@@ -85,6 +93,7 @@ class TaskControlState:
         self.input_queue: asyncio.Queue = asyncio.Queue()
         self.pending_tool_calls: Dict[str, PendingToolCall] = {}
         self.expired_tool_call_ids: Dict[str, float] = {}
+        self.context_ids: Set[str] = set()
         self.paused.set()
 
     def get_next_seq(self) -> int:
@@ -92,6 +101,9 @@ class TaskControlState:
 
         self._seq += 1
         return self._seq
+
+    def register_context(self, context_id: str) -> None:
+        self.context_ids.add(context_id)
 
     def _default_timeout_for_tool(self, tool_name: str) -> float:
         if tool_name in _FILE_TOOLS:
@@ -270,6 +282,10 @@ class TaskManager:
         user_id: Optional[str],
         chat_id: Optional[str],
         runner_factory: Optional[TaskRunnerFactory],
+        emit_status: bool = True,
+        compression_trigger: Optional[str] = None,
+        client_task_id: Optional[str] = None,
+        compression_id: Optional[str] = None,
     ) -> TaskControlState:
         """Register queued or running local state for a newly admitted task."""
 
@@ -282,6 +298,10 @@ class TaskManager:
             user_id=user_id,
             chat_id=chat_id,
             runner_factory=runner_factory,
+            emit_status=emit_status,
+            compression_trigger=compression_trigger,
+            client_task_id=client_task_id,
+            compression_id=compression_id,
         )
         self.tasks[task_id] = state
         if websocket is not None:
@@ -303,6 +323,7 @@ class TaskManager:
             user_id=None,
             chat_id=None,
             runner_factory=None,
+            emit_status=True,
         )
 
     def start_task(self, task_id: str) -> asyncio.Task:
@@ -376,6 +397,9 @@ class TaskManager:
         """Block at a cooperative checkpoint while a task is paused."""
 
         await self.get_state(task_id).paused.wait()
+
+    def register_context(self, task_id: str, context_id: str) -> None:
+        self.get_state(task_id).register_context(context_id)
 
     def provide_input(self, task_id: str, data: Any) -> None:
         """Deliver user input or a client tool response to one task."""

@@ -9,6 +9,26 @@ from fastapi import WebSocket
 from app.Types.agent_types import WS_MESSAGE_TYPE
 
 
+COMPRESSION_ID_PREFIX = "compression_"
+
+
+def normalize_compression_id(value: object) -> str:
+    """Validate and canonicalize a client-supplied compression operation ID."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("compression_id must be a non-empty string when provided")
+    candidate = value.strip()
+    if not candidate.startswith(COMPRESSION_ID_PREFIX):
+        raise ValueError("compression_id must use the format compression_<uuid>")
+    try:
+        parsed = uuid.UUID(candidate[len(COMPRESSION_ID_PREFIX):])
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(
+            "compression_id must use the format compression_<uuid>"
+        ) from exc
+    return f"{COMPRESSION_ID_PREFIX}{parsed}"
+
+
 async def send_ws_message(
     websocket: WebSocket,
     *,
@@ -16,13 +36,15 @@ async def send_ws_message(
     task_id: Optional[str],
     chat_id: Optional[str],
     payload: Optional[dict] = None,
+    compression_id: Optional[str] = None,
 ) -> Optional[str]:
     """Send one atomic task-scoped message over a shared WebSocket.
 
     Several agent tasks may write to the same user connection concurrently.
     The connection-level lock prevents overlapping ASGI send operations while
     ``task_id`` and ``chat_id`` let the client route interleaved messages to the
-    correct conversation.
+    correct conversation. ``compression_id`` optionally identifies one
+    compression lifecycle without changing the task identity.
     """
 
     message_payload = dict(payload or {})
@@ -56,6 +78,8 @@ async def send_ws_message(
         "chat_id": chat_id,
         "payload": message_payload,
     }
+    if compression_id is not None:
+        message["compression_id"] = compression_id
 
     send_lock = getattr(websocket.state, "send_lock", None)
     if send_lock is None:

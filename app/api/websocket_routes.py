@@ -20,10 +20,11 @@ from app.Types.agent_types import (
     OpenApplications,
     SystemInfo,
 )
+from app.LLM.model_bridge.common import normalize_history
 from app.api.auth_utils import token_verifier
 from app.api.connection_manager import ConnectionManager
 from app.api.llm_config_utils import resolve_llm_config
-from app.api.websocket_utils import send_ws_message
+from app.api.websocket_utils import normalize_compression_id, send_ws_message
 
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,42 @@ async def _send_error(
         payload={
             "error_code": error_code,
             "message": message,
+        },
+    )
+
+
+async def _send_compression_failure(
+    websocket: WebSocket,
+    *,
+    task_id: Optional[str],
+    chat_id: Optional[str],
+    compression_id: Optional[str],
+    error_code: str,
+    message: str,
+    trigger_reason: str = "manual",
+) -> None:
+    """Send the sole terminal response for a failed manual compression."""
+
+    await send_ws_message(
+        websocket,
+        type="compression",
+        task_id=task_id,
+        chat_id=chat_id,
+        compression_id=compression_id,
+        payload={
+            "type": "compression",
+            "schema_version": 1,
+            "compression_id": compression_id,
+            "task_id": task_id,
+            "chat_id": chat_id,
+            "status": "failed",
+            "trigger": trigger_reason,
+            "trigger_reason": trigger_reason,
+            "message": message,
+            "error": {
+                "code": error_code,
+                "message": message,
+            },
         },
     )
 
@@ -166,17 +203,22 @@ async def websocket_endpoint(websocket: WebSocket):
         async def handle_query(
             message: dict,
             task_id: str,
+            runtime_task_id: str,
             chat_id: str,
             query: str,
+            compression_id: Optional[str] = None,
         ) -> None:
             """Execute one admitted request and always perform terminal cleanup."""
 
             terminal_status = TaskStatus.FAILED
+            compression_only = message.get("type") == "compression"
             try:
                 payload = message["payload"]
                 logger.debug(
-                    "Starting task %s payload=%s",
+                    "Starting task %s runtime_task_id=%s compression_id=%s payload=%s",
                     task_id,
+                    runtime_task_id,
+                    compression_id,
                     _truncate_screenshot_for_log(payload),
                 )
 
@@ -194,23 +236,35 @@ async def websocket_endpoint(websocket: WebSocket):
                     timezone_name=user_timezone,
                 )
                 if not rate_limit_decision.allowed:
-                    await send_ws_message(
-                        websocket,
-                        type="aura_message",
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "message": (
-                                    "You've reached your daily limits. "
-                                    "Your usage resets at "
-                                    f"{rate_limit_decision.reset_at_display}."
-                                ),
-                            },
-                            "coming_from": "rate_limit/server",
-                        },
+                    rate_limit_message = (
+                        "You've reached your daily limits. "
+                        "Your usage resets at "
+                        f"{rate_limit_decision.reset_at_display}."
                     )
+                    if compression_only:
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code="RATE_LIMIT_EXCEEDED",
+                            message=rate_limit_message,
+                            trigger_reason=str(payload.get("trigger") or "manual"),
+                        )
+                    else:
+                        await send_ws_message(
+                            websocket,
+                            type="aura_message",
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            payload={
+                                "content": {
+                                    "role": "assistant",
+                                    "message": rate_limit_message,
+                                },
+                                "coming_from": "rate_limit/server",
+                            },
+                        )
                     return
 
                 sys_info_data = payload.get("system_info") or {}
@@ -245,10 +299,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         else None
                     ),
                     timezone=user_timezone,
-                    compression=aura_config_data.get("compression", False),
+                    compression=aura_config_data.get("compression", True),
                     boot_me=aura_config_data.get("boot_me", False),
                     local_skills=aura_config_data.get("local_skills"),
                 )
+
+                if message.get("type") == "compression":
+                    payload["_force_preflight_compression"] = True
 
                 agent = Agent(
                     llm=current_llm_config,
@@ -256,6 +313,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     payload=payload,
                     system_info=system_info,
                     task_id=task_id,
+                    runtime_task_id=runtime_task_id,
+                    compression_id=compression_id,
                     chat_id=chat_id,
                     pool=pool,
                     user_id=user_id,
@@ -267,24 +326,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     screenshot=payload.get("screenshot"),
                 )
 
-                await send_ws_message(
-                    websocket,
-                    type="aura_status",
-                    task_id=task_id,
-                    chat_id=chat_id,
-                    payload={
-                        "query": query,
-                        "message": "Agent is processing the request",
-                        "status": "processing",
-                    },
-                )
-
-                await agent.invoke()
-                terminal_status = TaskStatus.COMPLETED
-
-            except asyncio.CancelledError:
-                terminal_status = TaskStatus.CANCELLED
-                try:
+                if not compression_only:
                     await send_ws_message(
                         websocket,
                         type="aura_status",
@@ -292,10 +334,41 @@ async def websocket_endpoint(websocket: WebSocket):
                         chat_id=chat_id,
                         payload={
                             "query": query,
-                            "message": "Task was cancelled",
-                            "status": "cancelled",
+                            "message": "Agent is processing the request",
+                            "status": "processing",
                         },
                     )
+
+                await agent.invoke()
+                terminal_status = TaskStatus.COMPLETED
+
+            except asyncio.CancelledError:
+                terminal_status = TaskStatus.CANCELLED
+                try:
+                    if compression_only:
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code="COMPRESSION_CANCELLED",
+                            message="Context compression was cancelled",
+                            trigger_reason=str(
+                                message.get("payload", {}).get("trigger") or "manual"
+                            ),
+                        )
+                    else:
+                        await send_ws_message(
+                            websocket,
+                            type="aura_status",
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            payload={
+                                "query": query,
+                                "message": "Task was cancelled",
+                                "status": "cancelled",
+                            },
+                        )
                 except Exception:
                     logger.debug(
                         "Client disconnected before cancellation status delivery",
@@ -304,20 +377,33 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as exc:
                 logger.exception("Task %s failed", task_id)
                 try:
-                    await _send_error(
-                        websocket,
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        error_code="SYSTEM_ERROR",
-                        message=f"ERROR: {exc}",
-                    )
+                    if compression_only:
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code="COMPRESSION_FAILED",
+                            message=str(exc),
+                            trigger_reason=str(
+                                message.get("payload", {}).get("trigger") or "manual"
+                            ),
+                        )
+                    else:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code="SYSTEM_ERROR",
+                            message=f"ERROR: {exc}",
+                        )
                 except Exception:
                     logger.debug(
                         "Client disconnected before task error delivery",
                         exc_info=True,
                     )
             finally:
-                await task_scheduler.finalize(task_id, terminal_status)
+                await task_scheduler.finalize(runtime_task_id, terminal_status)
 
         while True:
             try:
@@ -345,17 +431,124 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = message.get("type")
             task_id = message.get("task_id")
             chat_id = message.get("chat_id")
+            compression_id: Optional[str] = None
+            compression_id_was_supplied = False
 
-            if msg_type in ("task_request", "boot_me", "compress_context"):
-                task_id = str(task_id or uuid.uuid4())
-                if not isinstance(chat_id, str) or not chat_id.strip():
-                    await _send_error(
+            if msg_type == "compression":
+                raw_compression_id = message.get("compression_id")
+                if raw_compression_id is None:
+                    compression_id = f"compression_{uuid.uuid4()}"
+                else:
+                    try:
+                        compression_id = normalize_compression_id(
+                            raw_compression_id
+                        )
+                    except ValueError as exc:
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=(
+                                task_id if isinstance(task_id, str) else None
+                            ),
+                            chat_id=chat_id,
+                            compression_id=None,
+                            error_code="INVALID_COMPRESSION_ID",
+                            message=str(exc),
+                        )
+                        continue
+                    compression_id_was_supplied = True
+
+                compression_payload = message.get("payload")
+                if not isinstance(compression_payload, dict):
+                    await _send_compression_failure(
                         websocket,
-                        task_id=task_id,
+                        task_id=task_id if isinstance(task_id, str) else None,
                         chat_id=chat_id,
-                        error_code="MISSING_CHAT_ID",
-                        message="A non-empty chat_id is required",
+                        compression_id=compression_id,
+                        error_code="PAYLOAD_NOT_FOUND",
+                        message="A compression payload is required",
                     )
+                    continue
+
+                compression_trigger = compression_payload.get("trigger")
+                logger.debug(
+                    "Compression request task_id=%s compression_id=%s trigger=%r",
+                    task_id,
+                    compression_id,
+                    compression_trigger,
+                )
+
+                compression_range = compression_payload.get("range")
+                if compression_range is not None and not isinstance(
+                    compression_range, dict
+                ):
+                    await _send_compression_failure(
+                        websocket,
+                        task_id=task_id if isinstance(task_id, str) else None,
+                        chat_id=chat_id,
+                        compression_id=compression_id,
+                        error_code="INVALID_COMPRESSION_RANGE",
+                        message="payload.range must be an object",
+                        trigger_reason=str(compression_trigger or "manual"),
+                    )
+                    continue
+
+                compression_messages = compression_payload.get("messages")
+                if not isinstance(compression_messages, list):
+                    await _send_compression_failure(
+                        websocket,
+                        task_id=task_id if isinstance(task_id, str) else None,
+                        chat_id=chat_id,
+                        compression_id=compression_id,
+                        error_code="INVALID_CHAT_HISTORY",
+                        message="payload.messages must be an array",
+                        trigger_reason=str(compression_trigger or "manual"),
+                    )
+                    continue
+                try:
+                    normalized_compression_messages = normalize_history(
+                        compression_messages
+                    )
+                except ValueError as exc:
+                    await _send_compression_failure(
+                        websocket,
+                        task_id=task_id if isinstance(task_id, str) else None,
+                        chat_id=chat_id,
+                        compression_id=compression_id,
+                        error_code="INVALID_CHAT_HISTORY",
+                        message=str(exc),
+                        trigger_reason=str(compression_trigger or "manual"),
+                    )
+                    continue
+                compression_payload["messages"] = normalized_compression_messages
+
+            if msg_type in ("task_request", "boot_me", "compression"):
+                task_id = str(task_id or uuid.uuid4())
+                runtime_task_id = (
+                    compression_id
+                    if msg_type == "compression" and compression_id_was_supplied
+                    else task_id
+                )
+                if not isinstance(chat_id, str) or not chat_id.strip():
+                    if msg_type == "compression":
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code="MISSING_CHAT_ID",
+                            message="A non-empty chat_id is required",
+                            trigger_reason=str(
+                                message.get("payload", {}).get("trigger") or "manual"
+                            ),
+                        )
+                    else:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code="MISSING_CHAT_ID",
+                            message="A non-empty chat_id is required",
+                        )
                     continue
 
                 payload = message.get("payload")
@@ -370,7 +563,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 query = payload.get("query")
-                if not isinstance(query, str) or not query.strip():
+                if msg_type == "compression" and (
+                    not isinstance(query, str) or not query.strip()
+                ):
+                    # Compression requests are standalone summarization tasks.
+                    # Manual/command requests intentionally have no user query;
+                    # this label is used only for task admission and persistence.
+                    query = "Context compression"
+                elif not isinstance(query, str) or not query.strip():
                     await _send_error(
                         websocket,
                         task_id=task_id,
@@ -383,33 +583,60 @@ async def websocket_endpoint(websocket: WebSocket):
                 runner_factory = (
                     lambda request=message,
                     current_task_id=task_id,
+                    current_runtime_task_id=runtime_task_id,
                     current_chat_id=chat_id,
-                    current_query=query: handle_query(
+                    current_query=query,
+                    current_compression_id=compression_id: handle_query(
                         request,
                         current_task_id,
+                        current_runtime_task_id,
                         current_chat_id,
                         current_query,
+                        current_compression_id,
                     )
                 )
 
                 try:
                     admission = await task_scheduler.submit(
-                        task_id=task_id,
+                        task_id=runtime_task_id,
                         user_id=user_id,
                         chat_id=chat_id,
                         query=query,
                         websocket=websocket,
                         pool=pool,
                         runner_factory=runner_factory,
+                        emit_status=msg_type != "compression",
+                        compression_trigger=(
+                            str(payload.get("trigger") or "manual")
+                            if msg_type == "compression"
+                            else None
+                        ),
+                        client_task_id=(
+                            task_id if msg_type == "compression" else None
+                        ),
+                        compression_id=(
+                            compression_id if msg_type == "compression" else None
+                        ),
                     )
                 except Exception:
-                    await _send_error(
-                        websocket,
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        error_code="TASK_CREATION_FAILED",
-                        message="The task could not be created",
-                    )
+                    if msg_type == "compression":
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code="TASK_CREATION_FAILED",
+                            message="The compression task could not be created",
+                            trigger_reason=str(payload.get("trigger") or "manual"),
+                        )
+                    else:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code="TASK_CREATION_FAILED",
+                            message="The task could not be created",
+                        )
                     continue
 
                 if not admission.accepted:
@@ -418,13 +645,24 @@ async def websocket_endpoint(websocket: WebSocket):
                         error_message += (
                             f" (active task: {admission.conflicting_task_id})"
                         )
-                    await _send_error(
-                        websocket,
-                        task_id=task_id,
-                        chat_id=chat_id,
-                        error_code=error_code,
-                        message=error_message,
-                    )
+                    if msg_type == "compression":
+                        await _send_compression_failure(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            compression_id=compression_id,
+                            error_code=error_code,
+                            message=error_message,
+                            trigger_reason=str(payload.get("trigger") or "manual"),
+                        )
+                    else:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code=error_code,
+                            message=error_message,
+                        )
                 continue
 
             if not isinstance(task_id, str) or not task_id:
@@ -437,13 +675,31 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 continue
 
+            control_task_id = task_id
+            if msg_type in {"cancel", "pause", "resume"}:
+                control_compression_id = message.get("compression_id")
+                if control_compression_id is not None:
+                    try:
+                        control_task_id = normalize_compression_id(
+                            control_compression_id
+                        )
+                    except ValueError as exc:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code="INVALID_COMPRESSION_ID",
+                            message=str(exc),
+                        )
+                        continue
+
             handled = False
             if msg_type == "cancel":
-                handled = await task_scheduler.cancel(task_id, user_id)
+                handled = await task_scheduler.cancel(control_task_id, user_id)
             elif msg_type == "pause":
-                handled = await task_scheduler.pause(task_id, user_id)
+                handled = await task_scheduler.pause(control_task_id, user_id)
             elif msg_type == "resume":
-                handled = await task_scheduler.resume(task_id, user_id)
+                handled = await task_scheduler.resume(control_task_id, user_id)
             elif msg_type == "user_input":
                 handled = await task_scheduler.provide_input(
                     task_id,

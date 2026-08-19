@@ -351,7 +351,7 @@ class SupervisorAgent(BaseAgent):
             result = None
             # LLM call
             if query:
-                result = await self.llm_factory.aura_executor(
+                result = await self.llm_factory.aura_invoker(
                     query=query,
                     system_prompt=prompt,
                     tools=tools,
@@ -359,7 +359,10 @@ class SupervisorAgent(BaseAgent):
                     llm=self.llm,
                     llm_provider=self.llm_provider or self.llm_factory.detect_provider_from_llm(self.llm),
                     agent_type="aura",
-                    history=self.history
+                    history=self.history,
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    compression_enabled=self.aura_config.compression,
                 )
 
                 final_result = None
