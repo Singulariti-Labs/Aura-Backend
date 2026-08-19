@@ -25,7 +25,7 @@ class CompressionConfig(BaseModel):
     compressor_model: str = "claude-haiku-4-5-20251001"
     threshold: float = Field(default=0.10, gt=0, lt=1)
     hard_threshold: float = Field(default=0.25, gt=0, le=1)
-    target_ratio: float = Field(default=0.40, gt=0, lt=1)
+    target_ratio: float = Field(default=0.40, gt=0, lt=1)       # Target ratio is used to get the context size after compression.
     tail_ratio: float = Field(default=0.20, gt=0, lt=1)
     tail_overflow_multiplier: float = Field(default=1.50, ge=1)
     # Preferred minimum: 3 atomic message blocks. An assistant message and all
