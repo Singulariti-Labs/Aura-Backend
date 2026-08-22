@@ -237,7 +237,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 if not rate_limit_decision.allowed:
                     rate_limit_message = (
-                        "You've reached your daily limits. "
+                        f"You've reached the {rate_limit_decision.plan_code} "
+                        "plan's 12-hour usage limit. "
                         "Your usage resets at "
                         f"{rate_limit_decision.reset_at_display}."
                     )
@@ -263,6 +264,13 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "message": rate_limit_message,
                                 },
                                 "coming_from": "rate_limit/server",
+                                "rate_limit": {
+                                    "plan_code": rate_limit_decision.plan_code,
+                                    "spent_usd": str(rate_limit_decision.spent_usd),
+                                    "limit_usd": str(rate_limit_decision.limit_usd),
+                                    "window_hours": 12,
+                                    "reset_at": rate_limit_decision.reset_at.isoformat(),
+                                },
                             },
                         )
                     return

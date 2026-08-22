@@ -87,6 +87,7 @@ class LLMFactory():
         user_id: Optional[str] = None,
         fallback_provider: Optional[str] = None,
         fallback_model_name: Optional[str] = None,
+        credential_source: str = "platform",
         rate_limit_loop: Optional[Any] = None,
     ):
         """
@@ -101,6 +102,10 @@ class LLMFactory():
         self.rate_limit_loop = rate_limit_loop
         self.fallback_provider = fallback_provider
         self.fallback_model_name = fallback_model_name
+        self.credential_source = (
+            credential_source if credential_source in {"platform", "custom"}
+            else "platform"
+        )
 
     @staticmethod
     def create_llm(llm_config: LLMConfig, user_api_key: str = None):
@@ -409,6 +414,7 @@ class LLMFactory():
                     rate_limit_loop=self.rate_limit_loop,
                     fallback_provider=self.fallback_provider,
                     fallback_model_name=self.fallback_model_name,
+                    fallback_credential_source=self.credential_source,
                 )
 
                 executor = AgentExecutor(
@@ -1083,6 +1089,7 @@ class LLMFactory():
             },
             duration_ms=(time.perf_counter() - started_at) * 1000,
             aggregate_usage=aggregate_usage,
+            credential_source="platform",
         )
         return result
 
@@ -1173,6 +1180,7 @@ class LLMFactory():
         parsed_response: Dict[str, Any],
         duration_ms: float,
         aggregate_usage: Dict[str, Any],
+        credential_source: Optional[str] = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Calculate, persist, and aggregate usage, cost, and timing details.
 
@@ -1195,6 +1203,7 @@ class LLMFactory():
         details = {
             "provider": provider,
             "model_name": model_name,
+            "credential_source": credential_source or self.credential_source,
             "finish_reason": parsed_response.get("finish_reason"),
             "llm_duration_ms": round(duration_ms, 2),
         }
@@ -1422,6 +1431,7 @@ class LLMFactory():
                 rate_limit_loop=self.rate_limit_loop,
                 fallback_provider=self.fallback_provider,
                 fallback_model_name=self.fallback_model_name,
+                fallback_credential_source=self.credential_source,
             )
             # callbacks = handler.as_list()
 

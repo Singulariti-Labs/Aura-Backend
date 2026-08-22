@@ -19,8 +19,6 @@ DEFAULT_RETRY_DELAY_SECONDS = float(os.getenv("RATE_LIMIT_RETRY_DELAY_SECONDS", 
 DEFAULT_LIMIT_USD = Decimal(os.getenv("RATE_LIMIT_DEFAULT_LIMIT_USD", "3"))
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 _BACKGROUND_FUTURES: set[Any] = set()
-
-
 @dataclass(frozen=True)
 class TokenUsageEvent:
     user_id: str
@@ -29,6 +27,7 @@ class TokenUsageEvent:
     spent_usd: Decimal
     provider: Optional[str] = None
     model_name: Optional[str] = None
+    credential_source: str = "platform"
 
 
 def schedule_token_usage_update(
@@ -94,6 +93,30 @@ def schedule_token_usage_update(
     )
 
 
+async def drain_token_usage_updates(timeout_seconds: float = 10) -> None:
+    """Give in-flight local usage writes time to finish during clean shutdown.
+
+    This does not affect request latency. It prevents normal deployments and
+    graceful restarts from closing the database pool while accounting tasks are
+    still committing their usage ledger records.
+    """
+
+    pending_tasks = tuple(task for task in _BACKGROUND_TASKS if not task.done())
+    if not pending_tasks:
+        return
+    done, pending = await asyncio.wait(pending_tasks, timeout=timeout_seconds)
+    for task in done:
+        try:
+            task.result()
+        except (asyncio.CancelledError, Exception):
+            logger.exception("Usage update failed while draining during shutdown")
+    if pending:
+        logger.warning(
+            "%d usage update task(s) did not finish before shutdown",
+            len(pending),
+        )
+
+
 def _build_usage_event(
     *,
     user_id: Optional[str],
@@ -118,6 +141,9 @@ def _build_usage_event(
     details = details or {}
     provider = details.get("provider")
     model_name = details.get("model_name")
+    credential_source = str(details.get("credential_source") or "platform")
+    if credential_source not in {"platform", "custom"}:
+        credential_source = "platform"
 
     if spent_usd == 0 and (input_tokens > 0 or output_tokens > 0):
         spent_usd = calculate_token_cost_usd(
@@ -126,6 +152,11 @@ def _build_usage_event(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
+
+    # Custom/BYOK calls are useful for token analytics but do not consume the
+    # platform-funded subscription allowance.
+    if credential_source == "custom":
+        spent_usd = Decimal("0")
 
     if input_tokens == 0 and output_tokens == 0 and spent_usd == 0:
         return None
@@ -137,6 +168,7 @@ def _build_usage_event(
         spent_usd=spent_usd,
         provider=provider,
         model_name=model_name,
+        credential_source=credential_source,
     )
 
 
@@ -197,117 +229,125 @@ async def _record_token_usage(*, pool: Pool, event: TokenUsageEvent) -> None:
 
             rate_limit_row = await conn.fetchrow(
                 """
-                SELECT id, window_spent_usd, limit_usd
+                SELECT id, plan_code, window_spent_usd, limit_usd
                 FROM rate_limits
                 WHERE user_id = $1
-                ORDER BY updated_at DESC
-                LIMIT 1
+                FOR UPDATE
                 """,
                 event.user_id,
             )
 
-            if rate_limit_row:
-                limit_usd = _safe_decimal(rate_limit_row["limit_usd"]) or DEFAULT_LIMIT_USD
-                window_spent_usd = _safe_decimal(rate_limit_row["window_spent_usd"])
-                updated_window_spent_usd = window_spent_usd + event.spent_usd
-                status = _status_for_spend(updated_window_spent_usd, limit_usd)
-
-                await conn.execute(
+            if rate_limit_row is None:
+                plan = await conn.fetchrow(
                     """
-                    UPDATE rate_limits
-                    SET
-                        window_input_tokens = COALESCE(window_input_tokens, 0) + $2,
-                        window_output_tokens = COALESCE(window_output_tokens, 0) + $3,
-                        window_spent_usd = $4,
-                        limit_usd = COALESCE(limit_usd, $5),
-                        status = $6,
-                        updated_at = $7
-                    WHERE id = $1
+                    SELECT
+                        users.plan_code,
+                        plans.usage_limit_usd,
+                        CASE
+                            WHEN billing.entitlement_source = 'promo'
+                                THEN billing.access_until
+                            ELSE NULL
+                        END AS plan_expires_at
+                    FROM users
+                    JOIN subscription_plans AS plans
+                      ON plans.code = users.plan_code
+                    LEFT JOIN user_billing AS billing
+                      ON billing.user_id = users.id
+                    WHERE users.id = $1
                     """,
-                    rate_limit_row["id"],
-                    event.input_tokens,
-                    event.output_tokens,
-                    updated_window_spent_usd,
-                    DEFAULT_LIMIT_USD,
-                    status,
-                    db_now,
+                    event.user_id,
                 )
-            else:
-                status = _status_for_spend(event.spent_usd, DEFAULT_LIMIT_USD)
+                plan_code = str(plan["plan_code"] if plan else "free")
+                limit_usd = _safe_decimal(
+                    plan["usage_limit_usd"] if plan else DEFAULT_LIMIT_USD
+                ) or DEFAULT_LIMIT_USD
                 await conn.execute(
                     """
                     INSERT INTO rate_limits (
                         id,
                         user_id,
+                        plan_code,
+                        plan_expires_at,
                         window_start,
                         window_input_tokens,
                         window_output_tokens,
                         window_spent_usd,
                         limit_usd,
                         status,
+                        block_reason,
                         updated_at
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    VALUES ($1, $2, $3, $4, $5, 0, 0, 0, $6, 'active', NULL, $5)
                     """,
                     row_id,
                     event.user_id,
+                    plan_code,
+                    plan["plan_expires_at"] if plan else None,
                     db_now,
-                    event.input_tokens,
-                    event.output_tokens,
-                    event.spent_usd,
-                    DEFAULT_LIMIT_USD,
-                    status,
-                    db_now,
+                    limit_usd,
                 )
+                rate_limit_row = {
+                    "id": row_id,
+                    "plan_code": plan_code,
+                    "window_spent_usd": Decimal("0"),
+                    "limit_usd": limit_usd,
+                }
 
-            usage_row = await conn.fetchrow(
+            limit_usd = _safe_decimal(rate_limit_row["limit_usd"]) or DEFAULT_LIMIT_USD
+            current_spend = _safe_decimal(rate_limit_row["window_spent_usd"])
+            updated_spend = current_spend + event.spent_usd
+            rate_status = _status_for_spend(updated_spend, limit_usd)
+
+            await conn.execute(
                 """
-                SELECT id
-                FROM user_token_usage
-                WHERE user_id = $1
-                ORDER BY updated_at DESC
-                LIMIT 1
+                UPDATE rate_limits
+                SET
+                    window_input_tokens = window_input_tokens + $2,
+                    window_output_tokens = window_output_tokens + $3,
+                    window_spent_usd = $4,
+                    status = $5,
+                    block_reason = $6,
+                    updated_at = $7
+                WHERE id = $1
                 """,
-                event.user_id,
+                rate_limit_row["id"],
+                event.input_tokens,
+                event.output_tokens,
+                updated_spend,
+                rate_status,
+                "usage_limit" if rate_status == "blocked" else None,
+                db_now,
             )
 
-            if usage_row:
-                await conn.execute(
-                    """
-                    UPDATE user_token_usage
-                    SET
-                        total_input_tokens = COALESCE(total_input_tokens, 0) + $2,
-                        total_output_tokens = COALESCE(total_output_tokens, 0) + $3,
-                        total_spent_usd = COALESCE(total_spent_usd, 0) + $4,
-                        updated_at = $5
-                    WHERE id = $1
-                    """,
-                    usage_row["id"],
-                    event.input_tokens,
-                    event.output_tokens,
-                    event.spent_usd,
-                    db_now,
+            await conn.execute(
+                """
+                INSERT INTO user_token_usage (
+                    id,
+                    user_id,
+                    total_input_tokens,
+                    total_output_tokens,
+                    total_spent_usd,
+                    updated_at
                 )
-            else:
-                await conn.execute(
-                    """
-                    INSERT INTO user_token_usage (
-                        id,
-                        user_id,
-                        total_input_tokens,
-                        total_output_tokens,
-                        total_spent_usd,
-                        updated_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    """,
-                    usage_id,
-                    event.user_id,
-                    event.input_tokens,
-                    event.output_tokens,
-                    event.spent_usd,
-                    db_now,
-                )
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (user_id) DO UPDATE
+                SET
+                    total_input_tokens = user_token_usage.total_input_tokens
+                        + EXCLUDED.total_input_tokens,
+                    total_output_tokens = user_token_usage.total_output_tokens
+                        + EXCLUDED.total_output_tokens,
+                    total_spent_usd = user_token_usage.total_spent_usd
+                        + EXCLUDED.total_spent_usd,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                usage_id,
+                event.user_id,
+                event.input_tokens,
+                event.output_tokens,
+                event.spent_usd,
+                db_now,
+            )
+
 
 
 def _safe_int(value: Any) -> int:
@@ -333,11 +373,11 @@ def _status_for_spend(spent_usd: Decimal, limit_usd: Decimal) -> str:
 
 def _as_db_timestamp(value: datetime) -> datetime:
     """
-    Converts an internal UTC datetime to naive UTC for existing DB columns.
+    Return an aware UTC timestamp for TIMESTAMPTZ database columns.
     """
     if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _log_background_task_error(task: asyncio.Task) -> None:

@@ -67,6 +67,11 @@ class Agent(BaseAgent):
         self.rate_limit_loop = rate_limit_loop
         self.llm_config = llm
         self.llm_provider = llm.provider
+        # BYOK calls are still audited, but their provider cost must not consume
+        # the platform-funded subscription allowance.
+        self.credential_source = llm.credential_source or (
+            "custom" if llm.api_key else "platform"
+        )
         self.memory = Memory()
         self.llm_factory = LLMFactory(
             self.memory,
@@ -75,6 +80,7 @@ class Agent(BaseAgent):
             rate_limit_loop=self.rate_limit_loop,
             fallback_provider=self.llm_config.provider,
             fallback_model_name=self.llm_config.model_name,
+            credential_source=self.credential_source,
         )
         self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
@@ -95,7 +101,7 @@ class Agent(BaseAgent):
         self.aura_config = aura_config or AuraConfig()
         # Runtime-bound tools must use the scheduler's operation ID. For normal
         # tasks this equals task_id; standalone compression uses compression_id.
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.runtime_task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop)
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.runtime_task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop, credential_source=self.credential_source)
         self.payload = payload
         self.attached_files = attached_files
         self.attached_images = attached_images

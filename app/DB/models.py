@@ -64,6 +64,8 @@ class User(TypedDict, total=False):
     name: str  # User display name
     auth0_id: Optional[str]  # Auth0 user identifier
     hashed_password: Optional[str]  # Hashed password (optional for Auth0 users)
+    plan_code: Literal["free", "mini", "pro", "max"]
+    plan_updated_at: datetime
     created_at: datetime  # User creation timestamp
     updated_at: Optional[datetime]  # Last update timestamp
 
@@ -90,12 +92,15 @@ class RateLimit(TypedDict, total=False):
     """
     id: str  # UUID (primary key)
     user_id: str  # Foreign key to User.id
+    plan_code: Literal["free", "mini", "pro", "max"]
     window_start: datetime  # Start time for the active rate-limit window
     window_input_tokens: int  # Input tokens used in the active window
     window_output_tokens: int  # Output tokens used in the active window
     window_spent_usd: Decimal  # USD spent in the active window
     limit_usd: Decimal  # USD limit for the active window
     status: Literal["active", "blocked"]  # Rate-limit status
+    block_reason: Optional[Literal["usage_limit"]]
+    plan_expires_at: Optional[datetime]
     updated_at: datetime  # Last update timestamp
 
 
@@ -114,3 +119,82 @@ class UserTokenUsage(TypedDict, total=False):
     total_output_tokens: int  # Total output tokens used by the user
     total_spent_usd: Decimal  # Total USD spent by the user
     updated_at: datetime  # Last update timestamp
+
+
+# ---------- Subscription Plan ----------
+class SubscriptionPlan(TypedDict, total=False):
+    """One locally cached Free/Mini/Pro/Max plan definition."""
+
+    code: Literal["free", "mini", "pro", "max"]
+    name: str
+    price_cents: int
+    currency: str
+    billing_interval: Optional[Literal["month", "year"]]
+    stripe_product_id: Optional[str]
+    stripe_price_id: Optional[str]
+    usage_limit_usd: Decimal
+    window_hours: int
+    features: dict
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- User Billing ----------
+class UserBilling(TypedDict, total=False):
+    """Current local payment or promotional entitlement snapshot."""
+
+    user_id: str
+    plan_code: Literal["free", "mini", "pro", "max"]
+    entitlement_status: Literal["active", "grace", "restricted"]
+    entitlement_source: Literal["free", "promo", "payment", "admin"]
+    promo_redemption_id: Optional[str]
+    stripe_customer_id: Optional[str]
+    stripe_subscription_id: Optional[str]
+    stripe_subscription_status: Optional[str]
+    stripe_product_id: Optional[str]
+    stripe_price_id: Optional[str]
+    current_period_start: Optional[datetime]
+    current_period_end: Optional[datetime]
+    access_started_at: datetime
+    access_until: Optional[datetime]
+    cancel_at_period_end: bool
+    canceled_at: Optional[datetime]
+    last_stripe_event_id: Optional[str]
+    last_stripe_event_created_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- Promo Code ----------
+class PromoCode(TypedDict, total=False):
+    """A hashed promotion definition; the redeemable plaintext is never stored."""
+
+    id: str
+    code_hash: str
+    code_hint: str
+    plan_code: Literal["mini", "pro", "max"]
+    active: bool
+    valid_from: datetime
+    valid_until: Optional[datetime]
+    access_duration_days: Optional[int]
+    max_redemptions: Optional[int]
+    redemption_count: int
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- Promo Redemption ----------
+class PromoRedemption(TypedDict, total=False):
+    """A user's immutable record of redeeming one promotional code."""
+
+    id: str
+    promo_code_id: str
+    user_id: str
+    granted_plan_code: Literal["mini", "pro", "max"]
+    previous_plan_code: Literal["free", "mini", "pro", "max"]
+    redeemed_at: datetime
+    access_expires_at: Optional[datetime]
+    status: Literal["active", "expired", "revoked"]
+    revoked_at: Optional[datetime]
