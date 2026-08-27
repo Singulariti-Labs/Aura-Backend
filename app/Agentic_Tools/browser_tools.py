@@ -12,6 +12,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.DB.Queries.agent_event import create_agent_event
 from app.LLM.memory import Memory
+from app.LLM.model_bridge.common import browser_vision_prompt
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
 from app.helper import update_memory
@@ -1036,6 +1037,8 @@ class BrowserTools:
         question: str,
         annotate: bool = False,
         full: bool = False,
+        scale_out: Optional[Dict[str, int]] = None,
+        scale_note: Optional[str] = None,
         tool_call_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Capture the current browser page for native visual inspection.
@@ -1048,6 +1051,8 @@ class BrowserTools:
             question: Visual question the model should answer from the screenshot.
             annotate: Whether the client should label interactive page elements.
             full: Capture full page if true, visible viewport only if false.
+            scale_out: Optional screenshot scaling metadata object.
+            scale_note: Optional scaling note to include in the model instruction.
             tool_call_id: Optional model tool-call ID used to correlate the result.
 
         Returns:
@@ -1058,6 +1063,10 @@ class BrowserTools:
             "annotate": annotate,
             "full": full,
         }
+        if scale_out is not None:
+            input_params["scale_out"] = scale_out
+        if scale_note is not None:
+            input_params["scale_note"] = scale_note
 
         try:
             # Ask the client browser to capture and optionally annotate the page.
@@ -1163,6 +1172,8 @@ class BrowserTools:
                         "image_size_bytes": image_size_bytes,
                         "native_vision": True,
                     }
+                    if scale_note is not None:
+                        final_result["scale_note"] = scale_note
                     if result.get("annotations") is not None:
                         final_result["annotations"] = result["annotations"]
                     if result.get("fallback_warning") is not None:
@@ -1195,7 +1206,7 @@ class BrowserTools:
             memory_result = {
                 key: value
                 for key, value in final_result.items()
-                if key != "image_data_url"
+                if key not in {"image_data_url", "scale_note"}
             }
             memory_content: Any = json.dumps(memory_result)
             if final_result.get("success") is True:
@@ -1205,9 +1216,9 @@ class BrowserTools:
                     {"type": "text", "text": json.dumps(memory_result)},
                     {
                         "type": "text",
-                        "text": (
-                            "Analyze this browser screenshot and answer: "
-                            f"{final_result['question']}"
+                        "text": browser_vision_prompt(
+                            final_result["question"],
+                            final_result.get("scale_note"),
                         ),
                     },
                     {

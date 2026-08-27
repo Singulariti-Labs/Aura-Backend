@@ -1,5 +1,5 @@
 from pydantic import BaseModel, model_validator, Field
-from typing import Literal, Union, List, Optional
+from typing import Dict, Literal, Union, List, Optional
 from enum import Enum
 
 
@@ -401,6 +401,20 @@ class BrowserVisionInput(BaseModel):
         default=False,
         description=(
             "Capture full page if true, visible viewport only if false."
+        ),
+    )
+    scale_out: Optional[Dict[str, int]] = Field(
+        default=None,
+        description=(
+            "Optional screenshot scaling metadata object containing orig_width, "
+            "orig_height, new_width, and new_height integer values."
+        ),
+    )
+    scale_note: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional note describing the screenshot scaling. When supplied, "
+            "the note is included with the visual instruction sent to the model."
         ),
     )
 
