@@ -30,6 +30,29 @@ def _client_compression_trigger(trigger_reason: Optional[str]) -> str:
     return str(trigger_reason or "manual")
 
 
+def _patch_result_paths(result: Dict[str, Any]) -> List[str]:
+    """Extract paths actually changed from a canonical patch tool result."""
+
+    for block in result.get("content", []):
+        if block.get("type") != "text":
+            continue
+        try:
+            payload = json.loads(str(block.get("text") or ""))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        changed_paths: List[str] = []
+        for field_name in ("files_modified", "files_created", "files_deleted"):
+            values = payload.get(field_name)
+            if isinstance(values, list):
+                changed_paths.extend(str(value) for value in values if value)
+        return changed_paths
+
+    return []
+
+
 class ContextManager:
     """Own the canonical resumable context for one running agent loop."""
 
@@ -146,18 +169,27 @@ class ContextManager:
         files_changed = list(self.snapshot.checkpoint.files_changed)
         mutating_tools = {
             "create_file", "edit_file", "rewrite_file", "str_replace",
-            "insert_str", "delete_file",
+            "insert_str", "delete_file", "patch",
         }
         for result in assigned:
             call_id = result.get("tool_call_id")
             if call_id and call_id not in completed:
                 completed.append(str(call_id))
             call = latest_calls.get(str(call_id))
-            if call and call.get("name") in mutating_tools and not result.get("is_error"):
+            if call and call.get("name") in mutating_tools:
                 call_input = call.get("input") or {}
-                path = call_input.get("path") or call_input.get("filePath")
-                if path and str(path) not in files_changed:
-                    files_changed.append(str(path))
+                changed_paths = []
+                if not result.get("is_error"):
+                    path = call_input.get("path") or call_input.get("filePath")
+                    if path:
+                        changed_paths.append(str(path))
+                if call.get("name") == "patch":
+                    # V4A input has no single path, and a failed apply may still
+                    # report files changed before the failure occurred.
+                    changed_paths.extend(_patch_result_paths(result))
+                for path in changed_paths:
+                    if path not in files_changed:
+                        files_changed.append(path)
         self.snapshot.checkpoint.completed_tool_call_ids = completed
         self.snapshot.checkpoint.pending_tool_call_ids = []
         self.snapshot.checkpoint.files_changed = files_changed

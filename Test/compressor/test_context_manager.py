@@ -37,6 +37,72 @@ class ContextManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved.next_sequence, 3)
         self.assertEqual(len(saved.canonical_messages), 2)
 
+    async def test_patch_result_records_all_changed_files_after_partial_failure(self):
+        store = InMemoryContextStore()
+        manager = ContextManager(
+            task_id="task",
+            chat_id="chat",
+            agent_id="main",
+            provider="test",
+            model="small",
+            profile=ModelContextProfile(
+                provider="test",
+                model="small",
+                context_window=1000,
+                max_output_tokens=100,
+            ),
+            messages=[],
+            store=store,
+        )
+        await manager.initialize()
+        await manager.record_assistant(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_call",
+                        "tool_call_id": "toolu_patch",
+                        "name": "patch",
+                        "input": {"mode": "patch", "patch": "*** Begin Patch"},
+                    }
+                ],
+            }
+        )
+
+        await manager.record_tool_batch(
+            [
+                {
+                    "role": "tool",
+                    "tool_call_id": "toolu_patch",
+                    "tool_name": "patch",
+                    "is_error": True,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "success": False,
+                                    "error": "A later patch section failed",
+                                    "files_modified": ["C:/project/src/a.ts"],
+                                    "files_created": ["C:/project/src/b.ts"],
+                                    "files_deleted": ["C:/project/src/old.ts"],
+                                }
+                            ),
+                        }
+                    ],
+                }
+            ]
+        )
+
+        self.assertEqual(
+            manager.snapshot.checkpoint.files_changed,
+            [
+                "C:/project/src/a.ts",
+                "C:/project/src/b.ts",
+                "C:/project/src/old.ts",
+            ],
+        )
+
     async def test_compression_replaces_older_messages_and_emits_client_event(self):
         store = InMemoryContextStore()
         events = []

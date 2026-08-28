@@ -17,6 +17,7 @@ from app.Tools.edit_file import EditFileTool
 from app.Tools.insert_str import InsertStrTool
 from app.Tools.rewrite_file import RewriteFileTool
 from app.Tools.str_replace import StrReplaceTool
+from app.Tools.patch import PatchTool
 from app.Tools.execute_command import ExecuteCommandTool
 from app.Tools.grep import GrepTool
 from app.Tools.ls import LSTool
@@ -87,6 +88,7 @@ class Tools():
         self.edit_file_tool = EditFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.rewrite_file_tool = RewriteFileTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.str_replace_tool = StrReplaceTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.patch_tool = PatchTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.execute_command_tool = ExecuteCommandTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.grep_tool = GrepTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.ls_tool = LSTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
@@ -141,6 +143,7 @@ class Tools():
                  self.insert_str_tool.to_tool(),
                  self.rewrite_file_tool.to_tool(),
                  self.str_replace_tool.to_tool(),
+                 self.patch_tool.to_tool(),
                  self.execute_command_tool.to_tool(),
                  self.grep_tool.to_tool(),
                  self.ls_tool.to_tool(),

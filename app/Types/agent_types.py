@@ -81,7 +81,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "patch", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -243,6 +243,71 @@ class StrReplaceToolInput(BaseModel):
     old_str: str = Field(..., description="Text to be replaced (must appear exactly once)")
     new_str: str = Field(..., description="Replacement text")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user, using for internal system processing ie, Memory and Conscious Files")
+
+class PatchToolInput(BaseModel):
+    """Validated input for targeted replacements and V4A bulk patches."""
+
+    mode: Literal["replace", "patch"] = Field(
+        default="replace",
+        description=(
+            "Edit mode. 'replace' requires path, old_string, and new_string. "
+            "'patch' requires V4A patch content. Defaults to 'replace'."
+        ),
+    )
+    path: Optional[str] = Field(
+        default=None,
+        description="Required in replace mode. Path to the file to edit.",
+    )
+    old_string: Optional[str] = Field(
+        default=None,
+        description=(
+            "Required in replace mode. Text to find; it must be unique unless "
+            "replace_all is true."
+        ),
+    )
+    new_string: Optional[str] = Field(
+        default=None,
+        description=(
+            "Required in replace mode. Replacement text, which must differ from "
+            "old_string. Use an empty string to delete the match."
+        ),
+    )
+    replace_all: bool = Field(
+        default=False,
+        description=(
+            "Replace every occurrence instead of requiring a unique match. "
+            "Applies only in replace mode."
+        ),
+    )
+    patch: Optional[str] = Field(
+        default=None,
+        description="Required in patch mode. V4A multi-file patch content.",
+    )
+
+    @model_validator(mode="after")
+    def validate_mode_inputs(self) -> 'PatchToolInput':
+        """Require the fields for the selected mode while allowing deletion."""
+
+        if self.mode == "replace":
+            missing = [
+                field_name
+                for field_name in ("path", "old_string", "new_string")
+                if getattr(self, field_name) is None
+            ]
+            if missing:
+                raise ValueError(
+                    "replace mode requires: " + ", ".join(missing)
+                )
+            if not self.path:
+                raise ValueError("path must not be empty in replace mode")
+            if not self.old_string:
+                raise ValueError("old_string must not be empty in replace mode")
+            if self.old_string == self.new_string:
+                raise ValueError("new_string must differ from old_string")
+        elif not self.patch:
+            raise ValueError("patch mode requires non-empty patch content")
+
+        return self
 
 class RewriteFileToolInput(BaseModel):
     path: str = Field(..., description="Path to the file to be rewritten, relative to /singulariti_workspace (e.g., 'src/main.py')")
