@@ -155,7 +155,7 @@ class TaskSchedulerLifecycleTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "app.Task.task_scheduler.send_ws_message",
                 new_callable=AsyncMock,
-            ),
+            ) as send,
         ):
             await self.scheduler.submit(
                 task_id="running",
@@ -174,6 +174,10 @@ class TaskSchedulerLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 websocket=self.websocket,
                 pool=self.pool,
                 runner_factory=queued_runner,
+                emit_status=False,
+                compression_trigger="preflight",
+                client_task_id="source-task",
+                compression_id="queued",
             )
 
             self.assertFalse(
@@ -186,6 +190,21 @@ class TaskSchedulerLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await self.coordinator.get_task("queued"))
             self.assertIsNone(
                 self.runtime_manager.get_state_or_none("queued")
+            )
+            compression_call = next(
+                call
+                for call in send.await_args_list
+                if call.kwargs.get("type") == "compression"
+            )
+            self.assertEqual(
+                compression_call.kwargs["payload"]["trigger"],
+                "preflight",
+            )
+            self.assertEqual(compression_call.kwargs["task_id"], "source-task")
+            self.assertEqual(compression_call.kwargs["compression_id"], "queued")
+            self.assertEqual(
+                compression_call.kwargs["payload"]["compression_id"],
+                "queued",
             )
 
             running_task = self.runtime_manager.get_state("running").task

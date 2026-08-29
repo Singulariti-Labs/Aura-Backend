@@ -6,6 +6,7 @@ from typing import Literal, Optional
 
 from asyncpg import Pool
 
+from app.DB.Queries.promotion import expire_promotion_if_due
 from app.RateLimit.rate_limit_service import DEFAULT_LIMIT_USD
 from app.helper import format_reset_time
 
@@ -26,6 +27,9 @@ class RateLimitDecision:
     """
     allowed: bool
     status: RateLimitStatus
+    plan_code: str
+    spent_usd: Decimal
+    limit_usd: Decimal
     reset_at: datetime
     reset_at_display: str
 
@@ -63,12 +67,13 @@ async def check_rate_limit_for_request(
                     window_output_tokens,
                     window_spent_usd,
                     limit_usd,
+                    plan_code,
+                    plan_expires_at,
                     status,
+                    block_reason,
                     updated_at
                 FROM rate_limits
                 WHERE user_id = $1
-                ORDER BY updated_at DESC
-                LIMIT 1
                 """,
                 user_id,
             )
@@ -81,6 +86,30 @@ async def check_rate_limit_for_request(
                     timezone_name=timezone_name,
                 )
 
+            limit_usd = _decimal_or_default(row["limit_usd"], DEFAULT_LIMIT_USD)
+            plan_code = str(row["plan_code"] or "free")
+            window_spent_usd = _decimal_or_default(
+                row["window_spent_usd"],
+                DEFAULT_SPENT_USD,
+            )
+            plan_expires_at = _as_optional_utc_datetime(row["plan_expires_at"])
+
+            # Expiration is checked from the already-fetched cache column. Only
+            # the first request after expiry performs the downgrade writes.
+            if plan_expires_at is not None and plan_expires_at <= now:
+                expired_plan = await expire_promotion_if_due(
+                    conn,
+                    user_id=user_id,
+                    now=now,
+                    current_spent_usd=window_spent_usd,
+                )
+                if expired_plan is not None:
+                    plan_code = str(expired_plan["plan_code"])
+                    limit_usd = _decimal_or_default(
+                        expired_plan["limit_usd"],
+                        DEFAULT_LIMIT_USD,
+                    )
+
             window_start = _as_utc_datetime(row["window_start"] or now)
             reset_at = window_start + RATE_LIMIT_WINDOW
 
@@ -89,25 +118,26 @@ async def check_rate_limit_for_request(
                     conn=conn,
                     user_id=user_id,
                     now=now,
+                    plan_code=plan_code,
+                    limit_usd=limit_usd,
                     timezone_name=timezone_name,
                 )
 
-            limit_usd = _decimal_or_default(row["limit_usd"], DEFAULT_LIMIT_USD)
-            window_spent_usd = _decimal_or_default(
-                row["window_spent_usd"],
-                DEFAULT_SPENT_USD,
-            )
-
             if window_spent_usd < limit_usd:
-                await _set_status(
-                    conn=conn,
-                    user_id=user_id,
-                    status="active",
-                    now=now,
-                )
+                if row["status"] != "active" or row["block_reason"] is not None:
+                    await _set_status(
+                        conn=conn,
+                        user_id=user_id,
+                        status="active",
+                        block_reason=None,
+                        now=now,
+                    )
                 return _decision(
                     allowed=True,
                     status="active",
+                    plan_code=plan_code,
+                    spent_usd=window_spent_usd,
+                    limit_usd=limit_usd,
                     reset_at=reset_at,
                     timezone_name=timezone_name,
                 )
@@ -116,11 +146,15 @@ async def check_rate_limit_for_request(
                 conn=conn,
                 user_id=user_id,
                 status="blocked",
+                block_reason="usage_limit",
                 now=now,
             )
             return _decision(
                 allowed=False,
                 status="blocked",
+                plan_code=plan_code,
+                spent_usd=window_spent_usd,
+                limit_usd=limit_usd,
                 reset_at=reset_at,
                 timezone_name=timezone_name,
             )
@@ -137,28 +171,56 @@ async def _create_default_window(
     Creates the user's first rate-limit row with default active counters.
     """
     db_now = _as_db_timestamp(now)
+    plan = await conn.fetchrow(
+        """
+        SELECT
+            users.plan_code,
+            plans.usage_limit_usd,
+            CASE
+                WHEN billing.entitlement_source = 'promo'
+                    THEN billing.access_until
+                ELSE NULL
+            END AS plan_expires_at
+        FROM users
+        JOIN subscription_plans AS plans ON plans.code = users.plan_code
+        LEFT JOIN user_billing AS billing ON billing.user_id = users.id
+        WHERE users.id = $1
+        """,
+        user_id,
+    )
+    plan_code = str(plan["plan_code"] if plan else "free")
+    limit_usd = _decimal_or_default(
+        plan["usage_limit_usd"] if plan else None,
+        DEFAULT_LIMIT_USD,
+    )
+    plan_expires_at = plan["plan_expires_at"] if plan else None
     await conn.execute(
         """
         INSERT INTO rate_limits (
             id,
             user_id,
+            plan_code,
+            plan_expires_at,
             window_start,
             window_input_tokens,
             window_output_tokens,
             window_spent_usd,
             limit_usd,
             status,
+            block_reason,
             updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11)
         """,
         str(uuid.uuid4()),
         user_id,
+        plan_code,
+        plan_expires_at,
         db_now,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_SPENT_USD,
-        DEFAULT_LIMIT_USD,
+        limit_usd,
         "active",
         db_now,
     )
@@ -166,6 +228,9 @@ async def _create_default_window(
     return _decision(
         allowed=True,
         status="active",
+        plan_code=plan_code,
+        spent_usd=DEFAULT_SPENT_USD,
+        limit_usd=limit_usd,
         reset_at=now + RATE_LIMIT_WINDOW,
         timezone_name=timezone_name,
     )
@@ -176,6 +241,8 @@ async def _refresh_window(
     conn,
     user_id: str,
     now: datetime,
+    plan_code: str,
+    limit_usd: Decimal,
     timezone_name: Optional[str],
 ) -> RateLimitDecision:
     """
@@ -190,9 +257,9 @@ async def _refresh_window(
             window_input_tokens = $3,
             window_output_tokens = $4,
             window_spent_usd = $5,
-            limit_usd = COALESCE(limit_usd, $6),
-            status = $7,
-            updated_at = $8
+            status = $6,
+            block_reason = NULL,
+            updated_at = $7
         WHERE user_id = $1
         """,
         user_id,
@@ -200,7 +267,6 @@ async def _refresh_window(
         DEFAULT_TOKEN_COUNT,
         DEFAULT_TOKEN_COUNT,
         DEFAULT_SPENT_USD,
-        DEFAULT_LIMIT_USD,
         "active",
         db_now,
     )
@@ -208,6 +274,9 @@ async def _refresh_window(
     return _decision(
         allowed=True,
         status="active",
+        plan_code=plan_code,
+        spent_usd=DEFAULT_SPENT_USD,
+        limit_usd=limit_usd,
         reset_at=now + RATE_LIMIT_WINDOW,
         timezone_name=timezone_name,
     )
@@ -218,6 +287,7 @@ async def _set_status(
     conn,
     user_id: str,
     status: RateLimitStatus,
+    block_reason: Optional[str],
     now: datetime,
 ) -> None:
     """
@@ -227,11 +297,12 @@ async def _set_status(
     await conn.execute(
         """
         UPDATE rate_limits
-        SET status = $2, updated_at = $3
+        SET status = $2, block_reason = $3, updated_at = $4
         WHERE user_id = $1
         """,
         user_id,
         status,
+        block_reason,
         db_now,
     )
 
@@ -240,6 +311,9 @@ def _decision(
     *,
     allowed: bool,
     status: RateLimitStatus,
+    plan_code: str,
+    spent_usd: Decimal,
+    limit_usd: Decimal,
     reset_at: datetime,
     timezone_name: Optional[str],
 ) -> RateLimitDecision:
@@ -249,6 +323,9 @@ def _decision(
     return RateLimitDecision(
         allowed=allowed,
         status=status,
+        plan_code=plan_code,
+        spent_usd=spent_usd,
+        limit_usd=limit_usd,
         reset_at=reset_at,
         reset_at_display=format_reset_time(reset_at, timezone_name),
     )
@@ -277,8 +354,14 @@ def _as_utc_datetime(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _as_optional_utc_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    """Normalize an optional timestamp without manufacturing an expiry value."""
+
+    return _as_utc_datetime(value) if isinstance(value, datetime) else None
+
+
 def _as_db_timestamp(value: datetime) -> datetime:
     """
-    Converts an internal UTC datetime to naive UTC for existing DB columns.
+    Return an aware UTC timestamp for the database's TIMESTAMPTZ columns.
     """
-    return _as_utc_datetime(value).replace(tzinfo=None)
+    return _as_utc_datetime(value)

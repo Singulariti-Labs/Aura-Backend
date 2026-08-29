@@ -53,16 +53,25 @@ class Agent(BaseAgent):
         history: List[Dict] = [],
         attached_files: Optional[List[Dict[str, Any]]] = None,
         attached_images: Optional[List[Dict[str, Any]]] = None,
-        rate_limit_loop: Optional[Any] = None
+        rate_limit_loop: Optional[Any] = None,
+        runtime_task_id: Optional[str] = None,
+        compression_id: Optional[str] = None,
     ):
         self.query = query
         self.task_id = task_id
+        self.runtime_task_id = runtime_task_id or task_id
+        self.compression_id = compression_id
         self.chat_id = chat_id
         self.dbpool = pool
         self.user_id = user_id
         self.rate_limit_loop = rate_limit_loop
         self.llm_config = llm
         self.llm_provider = llm.provider
+        # BYOK calls are still audited, but their provider cost must not consume
+        # the platform-funded subscription allowance.
+        self.credential_source = llm.credential_source or (
+            "custom" if llm.api_key else "platform"
+        )
         self.memory = Memory()
         self.llm_factory = LLMFactory(
             self.memory,
@@ -71,6 +80,7 @@ class Agent(BaseAgent):
             rate_limit_loop=self.rate_limit_loop,
             fallback_provider=self.llm_config.provider,
             fallback_model_name=self.llm_config.model_name,
+            credential_source=self.credential_source,
         )
         self.llm = LLMFactory.create_llm(llm, user_api_key=llm.api_key)
         self.max_tokens = maxTokens
@@ -89,7 +99,9 @@ class Agent(BaseAgent):
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop)
+        # Runtime-bound tools must use the scheduler's operation ID. For normal
+        # tasks this equals task_id; standalone compression uses compression_id.
+        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.runtime_task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop, credential_source=self.credential_source)
         self.payload = payload
         self.attached_files = attached_files
         self.attached_images = attached_images
@@ -112,21 +124,25 @@ class Agent(BaseAgent):
 
         try:
             # Get web socket from task manager
-            task_state = task_manager.get_state(self.task_id)
+            task_state = task_manager.get_state(self.runtime_task_id)
             self.websocket = task_state.websocket
+            compression_only = bool(
+                self.payload.get("_force_preflight_compression", False)
+            )
 
             # Notify client present inside Main Agent
-            await send_ws_message(
-                websocket=self.websocket,
-                type="aura_status",
-                task_id=self.task_id,
-                chat_id=self.chat_id,
-                payload={
-                    "query": self.query,
-                    "message": "Running <AURA>",
-                    "status": "processing",
-                }
-            )
+            if not compression_only:
+                await send_ws_message(
+                    websocket=self.websocket,
+                    type="aura_status",
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    payload={
+                        "query": self.query,
+                        "message": "Running <AURA>",
+                        "status": "processing",
+                    }
+                )
 
             user_message = Message.user_message(content=self.query, base64_images=self.screenshot)
             self.memory.add_message(user_message)
@@ -134,23 +150,28 @@ class Agent(BaseAgent):
             # chat_history = self.memory.messages
             try:
                 # ⏸ Pause check before any heavy work
-                await task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.runtime_task_id)
 
-                available_tools = self.tools.get_agent_tools()
+                available_tools = (
+                    [] if compression_only else self.tools.get_agent_tools()
+                )
 
                 # ❌ Optional cancel check (recommended)
-                if task_manager.get_state(self.task_id).cancelled:
+                if task_manager.get_state(self.runtime_task_id).cancelled:
                     raise asyncio.CancelledError()
                 
                 # ⏸ Pause check again before the LLM call
-                await task_manager.wait_if_paused(self.task_id)
+                await task_manager.wait_if_paused(self.runtime_task_id)
                 result = None
 
                 #Get llm provider
                 llm_provider = self.llm_config.provider
 
                 # If the option is not complex_task or smart then run the main agent
-                if self.payload.get('option') not in ["complex_task", "smart"]:
+                if (
+                    not compression_only
+                    and self.payload.get('option') not in ["complex_task", "smart"]
+                ):
                     context_agent = ContextAgent(
                         query=self.query,
                         payload=self.payload,
@@ -228,6 +249,20 @@ class Agent(BaseAgent):
                         llm_provider=llm_provider,
                         screenshot=self.screenshot,
                         max_tokens=self.max_tokens,
+                        task_id=self.task_id,
+                        runtime_task_id=self.runtime_task_id,
+                        chat_id=self.chat_id,
+                        compression_id=self.compression_id,
+                        compression_enabled=self.aura_config.compression,
+                        force_preflight_compression=bool(
+                            self.payload.get("_force_preflight_compression", False)
+                        ),
+                        compression_range=self.payload.get("range"),
+                        compression_reason=(
+                            self.payload.get("trigger")
+                            if isinstance(self.payload.get("trigger"), str)
+                            else "compression_request"
+                        ),
                     )
 
                     final_result = None
@@ -236,37 +271,52 @@ class Agent(BaseAgent):
                     else:
                         final_result = "Aura LLM run failed, task failed to complete successfull."
 
-                    # SEND_RESPONSE_TO_CLIENT - Aura Agent output
-                    await send_ws_message(
-                        websocket=self.websocket,
-                        task_id=self.task_id,
-                        chat_id=self.chat_id,
-                        type="aura_message",
-                        payload={
-                            "content": {
-                                "role": "assistant",
-                                "message": final_result,
-                            },
-                            "coming_from": "aura_agent/server"
-                        }
-                    )
+                    if not compression_only:
+                        # SEND_RESPONSE_TO_CLIENT - Aura Agent output
+                        final_sequence = next(
+                            (
+                                message.get("sequence")
+                                for message in reversed(result.get("messages", []))
+                                if message.get("role") == "assistant"
+                            ),
+                            None,
+                        )
+                        await send_ws_message(
+                            websocket=self.websocket,
+                            task_id=self.task_id,
+                            chat_id=self.chat_id,
+                            type="aura_message",
+                            payload={
+                                "content": {
+                                    "role": "assistant",
+                                    "message": final_result,
+                                    "sequence": final_sequence,
+                                },
+                                "coming_from": "aura_agent/server"
+                            }
+                        )
 
-                    update_memory(role="assistant", content=final_result, memory=self.memory)
-                
+                        update_memory(
+                            role="assistant",
+                            content=final_result,
+                            memory=self.memory,
+                        )
+
                 # SEND_STATUS_TO_CLIENT - Aura Run Completed
                 print(f"\n\n----- AGENT RUN FINISHED -----\n\n")
 
-                await send_ws_message(
-                    websocket=self.websocket,
-                    type="aura_status",
-                    task_id=self.task_id,
-                    chat_id=self.chat_id,
-                    payload={
-                        "query": self.query,
-                        "message": "<AURA> run completed",
-                        "status": "completed",
-                    }
-                )
+                if not compression_only:
+                    await send_ws_message(
+                        websocket=self.websocket,
+                        type="aura_status",
+                        task_id=self.task_id,
+                        chat_id=self.chat_id,
+                        payload={
+                            "query": self.query,
+                            "message": "<AURA> run completed",
+                            "status": "completed",
+                        }
+                    )
                 return result
             
             except Exception as e:

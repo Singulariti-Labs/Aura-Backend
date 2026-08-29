@@ -26,7 +26,7 @@ class SupervisorAgent(BaseAgent):
     task dependencies, retries, and result aggregation.
     """
 
-    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None, rate_limit_loop: Optional[Any] = None):
+    def __init__(self, llm: BaseChatModel, task_id: str, chat_id: str, memory: Optional[Memory] = None, tools: Optional["Tools"] = None, maxTokens: int = 128000, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None, rate_limit_loop: Optional[Any] = None, credential_source: str = "platform"):
         # self.query = query; #WIP (need to see if query is required while init)
         self.llm = llm
         self.max_tokens = maxTokens
@@ -51,6 +51,7 @@ class SupervisorAgent(BaseAgent):
                 getattr(self.llm, "model_name", None)
                 or getattr(self.llm, "model", None)
             ),
+            credential_source=credential_source,
         )
         self.supervisor_prompt = SUPERVISOR_PROMPT
         self.tools = tools
@@ -351,7 +352,7 @@ class SupervisorAgent(BaseAgent):
             result = None
             # LLM call
             if query:
-                result = await self.llm_factory.aura_executor(
+                result = await self.llm_factory.aura_invoker(
                     query=query,
                     system_prompt=prompt,
                     tools=tools,
@@ -359,7 +360,10 @@ class SupervisorAgent(BaseAgent):
                     llm=self.llm,
                     llm_provider=self.llm_provider or self.llm_factory.detect_provider_from_llm(self.llm),
                     agent_type="aura",
-                    history=self.history
+                    history=self.history,
+                    task_id=self.task_id,
+                    chat_id=self.chat_id,
+                    compression_enabled=self.aura_config.compression,
                 )
 
                 final_result = None

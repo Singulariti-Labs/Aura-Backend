@@ -53,6 +53,11 @@ async def fetch_user_usage(pool: Pool, user_id: str) -> dict:
             ),
         },
         "rate_limit": {
+            "plan_code": _get(rate_limit_row, "plan_code") or "free",
+            "plan_expires_at": _as_utc_datetime(
+                _get(rate_limit_row, "plan_expires_at")
+            ),
+            "window_hours": int(RATE_LIMIT_WINDOW.total_seconds() // 3600),
             "window_start": window_start,
             "reset_at": window_start + RATE_LIMIT_WINDOW if window_start else None,
             "input_tokens": window_input_tokens,
@@ -62,6 +67,7 @@ async def fetch_user_usage(pool: Pool, user_id: str) -> dict:
             "limit_usd": limit_usd,
             "remaining_usd": max(limit_usd - window_spent_usd, Decimal("0")),
             "status": _get(rate_limit_row, "status") or "active",
+            "block_reason": _get(rate_limit_row, "block_reason"),
         },
     }
 

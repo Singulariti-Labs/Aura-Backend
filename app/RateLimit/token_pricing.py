@@ -7,6 +7,7 @@ USD_QUANTIZE = Decimal("0.000001")
 # Pricing per 1M tokens: (input price USD, output price USD).
 # Keep this table as the single source of truth for model cost estimates.
 MODEL_PRICING_PER_1M_TOKENS: dict[str, Tuple[Decimal, Decimal]] = {
+    "anthropic:claude-3-5-haiku-20241022": (Decimal("0.80"), Decimal("4.00")),
     "anthropic:claude-fable-5": (Decimal("10.00"), Decimal("50.00")),
     "anthropic:claude-opus-4-8": (Decimal("5.00"), Decimal("25.00")),
     "anthropic:claude-opus-4-7": (Decimal("5.00"), Decimal("25.00")),
