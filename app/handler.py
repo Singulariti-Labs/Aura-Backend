@@ -116,6 +116,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
         user_id: Optional[str] = None,
         fallback_provider: Optional[str] = None,
         fallback_model_name: Optional[str] = None,
+        fallback_credential_source: str = "platform",
         rate_limit_loop: Optional[Any] = None,
     ):
         super().__init__()
@@ -126,6 +127,11 @@ class AgentCallbackHandler(BaseCallbackHandler):
         self.rate_limit_loop = rate_limit_loop
         self.fallback_provider = fallback_provider
         self.fallback_model_name = fallback_model_name
+        self.fallback_credential_source = (
+            fallback_credential_source
+            if fallback_credential_source in {"platform", "custom"}
+            else "platform"
+        )
 
         # LLM state — populated in _handle_llm_response
         self.latest_llm_usage:    Optional[Dict[str, Any]] = None
@@ -271,6 +277,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
             self.latest_llm_details = {
                 'provider':        provider,
                 'model_name':      model_name,
+                'credential_source': self.fallback_credential_source,
                 'finish_reason':   finish_reason,
                 'llm_start_time':  round(start_time, 3),
                 'llm_end_time':    round(end_time, 3),
@@ -394,6 +401,7 @@ class AgentCallbackHandler(BaseCallbackHandler):
             self.latest_llm_details = {
                 'provider':        provider,
                 'model_name':      model_name,
+                'credential_source': self.fallback_credential_source,
                 'finish_reason':   finish_reason,
                 'llm_start_time':  round(start_time, 3),
                 'llm_end_time':    round(end_time, 3),

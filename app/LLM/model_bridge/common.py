@@ -162,6 +162,15 @@ def json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
+def browser_vision_prompt(question: Any, scale_note: Any = None) -> str:
+    """Build the visual instruction accompanying a browser screenshot."""
+
+    prompt = f"Analyze this browser screenshot and answer: {question}"
+    if scale_note is not None:
+        prompt += f"\n\nNote:{scale_note}"
+    return prompt
+
+
 def canonical_tool_result(
     *,
     tool_call: Dict[str, Any],
@@ -223,7 +232,10 @@ def canonical_tool_result(
                     [
                         {
                             "type": "text",
-                            "text": f"Analyze this browser screenshot and answer: {question}",
+                            "text": browser_vision_prompt(
+                                question,
+                                raw_result.get("scale_note"),
+                            ),
                         },
                         {
                             "type": "image",
@@ -254,6 +266,7 @@ def canonical_tool_result(
                     "image_base64",
                     "image_data_url",
                     "base64_images",
+                    "scale_note",
                 }
             }
             if image_data_url:

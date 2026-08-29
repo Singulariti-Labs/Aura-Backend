@@ -308,6 +308,118 @@ class FileEditor():
         except Exception as e:
             return { "success": False, "output": f"Error in replacing string: {str(e)}"}
 
+    async def patch(
+        self,
+        mode: str = "replace",
+        path: Optional[str] = None,
+        old_string: Optional[str] = None,
+        new_string: Optional[str] = None,
+        replace_all: bool = False,
+        patch: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+    ):
+        """Send a targeted replacement or V4A bulk patch to the client.
+
+        The client owns filesystem matching, patch application, diff generation,
+        and syntax checks. Its result is returned unchanged so every documented
+        success or failure field is available to the LLM.
+        """
+
+        try:
+            if mode == "patch":
+                tool_input = {
+                    "mode": mode,
+                    "patch": patch,
+                }
+            else:
+                tool_input = {
+                    "mode": mode,
+                    "path": path,
+                    "old_string": old_string,
+                    "new_string": new_string,
+                    "replace_all": replace_all,
+                }
+
+            await send_ws_message(
+                websocket=self.websocket,
+                type="client_tool_request",
+                chat_id=self.chat_id,
+                task_id=self.task_id,
+                payload={
+                    "tool": "patch",
+                    "tool_call_id": tool_call_id,
+                    "input": tool_input,
+                    "coming_from": "patch_tool_func/server",
+                },
+            )
+
+            # Record the same input sent to the client for event replay/debugging.
+            await create_agent_event(
+                pool=self.dbpool,
+                task_id=self.task_id,
+                role="tool",
+                message_type="client_tool_request",
+                tool="patch",
+                payload={
+                    "tool_call_id": tool_call_id,
+                    "input": tool_input,
+                },
+                seq=self.task_state.get_next_seq(),
+            )
+
+            # Match the response by tool_call_id so concurrent patch calls stay isolated.
+            tool_resp = await task_manager.wait_for_tool_response(
+                self.task_id,
+                tool_call_id,
+            )
+            response_type = tool_resp.get("type")
+            if response_type != "client_tool_response":
+                return {
+                    "success": False,
+                    "error": f"Unexpected response type: {response_type}",
+                }
+
+            payload = tool_resp.get("payload", {})
+            if payload.get("tool") != "patch":
+                return {
+                    "success": False,
+                    "error": (
+                        "Unexpected tool response: "
+                        f"{payload.get('tool') or 'missing tool name'}"
+                    ),
+                }
+
+            result = payload.get("result")
+            if not isinstance(result, dict):
+                return {
+                    "success": False,
+                    "error": "Patch client returned an invalid result payload",
+                }
+
+            # The normal tool-result bridge JSON-serializes this dictionary for the LLM.
+            arguments = tool_input.copy()
+            assistant_message = (
+                f"Editing files using patch tool args {json.dumps(arguments)}"
+            )
+            update_memory(
+                role="assistant",
+                content=assistant_message,
+                memory=self.shared_memory,
+            )
+            update_memory(
+                role="tool",
+                name="patch",
+                tool_call_id=tool_call_id,
+                content=json.dumps(result),
+                memory=self.shared_memory,
+            )
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Error while applying patch: {str(e)}",
+            }
+
     async def rewrite_file(self, path: str, content: str, permissions: str="644", hide: Optional[str] = "false", tool_call_id: Optional[str] = None):
         """Rewriting full file with content"""
         try:

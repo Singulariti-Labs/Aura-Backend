@@ -198,6 +198,31 @@ class _ConcurrentSendWebSocket:
 
 
 class WebSocketSendSerializationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_optional_compression_id_is_added_only_when_supplied(self):
+        websocket = _ConcurrentSendWebSocket()
+
+        await send_ws_message(
+            websocket,
+            type="compression",
+            task_id="source-task",
+            chat_id="chat",
+            compression_id="compression_123",
+            payload={"status": "completed"},
+        )
+        await send_ws_message(
+            websocket,
+            type="aura_status",
+            task_id="task",
+            chat_id="chat",
+            payload={"status": "processing"},
+        )
+
+        self.assertEqual(
+            websocket.messages[0]["compression_id"],
+            "compression_123",
+        )
+        self.assertNotIn("compression_id", websocket.messages[1])
+
     async def test_parallel_task_messages_are_serialized_per_socket(self):
         websocket = _ConcurrentSendWebSocket()
 

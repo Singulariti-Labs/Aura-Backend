@@ -3,6 +3,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from app.api.auth_utils import get_current_user, get_user_info, auth_scheme
 from app.DB.pool import get_pool
 from app.DB.Queries.user import sync_user, get_user_by_auth0_id
+from app.Subscription.config import get_billing_mode
+from app.Subscription.service import try_reconcile_stale_paid_entitlement
 from asyncpg import Pool
 import logging
 
@@ -50,6 +52,13 @@ async def sync_auth0_user(
 
     try:
         user = await sync_user(pool, user_payload)
+        if get_billing_mode() == "stripe":
+            reconciliation = await try_reconcile_stale_paid_entitlement(
+                pool=pool,
+                user_id=str(user["id"]),
+            )
+            if reconciliation == "reconciled":
+                user = await get_user_by_auth0_id(pool, auth0_id) or user
         logger.info(f"✅ User synced successfully: {user.get('email', 'unknown')} (ID: {user.get('id')})")
         return {"status": "success", "user": user}
     except Exception as e:

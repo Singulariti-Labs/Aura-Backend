@@ -72,5 +72,7 @@ class BrowserVisionTool(BaseTool):
             question=inputs.question,
             annotate=inputs.annotate,
             full=inputs.full,
+            scale_out=inputs.scale_out,
+            scale_note=inputs.scale_note,
             tool_call_id=tool_call_id,
         )

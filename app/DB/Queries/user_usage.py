@@ -29,17 +29,18 @@ async def get_user_rate_limit(pool: Pool, user_id: str) -> Optional[dict]:
         row = await conn.fetchrow(
             """
             SELECT
+                plan_code,
+                plan_expires_at,
                 window_start,
                 window_input_tokens,
                 window_output_tokens,
                 window_spent_usd,
                 limit_usd,
                 status,
+                block_reason,
                 updated_at
             FROM rate_limits
             WHERE user_id = $1
-            ORDER BY updated_at DESC
-            LIMIT 1
             """,
             user_id,
         )

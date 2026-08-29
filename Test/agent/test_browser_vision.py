@@ -35,12 +35,40 @@ class BrowserVisionInputTests(unittest.TestCase):
         self.assertEqual(inputs.question, "What is visible?")
         self.assertFalse(inputs.annotate)
         self.assertFalse(inputs.full)
+        self.assertIsNone(inputs.scale_out)
+        self.assertIsNone(inputs.scale_note)
         with self.assertRaises(ValidationError):
             BrowserVisionInput()
 
     def test_full_parameter_can_be_set_true(self):
         inputs = BrowserVisionInput(question="What is visible?", full=True)
         self.assertTrue(inputs.full)
+
+    def test_optional_scale_parameters_can_be_set(self):
+        inputs = BrowserVisionInput(
+            question="What is visible?",
+            scale_out={
+                "orig_width": 1200,
+                "orig_height": 10000,
+                "new_width": 600,
+                "new_height": 5000,
+            },
+            scale_note="The screenshot was scaled to fit the viewport.",
+        )
+
+        self.assertEqual(
+            inputs.scale_out,
+            {
+                "orig_width": 1200,
+                "orig_height": 10000,
+                "new_width": 600,
+                "new_height": 5000,
+            },
+        )
+        self.assertEqual(
+            inputs.scale_note,
+            "The screenshot was scaled to fit the viewport.",
+        )
 
 
 class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
@@ -82,15 +110,36 @@ class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
             question="Is there a CAPTCHA?",
             annotate=True,
             full=True,
+            scale_out={
+                "orig_width": 1200,
+                "orig_height": 10000,
+                "new_width": 600,
+                "new_height": 5000,
+            },
+            scale_note="The page was scaled out.",
             tool_call_id="call-vision",
         )
 
-        self.assertEqual(result, VISION_RESULT)
+        self.assertEqual(
+            result,
+            {**VISION_RESULT, "scale_note": "The page was scaled out."},
+        )
         request = send_ws_message_mock.await_args.kwargs
         self.assertEqual(request["payload"]["tool"], "browser_vision")
         self.assertEqual(
             request["payload"]["input"],
-            {"question": "Is there a CAPTCHA?", "annotate": True, "full": True},
+            {
+                "question": "Is there a CAPTCHA?",
+                "annotate": True,
+                "full": True,
+                "scale_out": {
+                    "orig_width": 1200,
+                    "orig_height": 10000,
+                    "new_width": 600,
+                    "new_height": 5000,
+                },
+                "scale_note": "The page was scaled out.",
+            },
         )
         create_agent_event_mock.assert_awaited_once()
 
@@ -101,6 +150,12 @@ class BrowserVisionBridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("data:image/png;base64", memory_content[0]["text"])
         self.assertEqual(memory_content[-1]["type"], "image")
         self.assertEqual(memory_content[-1]["data"], "PNG_BYTES")
+        self.assertEqual(
+            memory_content[1]["text"],
+            "Analyze this browser screenshot and answer: Is there a CAPTCHA?"
+            "\n\nNote:The page was scaled out.",
+        )
+        self.assertNotIn("scale_note", memory_content[0]["text"])
 
     @patch("app.Agentic_Tools.browser_tools.update_memory")
     @patch("app.Agentic_Tools.browser_tools.create_agent_event", new_callable=AsyncMock)
@@ -184,6 +239,31 @@ class BrowserVisionMultimodalTests(unittest.TestCase):
             image["image_url"],
             "data:image/png;base64,PNG_BYTES",
         )
+        visual_prompt = next(
+            block["text"]
+            for block in result["content"]
+            if block["type"] == "text"
+            and block["text"].startswith("Analyze this browser screenshot")
+        )
+        self.assertNotIn("\n\nNote:", visual_prompt)
+
+    def test_scale_note_is_appended_only_to_visual_prompt(self):
+        result = canonical_tool_result(
+            tool_call={"tool_call_id": "call-vision", "name": "browser_vision"},
+            result={**VISION_RESULT, "scale_note": "Coordinates were scaled."},
+        )
+
+        text_blocks = [
+            block["text"]
+            for block in result["content"]
+            if block["type"] == "text"
+        ]
+        self.assertNotIn("scale_note", text_blocks[0])
+        self.assertEqual(
+            text_blocks[1],
+            "Analyze this browser screenshot and answer: Is there a CAPTCHA?"
+            "\n\nNote:Coordinates were scaled.",
+        )
 
         history = [
             {
@@ -205,7 +285,11 @@ class BrowserVisionMultimodalTests(unittest.TestCase):
         self.assertNotIn("PNG_BYTES", tool_message["content"])
         self.assertNotIn("Analyze this browser screenshot", tool_message["content"])
         self.assertEqual(rich_message["role"], "user")
-        self.assertIn("Is there a CAPTCHA?", rich_message["content"][1]["text"])
+        self.assertEqual(
+            rich_message["content"][1]["text"],
+            "Analyze this browser screenshot and answer: Is there a CAPTCHA?"
+            "\n\nNote:Coordinates were scaled.",
+        )
         self.assertEqual(rich_message["content"][-1]["type"], "image_url")
 
     def test_anthropic_uses_separate_tool_result_and_vision_message(self):

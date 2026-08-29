@@ -28,6 +28,7 @@ TOOL_NAME_MAP = {
     "insert_str_tool":      ("insert_str",       "Insert a string at a specific line in a file"),
     "rewrite_file_tool":    ("rewrite_file",     "Fully rewrite a file with new content"),
     "str_replace_tool":     ("str_replace",      "Find and replace a string inside a file"),
+    "patch_tool":           ("patch",            "Make targeted replacements to the file contents or apply V4A multi-file patches or to make multiple changes in a given file"),
     "execute_command_tool": ("execute_command",  "Execute a shell command on the system"),
     "grep_tool":            ("grep",             "Search file contents using pattern matching"),
     "ls_tool":              ("ls",               "List contents of a directory"),

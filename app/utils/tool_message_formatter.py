@@ -7,6 +7,8 @@ from typing import Any, List, Optional, Sequence, Tuple
 from langchain_core.agents import AgentAction
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
+from app.LLM.model_bridge.common import browser_vision_prompt
+
 
 def format_multimodal_tool_messages(
     intermediate_steps: Sequence[Tuple[AgentAction, Any]],
@@ -79,9 +81,9 @@ def _create_tool_messages(
             "data": vision["image_base64"],
         }
         metadata_text = json.dumps(vision["metadata"], ensure_ascii=False)
-        question_text = (
-            "Analyze this browser screenshot and answer: "
-            f"{vision['question']}"
+        question_text = browser_vision_prompt(
+            vision["question"],
+            vision.get("scale_note"),
         )
 
         # Keep the tool acknowledgement text-only for every provider, then send
@@ -181,13 +183,14 @@ def _extract_browser_vision_observation(observation: Any) -> Optional[dict]:
     metadata = {
         key: value
         for key, value in payload.items()
-        if key != "image_data_url"
+        if key not in {"image_data_url", "scale_note"}
     }
     metadata["note"] = "Screenshot attached as image content."
     return {
         "image_base64": image_base64,
         "mime_type": mime_type,
         "question": question,
+        "scale_note": payload.get("scale_note"),
         "metadata": metadata,
     }
 

@@ -144,6 +144,23 @@ class ProviderMessageFormatterTests(unittest.TestCase):
 
 
 class AuraInvokerTests(unittest.IsolatedAsyncioTestCase):
+    def test_preflight_normalization_does_not_append_a_query_message(self):
+        history = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Latest query from the client"}],
+            }
+        ]
+
+        canonical, _native = LLMFactory._normalize_aura_conversation(
+            history=history,
+            user_message=None,
+            provider="openai",
+            system_prompt="Compress older context.",
+        )
+
+        self.assertEqual(canonical, history)
+
     async def test_openai_native_tool_loop_returns_final_output(self):
         first_response = SimpleNamespace(
             model="gpt-4.1",

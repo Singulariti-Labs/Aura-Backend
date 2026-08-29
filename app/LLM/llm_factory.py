@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from typing import Optional, List, Union, Dict, Any
 import asyncio
+from functools import partial
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -26,9 +27,17 @@ from app.Prompts.validator import VALIDATOR_PROMPT
 from app.Prompts.classifier_prompt import CLASSIFIER_PROMPT
 from app.handler import AgentCallbackHandler, MaxOutputTokenLimitError
 from app.LLM.model_token_limits import (
+    get_model_context_profile,
     get_model_max_output_tokens,
     resolve_open_router_model,
 )
+from app.Context import CompressionConfig, ContextManager, context_store
+from app.Context.compression_llm import (
+    AnthropicCompressionService,
+    compression_llm_service,
+)
+from app.Task.task_manager import task_manager
+from app.api.websocket_utils import send_ws_message
 from app.utils.format_messages import format_to_langchain
 from app.utils.tool_message_formatter import format_multimodal_tool_messages
 from app.Adapters.format_message import prepareMessageForAI
@@ -78,6 +87,7 @@ class LLMFactory():
         user_id: Optional[str] = None,
         fallback_provider: Optional[str] = None,
         fallback_model_name: Optional[str] = None,
+        credential_source: str = "platform",
         rate_limit_loop: Optional[Any] = None,
     ):
         """
@@ -92,6 +102,10 @@ class LLMFactory():
         self.rate_limit_loop = rate_limit_loop
         self.fallback_provider = fallback_provider
         self.fallback_model_name = fallback_model_name
+        self.credential_source = (
+            credential_source if credential_source in {"platform", "custom"}
+            else "platform"
+        )
 
     @staticmethod
     def create_llm(llm_config: LLMConfig, user_api_key: str = None):
@@ -400,6 +414,7 @@ class LLMFactory():
                     rate_limit_loop=self.rate_limit_loop,
                     fallback_provider=self.fallback_provider,
                     fallback_model_name=self.fallback_model_name,
+                    fallback_credential_source=self.credential_source,
                 )
 
                 executor = AgentExecutor(
@@ -577,6 +592,14 @@ class LLMFactory():
             max_tokens: int = 128000,
             history: Optional[List[Dict[str, Any]]] = None,
             screenshot: Optional[Any] = None,
+            task_id: Optional[str] = None,
+            chat_id: Optional[str] = None,
+            compression_enabled: bool = True,
+            force_preflight_compression: bool = False,
+            compression_range: Optional[Dict[str, Any]] = None,
+            compression_reason: str = "preflight",
+            runtime_task_id: Optional[str] = None,
+            compression_id: Optional[str] = None,
         ) -> Dict[str, Any]:
         """Run Aura's lightweight native model-and-tool orchestration loop.
 
@@ -593,14 +616,16 @@ class LLMFactory():
         del chat_history
         provider = self._route_aura_provider(llm_provider, llm)
 
-        user_message = self._build_aura_user_message(
-            query=query,
-            system_info=system_info,
-            attached_files=attached_files,
-            attached_images=attached_images,
-            base_64_image=base_64_image,
-            screenshot=screenshot,
-        )
+        user_message = None
+        if not force_preflight_compression:
+            user_message = self._build_aura_user_message(
+                query=query,
+                system_info=system_info,
+                attached_files=attached_files,
+                attached_images=attached_images,
+                base_64_image=base_64_image,
+                screenshot=screenshot,
+            )
         canonical_messages, native_messages = self._normalize_aura_conversation(
             history=history,
             user_message=user_message,
@@ -612,21 +637,218 @@ class LLMFactory():
         model_name = model_name_from_llm(llm)
         output_limit = configured_output_limit(llm, max_tokens)
 
+        resolved_task_id = str(task_id or f"ephemeral-{id(self)}")
+        resolved_runtime_task_id = str(runtime_task_id or resolved_task_id)
+        resolved_chat_id = str(chat_id or "ephemeral")
+
+        async def send_context_event(event: Dict[str, Any]) -> None:
+            if task_id is None:
+                return
+            state = task_manager.get_state_or_none(resolved_runtime_task_id)
+            if state is None or state.websocket is None or state.connection_closed:
+                return
+            event_type = event.get("type")
+            event_compression_id = event.get("compression_id") or compression_id
+            if force_preflight_compression and event_type != "compression":
+                # A standalone manual-compression request has its own protocol
+                # and must not leak Aura progress or context-sequence events.
+                return
+            if event_type == "compression":
+                await send_ws_message(
+                    websocket=state.websocket,
+                    type="compression",
+                    task_id=resolved_task_id,
+                    chat_id=resolved_chat_id,
+                    payload=event,
+                    compression_id=event_compression_id,
+                )
+            elif event_type == "context_sequence":
+                await send_ws_message(
+                    websocket=state.websocket,
+                    type="context_sequence",
+                    task_id=resolved_task_id,
+                    chat_id=resolved_chat_id,
+                    payload=event,
+                )
+            else:
+                await send_ws_message(
+                    websocket=state.websocket,
+                    type="aura_status",
+                    task_id=resolved_task_id,
+                    chat_id=resolved_chat_id,
+                    compression_id=event_compression_id,
+                    payload={
+                        "compression_id": event_compression_id,
+                        "message": event.get("message"),
+                        "status": event.get("status"),
+                        "context_id": event.get("context_id"),
+                    },
+                )
+
+        compression_config = CompressionConfig(enabled=compression_enabled)
+        context_manager = ContextManager(
+            task_id=resolved_task_id,
+            chat_id=resolved_chat_id,
+            agent_id=str(agent_type),
+            provider=provider,
+            model=model_name,
+            profile=get_model_context_profile(provider, model_name),
+            messages=canonical_messages,
+            store=context_store,
+            config=compression_config,
+            client_event_callback=send_context_event,
+            compression_id=compression_id,
+        )
+        await context_manager.initialize()
+        if task_id is not None and task_manager.get_state_or_none(resolved_runtime_task_id):
+            task_manager.register_context(
+                resolved_runtime_task_id,
+                context_manager.context_id,
+            )
+            latest_user = next(
+                (
+                    message
+                    for message in reversed(context_manager.snapshot.canonical_messages)
+                    if message.get("role") == "user"
+                ),
+                None,
+            )
+            if latest_user is not None:
+                await send_context_event(
+                    {
+                        "type": "context_sequence",
+                        "context_id": context_manager.context_id,
+                        "role": "user",
+                        "sequence": latest_user.get("sequence"),
+                    }
+                )
+        canonical_messages = context_manager.snapshot.canonical_messages
+        native_messages = self._format_aura_messages(
+            provider=provider,
+            canonical_messages=context_manager.effective_messages(),
+            system_prompt=system_prompt,
+        )
+
         generated_messages: List[Dict[str, Any]] = []
         intermediate_steps: List[Dict[str, Any]] = []
         aggregate_usage = self._empty_aura_usage()
+        compressor_summarizer = partial(
+            self._summarize_dedicated_context,
+            service=compression_llm_service,
+            model=compression_config.compressor_model,
+            max_tokens=compression_config.compressor_max_output_tokens,
+            aggregate_usage=aggregate_usage,
+        )
 
+        preflight_pending = force_preflight_compression
         for iteration in range(200):
+            requested_range = compression_range if preflight_pending else None
+
+            try:
+                compression_event = await context_manager.compress_if_needed(
+                    system_prompt=system_prompt,
+                    native_tools=native_tools,
+                    summarizer=compressor_summarizer,
+                    force=preflight_pending,
+                    reason=(
+                        compression_reason
+                        if preflight_pending
+                        else "runtime_threshold"
+                    ),
+                    requested_range=requested_range,
+                )
+            except Exception as exc:
+                if not force_preflight_compression:
+                    raise
+                compression_event = context_manager.terminal_compression_event(
+                    status="failed",
+                    message=str(exc),
+                    error_code="COMPRESSION_FAILED",
+                )
+                await send_context_event(compression_event)
+            preflight_pending = False
+            if compression_event is not None:
+                canonical_messages = context_manager.snapshot.canonical_messages
+                native_messages = self._format_aura_messages(
+                    provider=provider,
+                    canonical_messages=context_manager.effective_messages(),
+                    system_prompt=system_prompt,
+                )
+
+            if force_preflight_compression:
+                if context_manager.snapshot.compressor_state.status == "failed":
+                    if compression_event is None:
+                        failure_message = str(
+                            context_manager.snapshot.compressor_state.last_error
+                            or "Context compression failed"
+                        )
+                        compression_event = (
+                            context_manager.terminal_compression_event(
+                                status="failed",
+                                message=failure_message,
+                                error_code="COMPRESSION_FAILED",
+                            )
+                        )
+                        await send_context_event(compression_event)
+                elif compression_event is None:
+                    compression_event = context_manager.terminal_compression_event(
+                        status="already_compact",
+                        message="Context is already compact",
+                    )
+                    await send_context_event(compression_event)
+                summary = (
+                    compression_event.get("summary")
+                    or compression_event.get("message")
+                )
+                return {
+                    "output": summary,
+                    "messages": [],
+                    "intermediate_steps": [],
+                    "usage": aggregate_usage,
+                    "provider": provider,
+                    "model": model_name,
+                    "iterations": 0,
+                    "agent_type": agent_type,
+                    "compression": compression_event,
+                }
+
             started_at = time.perf_counter()
-            raw_response = await self._invoke_aura_model(
-                provider=provider,
-                llm=llm,
-                model_name=model_name,
-                system_prompt=system_prompt,
-                native_messages=native_messages,
-                native_tools=native_tools,
-                output_limit=output_limit,
-            )
+            try:
+                raw_response = await self._invoke_aura_model(
+                    provider=provider,
+                    llm=llm,
+                    model_name=model_name,
+                    system_prompt=system_prompt,
+                    native_messages=native_messages,
+                    native_tools=native_tools,
+                    output_limit=output_limit,
+                )
+            except Exception as exc:
+                if not self._is_context_length_error(exc):
+                    raise
+                recovery_event = await context_manager.compress_if_needed(
+                    system_prompt=system_prompt,
+                    native_tools=native_tools,
+                    summarizer=compressor_summarizer,
+                    force=True,
+                    reason="provider_context_error",
+                )
+                if recovery_event is None:
+                    raise
+                native_messages = self._format_aura_messages(
+                    provider=provider,
+                    canonical_messages=context_manager.effective_messages(),
+                    system_prompt=system_prompt,
+                )
+                raw_response = await self._invoke_aura_model(
+                    provider=provider,
+                    llm=llm,
+                    model_name=model_name,
+                    system_prompt=system_prompt,
+                    native_messages=native_messages,
+                    native_tools=native_tools,
+                    output_limit=output_limit,
+                )
             parsed = self._parse_aura_response(provider, raw_response)
             duration_ms = (time.perf_counter() - started_at) * 1000
             tool_calls = parsed.get("tool_calls") or []
@@ -637,13 +859,29 @@ class LLMFactory():
                 duration_ms=duration_ms,
                 aggregate_usage=aggregate_usage,
             )
+            context_manager.update_usage(usage)
 
             finish_reason = str(parsed.get("finish_reason") or "").lower()
             if finish_reason in {"max_tokens", "max_token", "length"}:
                 raise MaxOutputTokenLimitError(details=details, usage=usage)
 
-            assistant_message = parsed["message"]
-            canonical_messages.append(assistant_message)
+            assistant_message = await context_manager.record_assistant(
+                parsed["message"]
+            )
+            await send_context_event(
+                {
+                    "type": "context_sequence",
+                    "context_id": context_manager.context_id,
+                    "role": "assistant",
+                    "sequence": assistant_message.get("sequence"),
+                    "tool_call_ids": [
+                        block.get("tool_call_id")
+                        for block in assistant_message.get("content", [])
+                        if block.get("type") == "tool_call"
+                    ],
+                }
+            )
+            canonical_messages = context_manager.snapshot.canonical_messages
             generated_messages.append(assistant_message)
 
             if not tool_calls:
@@ -658,18 +896,32 @@ class LLMFactory():
                     agent_type=agent_type,
                 )
 
-            tool_results = await asyncio.gather(
+            raw_tool_results = await asyncio.gather(
                 *[
                     self._execute_native_tool_call(tool_call, tool_map)
                     for tool_call in tool_calls
                 ]
             )
+            tool_results = await context_manager.record_tool_batch(
+                raw_tool_results
+            )
+            for tool_result in tool_results:
+                await send_context_event(
+                    {
+                        "type": "context_sequence",
+                        "context_id": context_manager.context_id,
+                        "role": "tool",
+                        "sequence": tool_result.get("sequence"),
+                        "tool_call_id": tool_result.get("tool_call_id"),
+                    }
+                )
+            canonical_messages = context_manager.snapshot.canonical_messages
             self._record_aura_tool_exchange(
                 provider=provider,
                 parsed_response=parsed,
                 tool_calls=tool_calls,
                 tool_results=tool_results,
-                canonical_messages=canonical_messages,
+                canonical_messages=None,
                 native_messages=native_messages,
                 generated_messages=generated_messages,
                 intermediate_steps=intermediate_steps,
@@ -701,6 +953,21 @@ class LLMFactory():
                 f"Received {llm_provider!r}."
             )
         return provider
+
+
+    @staticmethod
+    def _is_context_length_error(exc: Exception) -> bool:
+        value = str(exc).lower()
+        return any(
+            marker in value
+            for marker in (
+                "context_length_exceeded",
+                "context length exceeded",
+                "maximum context length",
+                "input is too long",
+                "too many tokens",
+            )
+        )
 
 
     @staticmethod
@@ -745,7 +1012,7 @@ class LLMFactory():
     def _normalize_aura_conversation(
         *,
         history: Optional[List[Dict[str, Any]]],
-        user_message: Dict[str, Any],
+        user_message: Optional[Dict[str, Any]],
         provider: str,
         system_prompt: str,
     ) -> tuple[List[Dict[str, Any]], List[Any]]:
@@ -757,7 +1024,8 @@ class LLMFactory():
         """
 
         canonical_messages = normalize_history(history)
-        canonical_messages.append(user_message)
+        if user_message is not None:
+            canonical_messages.append(user_message)
 
         if provider == "anthropic":
             native_messages = anthropic_message_formater(canonical_messages)
@@ -769,6 +1037,61 @@ class LLMFactory():
         else:
             native_messages = gemini_message_formater(canonical_messages)
         return canonical_messages, native_messages
+
+
+    @staticmethod
+    def _format_aura_messages(
+        *,
+        provider: str,
+        canonical_messages: List[Dict[str, Any]],
+        system_prompt: str,
+    ) -> List[Any]:
+        """Rebuild provider messages after canonical context replacement."""
+
+        if provider == "anthropic":
+            return anthropic_message_formater(canonical_messages)
+        if provider == "openai":
+            return openai_message_formater(
+                canonical_messages,
+                system_prompt=system_prompt,
+            )
+        return gemini_message_formater(canonical_messages)
+
+
+    async def _summarize_dedicated_context(
+        self,
+        compressor_input: str,
+        *,
+        service: AnthropicCompressionService,
+        model: str,
+        max_tokens: int,
+        aggregate_usage: Dict[str, Any],
+    ):
+        """Call the standalone compressor service and account for its usage."""
+
+        started_at = time.perf_counter()
+        result = await service.summarize(
+            compressor_input,
+            model=model,
+            max_output_tokens=max_tokens,
+        )
+        self._track_aura_usage_and_cost(
+            provider=service.provider,
+            model_name=model,
+            parsed_response={
+                "usage": {
+                    "input": result.input_tokens,
+                    "output": result.output_tokens,
+                    "total_tokens": result.input_tokens + result.output_tokens,
+                },
+                "finish_reason": "end_turn",
+                "tool_calls": [],
+            },
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            aggregate_usage=aggregate_usage,
+            credential_source="platform",
+        )
+        return result
 
 
     @staticmethod
@@ -857,6 +1180,7 @@ class LLMFactory():
         parsed_response: Dict[str, Any],
         duration_ms: float,
         aggregate_usage: Dict[str, Any],
+        credential_source: Optional[str] = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Calculate, persist, and aggregate usage, cost, and timing details.
 
@@ -879,6 +1203,7 @@ class LLMFactory():
         details = {
             "provider": provider,
             "model_name": model_name,
+            "credential_source": credential_source or self.credential_source,
             "finish_reason": parsed_response.get("finish_reason"),
             "llm_duration_ms": round(duration_ms, 2),
         }
@@ -955,7 +1280,7 @@ class LLMFactory():
         parsed_response: Dict[str, Any],
         tool_calls: List[Dict[str, Any]],
         tool_results: List[Dict[str, Any]],
-        canonical_messages: List[Dict[str, Any]],
+        canonical_messages: Optional[List[Dict[str, Any]]],
         native_messages: List[Any],
         generated_messages: List[Dict[str, Any]],
         intermediate_steps: List[Dict[str, Any]],
@@ -966,7 +1291,8 @@ class LLMFactory():
         blocks and Gemini thought signatures survive the next model iteration.
         """
 
-        canonical_messages.extend(tool_results)
+        if canonical_messages is not None:
+            canonical_messages.extend(tool_results)
         generated_messages.extend(tool_results)
         intermediate_steps.extend(
             {
@@ -1105,6 +1431,7 @@ class LLMFactory():
                 rate_limit_loop=self.rate_limit_loop,
                 fallback_provider=self.fallback_provider,
                 fallback_model_name=self.fallback_model_name,
+                fallback_credential_source=self.credential_source,
             )
             # callbacks = handler.as_list()
 

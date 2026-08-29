@@ -52,6 +52,10 @@ class TaskScheduler:
         websocket: WebSocket,
         pool: Pool,
         runner_factory: TaskRunnerFactory,
+        emit_status: bool = True,
+        compression_trigger: Optional[str] = None,
+        client_task_id: Optional[str] = None,
+        compression_id: Optional[str] = None,
     ) -> AdmissionResult:
         """Reserve a chat, persist the task, and start it when eligible."""
 
@@ -71,6 +75,10 @@ class TaskScheduler:
                 user_id=user_id,
                 chat_id=chat_id,
                 runner_factory=runner_factory,
+                emit_status=emit_status,
+                compression_trigger=compression_trigger,
+                client_task_id=client_task_id,
+                compression_id=compression_id,
             )
         except Exception:
             finish_result = await self.coordinator.finish_task(
@@ -106,7 +114,7 @@ class TaskScheduler:
                 logger.exception("Failed to start admitted task %s", task_id)
                 await self.finalize(task_id, TaskStatus.FAILED)
                 raise
-        else:
+        elif emit_status:
             await self._notify_status(
                 websocket=websocket,
                 task_id=task_id,
@@ -147,6 +155,12 @@ class TaskScheduler:
                 status=terminal_status.value,
             )
 
+        if state is not None and state.context_ids:
+            from app.Context.Store.factory import context_store
+
+            for context_id in tuple(state.context_ids):
+                await context_store.delete(context_id)
+
         self.runtime_manager.remove_task(task_id)
         await self._start_promoted(finish_result.promoted_task_ids)
         return True
@@ -165,13 +179,38 @@ class TaskScheduler:
 
         state.cancelled = True
         if metadata.status == TaskStatus.QUEUED or state.task is None:
-            await self._notify_status(
-                websocket=state.websocket,
-                task_id=task_id,
-                chat_id=metadata.chat_id,
-                status="cancelled",
-                message="Queued task was cancelled",
-            )
+            if state.emit_status:
+                await self._notify_status(
+                    websocket=state.websocket,
+                    task_id=task_id,
+                    chat_id=metadata.chat_id,
+                    status="cancelled",
+                    message="Queued task was cancelled",
+                )
+            elif state.websocket is not None:
+                response_task_id = state.client_task_id or task_id
+                await send_ws_message(
+                    state.websocket,
+                    type="compression",
+                    task_id=response_task_id,
+                    chat_id=metadata.chat_id,
+                    compression_id=state.compression_id,
+                    payload={
+                        "type": "compression",
+                        "schema_version": 1,
+                        "compression_id": state.compression_id,
+                        "task_id": response_task_id,
+                        "chat_id": metadata.chat_id,
+                        "status": "failed",
+                        "trigger": state.compression_trigger or "manual",
+                        "trigger_reason": state.compression_trigger or "manual",
+                        "message": "Context compression was cancelled",
+                        "error": {
+                            "code": "COMPRESSION_CANCELLED",
+                            "message": "Context compression was cancelled",
+                        },
+                    },
+                )
             await self.finalize(task_id, TaskStatus.CANCELLED)
             return True
 
@@ -278,13 +317,14 @@ class TaskScheduler:
                 task_id=task_id,
                 status=TaskStatus.RUNNING.value,
             )
-            await self._notify_status(
-                websocket=state.websocket,
-                task_id=task_id,
-                chat_id=metadata.chat_id,
-                status="processing",
-                message="Task left the queue and is starting",
-            )
+            if state.emit_status:
+                await self._notify_status(
+                    websocket=state.websocket,
+                    task_id=task_id,
+                    chat_id=metadata.chat_id,
+                    status="processing",
+                    message="Task left the queue and is starting",
+                )
             try:
                 self.runtime_manager.start_task(task_id)
             except Exception:
