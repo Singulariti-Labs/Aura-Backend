@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Request
 from app.DB.pool import get_pool
 from app.DB.Queries.user import get_user_by_auth0_id, get_user
 from app.DB.Queries.task import get_tasks_by_user, get_task_by_id, delete_task_db, star_task_db, unstar_task_db
@@ -8,6 +8,12 @@ from app.DB.Queries.user_settings import upsert_user_settings, get_user_settings
 from app.RateLimit.usage_service import fetch_user_usage
 from asyncpg import Pool
 from app.STT.service import STTService
+from app.GraphMemory.routes import handle_memory_consolidation_request
+from app.GraphMemory.schemas import (
+    ConsolidationApiRequest,
+    ConsolidationApiResponse,
+    ConsolidationErrorResponse,
+)
 
 from app.Prompts.Templates.aura_template import AURA_TEMPLATE
 from app.Prompts.Templates.id_template import ID_TEMPLATE
@@ -15,6 +21,38 @@ from app.Prompts.Templates.soul_template import SOUL_TEMPLATE
 from app.Prompts.Templates.user_template import USER_TEMPLATE
 
 rest_router = APIRouter(prefix="/api")
+memory_api_router = APIRouter(prefix="/v1/memory", tags=["memory"])
+
+
+@memory_api_router.post(
+    "/consolidate",
+    response_model=ConsolidationApiResponse,
+    responses={
+        400: {"model": ConsolidationErrorResponse},
+        401: {"model": ConsolidationErrorResponse},
+        403: {"model": ConsolidationErrorResponse},
+        413: {"model": ConsolidationErrorResponse},
+        429: {"model": ConsolidationErrorResponse},
+        500: {"model": ConsolidationErrorResponse},
+        502: {"model": ConsolidationErrorResponse},
+        503: {"model": ConsolidationErrorResponse},
+        504: {"model": ConsolidationErrorResponse},
+    },
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": ConsolidationApiRequest.model_json_schema()
+                }
+            },
+        }
+    },
+)
+async def consolidate_graph_memory(request: Request):
+    """Delegate the authenticated consolidation request to GraphMemory."""
+
+    return await handle_memory_consolidation_request(request)
 
 @rest_router.get("/user/profile")
 async def fetch_user_profile(current_user: dict = Depends(get_current_user)):
