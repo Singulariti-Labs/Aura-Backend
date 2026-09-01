@@ -36,8 +36,6 @@ def validate_extraction(
             if alias_key in seen_aliases:
                 raise MemoryOutputValidationError("entity aliases must be unique")
             seen_aliases.add(alias_key)
-            if alias.type in {"slack_id", "external_id"}:
-                _validate_scoped_identifier(alias.value)
 
     observation_ids = {observation.id for observation in source.observations}
     existing_facts = {fact.id: fact for fact in source.existing_facts}
@@ -71,27 +69,8 @@ def validate_extraction(
                 raise MemoryOutputValidationError(
                     "a relationship targets a fact that was not supplied"
                 )
-            if fact.subject_ref != target.subject_entity_id:
-                raise MemoryOutputValidationError(
-                    "a related fact must use the target subjectEntityId as subjectRef"
-                )
-            if (
-                fact.relation.type in {"updates", "contradicts"}
-                and fact.predicate != target.predicate
-            ):
-                raise MemoryOutputValidationError(
-                    "updates and contradicts must preserve the target predicate"
-                )
 
     _reject_secret_like_output(_iter_output_strings(extraction))
-
-
-def _validate_scoped_identifier(value: str) -> None:
-    scope, separator, identifier = value.partition(":")
-    if not separator or not scope.strip() or not identifier.strip():
-        raise MemoryOutputValidationError(
-            "slack_id and external_id aliases must use the scoped form scope:id"
-        )
 
 
 def _iter_output_strings(extraction: ConsolidationExtraction) -> Iterable[str]:

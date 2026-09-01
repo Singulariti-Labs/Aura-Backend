@@ -21,7 +21,7 @@ from app.Prompts.Templates.soul_template import SOUL_TEMPLATE
 from app.Prompts.Templates.user_template import USER_TEMPLATE
 
 rest_router = APIRouter(prefix="/api")
-memory_api_router = APIRouter(prefix="/v1/memory", tags=["memory"])
+memory_api_router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 
 
 @memory_api_router.post(

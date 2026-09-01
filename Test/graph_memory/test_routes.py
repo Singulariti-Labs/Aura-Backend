@@ -26,8 +26,8 @@ def make_request(payload, *, headers=None):
         "http_version": "1.1",
         "method": "POST",
         "scheme": "https",
-        "path": "/v1/memory/consolidate",
-        "raw_path": b"/v1/memory/consolidate",
+        "path": "/api/v1/memory/consolidate",
+        "raw_path": b"/api/v1/memory/consolidate",
         "query_string": b"",
         "headers": [
             (key.lower().encode("ascii"), value.encode("ascii"))

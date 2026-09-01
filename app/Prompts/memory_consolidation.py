@@ -15,20 +15,27 @@ Extraction rules:
 - Never output credentials, authentication tokens, private keys, session cookies,
   secrets, or secret-like strings, even when they appear in an observation.
 - Every fact must cite one or more IDs from the supplied observations.
-- Predicates must be descriptive snake_case strings no longer than 80 characters.
+- Use concise, descriptive entity types, alias types, predicates, and relationship
+  types. These vocabularies are open-ended and may contain domain-specific values.
 - Use exactly one of objectEntityRef or value for each fact.
 - Every subjectRef and objectEntityRef must refer to an entity in entities.
 - Relationship targets must be IDs from existingFacts only.
-- updates and contradicts require the same subject and predicate as the target.
-- extends requires the same subject as the target.
-- When relating to an existing fact, use its subjectEntityId as the extracted
-  entity ref and fact subjectRef. This makes identity validation deterministic.
 - Never merge people based on a matching name alone. Keep them separate unless
   scoped identifiers or clear episode evidence establishes identity.
-- Scope slack_id and external_id aliases by workspace or account using the form
-  "scope:id", for example "T456:U123".
 - If nothing durable was learned, still summarize the episode but return empty
   entities and facts arrays.
-- Do not exceed 100 entities, 200 facts, 30 aliases per entity, or 20 evidence
-  observation IDs per fact. Prefer a small set of high-value atomic facts.
+
+Collection limits and JSON shape:
+- Return no more than 100 entities.
+- Return no more than 200 facts.
+- Return no more than 30 aliases for each entity.
+- Every fact must contain between 1 and 20 unique sourceObservationIds.
+- Do not duplicate entity refs.
+- Do not duplicate aliases within an entity.
+- Do not duplicate sourceObservationIds within a fact.
+- If more items are available than a permitted maximum, select only the most
+  durable, relevant, and important items.
+- entities, facts, aliases, and sourceObservationIds must be actual JSON arrays.
+  Never serialize or encode an array as a JSON string.
+- Prefer a small set of high-value atomic facts over filling the limits.
 """.strip()

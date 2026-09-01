@@ -6,13 +6,11 @@ import json
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from app.GraphMemory.config import MemorySettings
 from app.GraphMemory.errors import MemoryOutputValidationError, MemoryProviderError
+from app.GraphMemory.provider_invoker import MemoryProviderInvoker
 from app.GraphMemory.schemas import ConsolidationExtraction, ConsolidationInput
 from app.GraphMemory.security import redact_secrets
-from app.LLM.llm_factory import LLMFactory
 from app.Prompts.memory_consolidation import MEMORY_CONSOLIDATION_SYSTEM_PROMPT
 
 
@@ -29,24 +27,10 @@ class StructuredMemoryLLM:
         self,
         settings: MemorySettings,
         *,
-        structured_llm: Optional[Any] = None,
+        provider_invoker: Optional[MemoryProviderInvoker] = None,
     ) -> None:
         self.settings = settings
-        self._structured_llm = structured_llm
-
-    def _get_structured_llm(self) -> Any:
-        """Create the provider client lazily and reuse its connection pool."""
-
-        if self._structured_llm is None:
-            llm = LLMFactory.create_llm(
-                self.settings.llm_config,
-                user_api_key=self.settings.api_key,
-            )
-            self._structured_llm = llm.with_structured_output(
-                ConsolidationExtraction,
-                include_raw=True,
-            )
-        return self._structured_llm
+        self._provider_invoker = provider_invoker or MemoryProviderInvoker(settings)
 
     async def extract(self, source: ConsolidationInput) -> MemoryLLMResult:
         """Submit the episode once and return its parsed structured output."""
@@ -57,41 +41,24 @@ class StructuredMemoryLLM:
             ensure_ascii=False,
             separators=(",", ":"),
         )
-        messages = [
-            SystemMessage(content=MEMORY_CONSOLIDATION_SYSTEM_PROMPT),
-            HumanMessage(
-                content=(
-                    "Extract durable graph memory from this completed episode JSON:\n"
-                    f"{episode_json}"
-                )
-            ),
-        ]
+        user_prompt = (
+            "Extract durable graph memory from this completed episode JSON:\n"
+            f"{episode_json}"
+        )
 
         try:
-            result = await self._get_structured_llm().ainvoke(messages)
+            result = await self._provider_invoker.invoke(
+                system_prompt=MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                output_schema=ConsolidationExtraction.model_json_schema(by_alias=True),
+            )
+        except MemoryOutputValidationError:
+            raise
         except Exception as exc:
             raise MemoryProviderError("memory provider request failed") from exc
 
-        if not isinstance(result, dict):
-            raise MemoryOutputValidationError(
-                "structured provider response must be an object"
-            )
-        parsing_error = result.get("parsing_error")
-        if parsing_error is not None:
-            error = MemoryOutputValidationError(
-                "the provider returned invalid structured output"
-            )
-            if isinstance(parsing_error, BaseException):
-                raise error from parsing_error
-            raise error
-
-        parsed = result.get("parsed")
         try:
-            extraction = (
-                parsed
-                if isinstance(parsed, ConsolidationExtraction)
-                else ConsolidationExtraction.model_validate(parsed)
-            )
+            extraction = ConsolidationExtraction.model_validate(result.payload)
         except Exception as exc:
             raise MemoryOutputValidationError(
                 "the provider returned invalid structured output"
@@ -99,7 +66,7 @@ class StructuredMemoryLLM:
 
         return MemoryLLMResult(
             extraction=extraction,
-            usage=_extract_usage(result.get("raw")),
+            usage=result.usage,
         )
 
 
@@ -116,28 +83,3 @@ def _build_provider_payload(source: ConsolidationInput) -> dict[str, Any]:
         fact["subject"] = redact_secrets(fact["subject"])
         fact["object"] = redact_secrets(fact["object"])
     return payload
-
-
-def _extract_usage(raw_response: Any) -> Optional[dict[str, int]]:
-    """Normalize token counts exposed by supported LangChain providers."""
-
-    if raw_response is None:
-        return None
-
-    usage = getattr(raw_response, "usage_metadata", None)
-    if not isinstance(usage, dict):
-        metadata = getattr(raw_response, "response_metadata", None)
-        if isinstance(metadata, dict):
-            usage = metadata.get("token_usage") or metadata.get("usage")
-    if not isinstance(usage, dict):
-        return None
-
-    input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
-    output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
-    try:
-        return {
-            "input": max(0, int(input_tokens or 0)),
-            "output": max(0, int(output_tokens or 0)),
-        }
-    except (TypeError, ValueError):
-        return None

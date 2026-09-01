@@ -46,7 +46,22 @@ class Tools():
     This class encapsulates tool setup logic and exposes them in a format compatible
     with LangChain's tool interface.
     """
-    def __init__(self, llm: BaseChatModel, memory: Memory, task_id: str, chat_id: str, system_info: Optional[SystemInfo] = None, aura_config: Optional[AuraConfig] = None, history: List[Dict] = [], llm_provider: Optional[str] = None, dbpool: Optional[Pool] = None, user_id: Optional[str] = None, rate_limit_loop: Optional[Any] = None, credential_source: str = "platform"):
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        memory: Memory,
+        task_id: str,
+        chat_id: str,
+        system_info: Optional[SystemInfo] = None,
+        aura_config: Optional[AuraConfig] = None,
+        history: List[Dict] = [],
+        llm_provider: Optional[str] = None,
+        dbpool: Optional[Pool] = None,
+        user_id: Optional[str] = None,
+        rate_limit_loop: Optional[Any] = None,
+        credential_source: str = "platform",
+        memory_context: Optional[str] = None,
+    ):
         """
         Initializes the Tools manager with an LLM and memory.
 
@@ -70,10 +85,25 @@ class Tools():
         self.user_id = user_id
         self.rate_limit_loop = rate_limit_loop
         self.credential_source = credential_source
+        self.memory_context = memory_context
 
          # Import at runtime to break the cycle
         from app.Agents.supervisor import SupervisorAgent
-        self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(llm=self.llm, memory=self.memory, tools=self, task_id=self.task_id, chat_id=self.chat_id, aura_config=self.aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop, credential_source=self.credential_source)
+        self.supervisor_agent: "SupervisorAgent" = SupervisorAgent(
+            llm=self.llm,
+            memory=self.memory,
+            tools=self,
+            task_id=self.task_id,
+            chat_id=self.chat_id,
+            aura_config=self.aura_config,
+            history=self.history,
+            llm_provider=self.llm_provider,
+            dbpool=self.dbpool,
+            user_id=self.user_id,
+            rate_limit_loop=self.rate_limit_loop,
+            credential_source=self.credential_source,
+            memory_context=self.memory_context,
+        )
 
         self.supervisor_tool = SupervisorTool(supervisor_agent=self.supervisor_agent, llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id, system_info=self.system_info)
         self.interaction_tool = InteractionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)

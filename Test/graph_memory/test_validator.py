@@ -50,14 +50,24 @@ class ExtractionValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(MemoryOutputValidationError, "not supplied"):
             validate_extraction(extraction, self.source)
 
-    def test_rejects_relation_without_stable_existing_subject_ref(self):
+    def test_accepts_open_ended_entity_alias_predicate_and_relation_values(self):
         payload = valid_extraction_payload()
         payload["entities"][0]["ref"] = "temporary-ref"
+        payload["entities"][0]["type"] = "product"
+        payload["entities"][0]["aliases"] = [
+            {"type": "catalog_identifier", "value": "CAREERS-001"}
+        ]
         payload["facts"][0]["subjectRef"] = "temporary-ref"
+        payload["facts"][0]["predicate"] = "approved display headline"
+        payload["facts"][0]["relation"]["type"] = "derived_from"
         extraction = ConsolidationExtraction.model_validate(payload)
 
-        with self.assertRaisesRegex(MemoryOutputValidationError, "subjectEntityId"):
-            validate_extraction(extraction, self.source)
+        validate_extraction(extraction, self.source)
+
+        self.assertEqual(extraction.entities[0].type, "product")
+        self.assertEqual(extraction.entities[0].aliases[0].type, "catalog_identifier")
+        self.assertEqual(extraction.facts[0].predicate, "approved display headline")
+        self.assertEqual(extraction.facts[0].relation.type, "derived_from")
 
     def test_rejects_secret_like_output(self):
         payload = valid_extraction_payload()
@@ -67,15 +77,14 @@ class ExtractionValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(MemoryOutputValidationError, "credential-like"):
             validate_extraction(extraction, self.source)
 
-    def test_requires_scoped_external_identifiers(self):
+    def test_does_not_restrict_alias_values_by_alias_type(self):
         payload = valid_extraction_payload()
         payload["entities"][0]["aliases"] = [
             {"type": "slack_id", "value": "U123"}
         ]
         extraction = ConsolidationExtraction.model_validate(payload)
 
-        with self.assertRaisesRegex(MemoryOutputValidationError, "scope:id"):
-            validate_extraction(extraction, self.source)
+        validate_extraction(extraction, self.source)
 
 
 if __name__ == "__main__":

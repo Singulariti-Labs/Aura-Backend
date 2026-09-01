@@ -105,38 +105,30 @@ class ConsolidationApiRequest(MemorySchema):
 
 
 class EntityAlias(MemorySchema):
-    type: Literal["name", "email", "slack_id", "external_id", "role", "other"]
+    # Alias categories are intentionally open-ended so clients can introduce
+    # domain-specific identifiers without requiring a server deployment.
+    type: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=1_000)
 
 
 class ExtractedEntity(MemorySchema):
     ref: str = Field(min_length=1, max_length=512)
-    type: Literal[
-        "person",
-        "organization",
-        "project",
-        "document",
-        "channel",
-        "location",
-        "concept",
-        "other",
-    ]
+    # Entity types such as product, event, asset, or any future category are
+    # accepted. Only a non-empty bounded string is required.
+    type: str = Field(min_length=1, max_length=80)
     canonical_name: str = Field(alias="canonicalName", min_length=1, max_length=1_000)
     aliases: list[EntityAlias] = Field(default_factory=list, max_length=30)
 
 
 class FactRelation(MemorySchema):
-    type: Literal["updates", "extends", "contradicts"]
+    # Relationship vocabulary is owned by the graph client and may evolve.
+    type: str = Field(min_length=1, max_length=80)
     target_fact_id: str = Field(alias="targetFactId", min_length=1, max_length=256)
 
 
 class ExtractedFact(MemorySchema):
     subject_ref: str = Field(alias="subjectRef", min_length=1, max_length=512)
-    predicate: str = Field(
-        min_length=1,
-        max_length=80,
-        pattern=r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
-    )
+    predicate: str = Field(min_length=1, max_length=80)
     object_entity_ref: Optional[str] = Field(
         default=None,
         alias="objectEntityRef",

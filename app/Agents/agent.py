@@ -99,9 +99,27 @@ class Agent(BaseAgent):
         self.agent_prompt = AGENT_PROMPT
         self.history = history
         self.aura_config = aura_config or AuraConfig()
+        raw_memory_context = payload.get("memory_context")
+        self.memory_context = (
+            raw_memory_context if isinstance(raw_memory_context, str) else None
+        )
         # Runtime-bound tools must use the scheduler's operation ID. For normal
         # tasks this equals task_id; standalone compression uses compression_id.
-        self.tools = Tools(llm=self.llm, memory=self.memory, task_id=self.runtime_task_id, chat_id=self.chat_id, system_info=self.system_info, aura_config=aura_config, history=self.history, llm_provider=self.llm_provider, dbpool=self.dbpool, user_id=self.user_id, rate_limit_loop=self.rate_limit_loop, credential_source=self.credential_source)
+        self.tools = Tools(
+            llm=self.llm,
+            memory=self.memory,
+            task_id=self.runtime_task_id,
+            chat_id=self.chat_id,
+            system_info=self.system_info,
+            aura_config=aura_config,
+            history=self.history,
+            llm_provider=self.llm_provider,
+            dbpool=self.dbpool,
+            user_id=self.user_id,
+            rate_limit_loop=self.rate_limit_loop,
+            credential_source=self.credential_source,
+            memory_context=self.memory_context,
+        )
         self.payload = payload
         self.attached_files = attached_files
         self.attached_images = attached_images
@@ -219,6 +237,7 @@ class Agent(BaseAgent):
                         chat_id=self.chat_id,
                         task_id=self.task_id,
                         config=self.aura_config,
+                        memory_context=self.memory_context,
                     )
 
                     result = None

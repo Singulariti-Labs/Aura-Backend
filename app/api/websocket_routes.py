@@ -34,13 +34,15 @@ llm_config = LLMConfig(provider="anthropic", model_name="claude-opus-4-8")
 
 
 def _truncate_screenshot_for_log(value, preview_length: int = 24):
-    """Return a log-safe payload copy with screenshot data shortened."""
+    """Return a log-safe payload copy with large sensitive fields shortened."""
 
     if isinstance(value, dict):
         return {
             key: (
                 _format_screenshot_preview(item, preview_length)
                 if key == "screenshot"
+                else _format_memory_context_preview(item)
+                if key == "memory_context"
                 else _truncate_screenshot_for_log(item, preview_length)
             )
             for key, item in value.items()
@@ -67,6 +69,16 @@ def _format_screenshot_preview(value, preview_length: int = 24):
             for key, item in value.items()
         }
     return value
+
+
+def _format_memory_context_preview(value, preview_length: int = 160):
+    """Avoid copying the complete historical-memory block into server logs."""
+
+    if not isinstance(value, str):
+        return value
+    if len(value) <= preview_length:
+        return value
+    return f"{value[:preview_length]}...[memory_context truncated]"
 
 
 async def _send_error(
@@ -567,6 +579,21 @@ async def websocket_endpoint(websocket: WebSocket):
                         chat_id=chat_id,
                         error_code="PAYLOAD_NOT_FOUND",
                         message="A task request payload is required",
+                    )
+                    continue
+
+                memory_context = payload.get("memory_context")
+                if (
+                    msg_type == "task_request"
+                    and memory_context is not None
+                    and not isinstance(memory_context, str)
+                ):
+                    await _send_error(
+                        websocket,
+                        task_id=task_id,
+                        chat_id=chat_id,
+                        error_code="INVALID_MEMORY_CONTEXT",
+                        message="payload.memory_context must be a string or null",
                     )
                     continue
 

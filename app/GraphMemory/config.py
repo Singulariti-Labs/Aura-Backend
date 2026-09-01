@@ -11,6 +11,7 @@ from app.Types.agent_types import DEFAULT_MODELS, LLMConfig
 
 DEFAULT_MEMORY_PROVIDER = "anthropic"
 DEFAULT_MEMORY_MODEL = "claude-haiku-4-5-20251001"
+SUPPORTED_MEMORY_PROVIDERS = {"anthropic", "google"}
 DEFAULT_MAX_BODY_BYTES = 1_048_576
 MAX_ALLOWED_BODY_BYTES = 10_485_760
 MEMORY_REQUEST_TIMEOUT_SECONDS = 30.0
@@ -36,6 +37,10 @@ class MemorySettings:
         provider = _normalize_provider(
             os.getenv("MEMORY_LLM_PROVIDER", DEFAULT_MEMORY_PROVIDER)
         )
+        if provider not in SUPPORTED_MEMORY_PROVIDERS:
+            raise MemoryConfigurationError(
+                "MEMORY_LLM_PROVIDER must be either 'anthropic' or 'google'"
+            )
         default_model = (
             DEFAULT_MEMORY_MODEL
             if provider == DEFAULT_MEMORY_PROVIDER
