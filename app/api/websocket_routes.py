@@ -17,6 +17,7 @@ from app.Types.agent_types import (
     AuraConfig,
     ConsciousFiles,
     LLMConfig,
+    MemoryContext,
     OpenApplications,
     SystemInfo,
 )
@@ -222,12 +223,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     _truncate_screenshot_for_log(payload),
                 )
 
+                # New clients provide runtime prompt metadata under ``config``;
+                # existing clients use ``aura_config``. Merge both during the
+                # transition and let the established aura_config fields win.
+                raw_config_data = payload.get("config") or {}
                 raw_aura_config_data = payload.get("aura_config") or {}
-                aura_config_data = (
-                    raw_aura_config_data
-                    if isinstance(raw_aura_config_data, dict)
-                    else {}
+                config_data = (
+                    raw_config_data if isinstance(raw_config_data, dict) else {}
                 )
+                aura_config_data = {
+                    **config_data,
+                    **(
+                        raw_aura_config_data
+                        if isinstance(raw_aura_config_data, dict)
+                        else {}
+                    ),
+                }
                 user_timezone = aura_config_data.get("timezone", "Asia/Kolkata")
 
                 rate_limit_decision = await check_rate_limit_for_request(
@@ -304,6 +315,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     open_apps=(
                         OpenApplications(**aura_config_data["open_apps"])
                         if aura_config_data.get("open_apps")
+                        else None
+                    ),
+                    memory_context=(
+                        MemoryContext(**aura_config_data["memory_context"])
+                        if aura_config_data.get("memory_context")
                         else None
                     ),
                     timezone=user_timezone,

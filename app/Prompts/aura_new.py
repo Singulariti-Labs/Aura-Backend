@@ -1,10 +1,18 @@
 import os
 import re
+from html import escape
 from typing import Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.Prompts.Templates.boot_me import BOOTME_TEMPLATE
-from app.Types.agent_types import SystemInfo, ConsciousFiles, OpenApplications, AuraConfig
+from app.Types.agent_types import (
+    AuraConfig,
+    ConsciousFiles,
+    MemoryContext,
+    MemoryFileContext,
+    OpenApplications,
+    SystemInfo,
+)
 
 
 TOOL_NAME_MAP = {
@@ -75,6 +83,15 @@ TOOL_NAME_MAP = {
                                                 "called first. When 'expression' is provided, evaluates JavaScript "
                                                 "in the page context and returns the result \u2014 use this for DOM "
                                                 "inspection, reading page state, or extracting data programmatically."),
+    "create_memory_tool":  ("create_memory",     "Create a new named memory file or completely rewrite an existing "
+                                                "named memory file. This replaces all metadata and facts, so use "
+                                                "memory_update for small add/replace/remove changes."),
+    "memory_update_tool":  ("memory_update",     "Update durable facts in persistent named memory files. Memory "
+                                                "files are selected by name without the .md suffix, such as "
+                                                "preference, aura, or current-project."),
+    "read_memory_tool":    ("read_memory",       "Read a specific named memory file when its description suggests "
+                                                "it may contain useful context. Load relevant full facts on demand; "
+                                                "do not read every memory file indiscriminately."),
 }
 
 COMPRESSION_PROMPT = """
@@ -215,6 +232,56 @@ def load_default_skills(local_skills: Optional[str] = None) -> str:
     skills_output += "\n</available_skills>"
     
     return skills_output
+
+
+def _format_memory_file(memory_file: MemoryFileContext) -> str:
+    """Format one memory-file summary for the system prompt catalog."""
+
+    def prompt_value(value: object) -> str:
+        """Keep metadata on one line and prevent it from closing XML tags."""
+
+        return escape(" ".join(str(value).split()), quote=False)
+
+    fields = [
+        f"name: {prompt_value(memory_file.name)}",
+        f"description: {prompt_value(memory_file.description)}",
+        f"max_size: {memory_file.max_size}",
+        f"usage: {prompt_value(memory_file.usage)}",
+    ]
+    if memory_file.aliases:
+        fields.append(
+            f"aliases: {', '.join(prompt_value(alias) for alias in memory_file.aliases)}"
+        )
+    return f"[{' '.join(fields)}]"
+
+
+def format_available_memories(
+    memory_context: Optional[MemoryContext] = None,
+) -> str:
+    """Build the on-demand memory catalog inserted before ``## Memory``.
+
+    Only metadata is exposed here; the full file contents remain unloaded until
+    the model selects a relevant file with ``read_memory``. An empty or missing
+    context produces no prompt section.
+    """
+
+    if memory_context is None or not (
+        memory_context.user or memory_context.memory
+    ):
+        return ""
+
+    lines = [
+        "## Available Memories",
+        "Following are the available memory files.",
+        "",
+        "<memory_context>",
+        "USER TARGET FILES:",
+    ]
+    lines.extend(_format_memory_file(item) for item in memory_context.user)
+    lines.extend(["", "MEMORY TARGET FILES:"])
+    lines.extend(_format_memory_file(item) for item in memory_context.memory)
+    lines.append("</memory_context>")
+    return "\n".join(lines)
 
 
 def get_time_in_timezone(tz_name: str) -> datetime:
@@ -483,31 +550,55 @@ def buildAuraSystemPrompt(
         "If a section is marked with `[Not Implemented Yet]` or wrapped in `<NOT_IMPLEMENTED_YET>` tags, it is not currently functional. Skip those instructions during task execution."
     )
 
+    # ── Available Memories ───────────────────────────────────────
+    # The client sends metadata only. Full memory files are loaded on demand via
+    # read_memory when their descriptions indicate relevance to the current task.
+    available_memories = format_available_memories(config.memory_context)
+    if available_memories:
+        sections.append(available_memories)
+
     # ── Memory ───────────────────────────────────────────────────
     memory_lines = [
-        "<NOT_IMPLEMENTED_YET>",
-        "## Memory [Not Implemented Yet]",
-        f"path: {system_info.workspace}/memory/",
+        "## Memory",
+        f"path: {system_info.workspace}/AuraMemory/",
         "",
         "```",
         "workspace/",
-        " |___ memory/",
-        " |       |____ MEMORY.md",
-        " |       |____ dd--mm--yyyy.md",
-        " |       |____ memory.db",
+        " |___ AuraMemory/",
+        " |       |____ user",
+        " |       |       |____ preference.md",
+        " |       |       |____ profile.md",
+        " |       |       |____ contact-info.md",
+        " |       |____ memory",
+        " |       |       |____ project-aura.md",
+        " |       |       |____ current-project.md",
+        " |       |       |____ recent-work.md",
         "```",
         "",
-        "### MEMORY.md",
-        "It is the file that has the Long term memory of the user. If you think the query requires the memory search use the memory_search tool which gives the related memories. [Not Implemented Yet]",
-        "Dont make direct updates to the MEMORY.md without explicitly asked for, by the user, to remember any perticular thing.",
-        "",
-        "### dd--mm-yyyy.md",
-        "Inside the memory/ this dd--mm-yyyy.md files this files are for storing daily memories",
-        "do not Create/Update this files from here during running the task. This will be handle on the client side.",
-        "",
-        "### memory.db",
-        "It is the vector db to store memory so if required any previous activity or user history taht can be fetched from this DB.",
-        "</NOT_IMPLEMENTED_YET>"
+        "Memory is stored in named files under two targets:\n",
+
+        "- `user`: Durable information about the user, including identity, role, "
+        "preferences, communication style, and expectations. Use this target only "
+        "for information related to the user that will remain useful across future "
+        "conversations.\n"
+
+        "Example files: `preference`, `identity`, `communication-style`.\n"
+
+        "- `memory`: Durable assistant, environment, or project knowledge, "
+        "including project conventions, architecture decisions, tool quirks, "
+        "recurring workflows, and lessons learned.\n"
+
+        "Example files: `current-project`, `environment`, `tool-quirks`, `project-conventions`.\n",
+
+        "We have the following memory tools:\n",
+
+        "**read_memory**: Read a memory file when its name, aliases, or description from the available memories suggests it contains relevant context. Do not read every memory file automatically.\n"
+        "**memory_update**: Add, replace, or remove individual facts without rewriting the entire file.\n"
+        "**create_memory**: Create a new memory category or intentionally rewrite an existing memory file completely.\n\n",
+
+        "We will be storing facts in the memory files.\n"
+        "A fact is one short, durable, independently useful statement. Store stable knowledge that will help in future tasks. Do not store temporary progress, logs, one-off IDs, secrets, guesses, or short-lived details. Avoid duplicates and update an existing fact when information changes.\n\n"
+        "[NOTE]: While replacing or removing fact during memory_update make sure give complete fact text for old_text argument. To avoid matching error\n\n",
     ]
     sections.append("\n".join(memory_lines))
 

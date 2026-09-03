@@ -206,9 +206,10 @@ def canonical_tool_result(
 
         if isinstance(raw_result, dict):
             explicit_content = raw_result.get("content")
-            if isinstance(explicit_content, list) and all(
+            has_explicit_content_blocks = isinstance(explicit_content, list) and all(
                 isinstance(item, dict) and item.get("type") for item in explicit_content
-            ):
+            )
+            if has_explicit_content_blocks:
                 blocks.extend(copy.deepcopy(explicit_content))
 
             image_data = raw_result.get("image_base64")
@@ -258,16 +259,23 @@ def canonical_tool_result(
                         }
                     )
 
+            # ``content`` is reserved only when it is already a canonical array
+            # of rich content blocks. Plain string content (for example, the
+            # complete text returned by read_memory) must remain in the JSON tool
+            # result visible to the model.
+            excluded_text_keys = {
+                "image_base64",
+                "image_data_url",
+                "base64_images",
+                "scale_note",
+            }
+            if has_explicit_content_blocks:
+                excluded_text_keys.add("content")
+
             text_value = {
                 key: value
                 for key, value in raw_result.items()
-                if key not in {
-                    "content",
-                    "image_base64",
-                    "image_data_url",
-                    "base64_images",
-                    "scale_note",
-                }
+                if key not in excluded_text_keys
             }
             if image_data_url:
                 text_value["note"] = "Screenshot attached as native image content."

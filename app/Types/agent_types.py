@@ -1,4 +1,4 @@
-from pydantic import BaseModel, model_validator, Field
+from pydantic import BaseModel, ConfigDict, model_validator, Field
 from typing import Dict, Literal, Union, List, Optional
 from enum import Enum
 
@@ -19,9 +19,30 @@ class OpenApplications(BaseModel):
     active_apps: list[str] = Field(default_factory=list, description="List of all running applications on screen")
     focused_app: Optional[str] = Field(None, description="Name of the focused application")
 
+
+class MemoryFileContext(BaseModel):
+    """Prompt-safe metadata describing one available memory file."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    description: str
+    max_size: int = Field(alias="maxSize")
+    usage: str
+    aliases: List[str] = Field(default_factory=list)
+
+
+class MemoryContext(BaseModel):
+    """Available memory-file metadata grouped by its client-side target."""
+
+    user: List[MemoryFileContext] = Field(default_factory=list)
+    memory: List[MemoryFileContext] = Field(default_factory=list)
+
+
 class AuraConfig(BaseModel):
     conscious_files: Optional[ConsciousFiles] = None
     open_apps: Optional[OpenApplications] = None
+    memory_context: Optional[MemoryContext] = None
     timezone: str = Field(default="Asia/Kolkata", description="User timezone")
     compression: bool = Field(default=True, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
@@ -81,7 +102,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "patch", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "patch", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console", "create_memory", "memory_update", "read_memory"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -377,6 +398,179 @@ class ReadFileToolInput(BaseModel):
 class ScreenshotToolInput(BaseModel):
     reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user")
+
+
+MemoryTarget = Literal["memory", "user"]
+MemoryUpdateAction = Literal["add", "replace", "remove"]
+
+
+class CreateMemoryToolInput(BaseModel):
+    """Complete contents and metadata for a named durable-memory file."""
+
+    # The client contract rejects unknown properties instead of silently
+    # ignoring misspelled metadata or fact-list fields.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file without the .md suffix. Examples: "
+            "preference creates preference.md, aura creates aura.md, "
+            "current-project creates current-project.md."
+        ),
+    )
+    target: Literal["user", "memory"] = Field(
+        ...,
+        description=(
+            "\"user\" stores facts about the user, such as identity, preferences, "
+            "communication style, and expectations. \"memory\" stores "
+            "assistant/project notes, such as environment facts, project "
+            "conventions, tool quirks, durable lessons, and active project facts."
+        ),
+    )
+    description: str = Field(
+        ...,
+        description=(
+            "Short description of what this memory file is for. This helps the "
+            "agent decide when this memory file should be loaded, updated, or "
+            "used in future tasks."
+        ),
+    )
+    allies: List[str] = Field(
+        ...,
+        description=(
+            "Alternative names or aliases for this memory file. These help "
+            "retrieval and tool selection when the user refers to the same "
+            "memory by a different name. Example: [\"prefs\", \"preferences\", "
+            "\"style\"]."
+        ),
+    )
+    facts: List[str] = Field(
+        ...,
+        description=(
+            "Complete list of memory facts to store in this file. If the file "
+            "does not exist, it is created with these facts. If it already "
+            "exists, its metadata and facts are completely rewritten with these "
+            "values. Each fact should be short, durable, and independently "
+            "useful. Do not include temporary task progress, logs, one-off IDs, "
+            "or short-lived details."
+        ),
+    )
+
+
+class ReadMemoryToolInput(BaseModel):
+    """Identify one named durable-memory file to load from the client."""
+
+    # Reject unknown keys so misspelled file selectors never get ignored.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file to read, without the .md suffix. For "
+            "example, use \"preference\" to read preference.md, \"aura\" to "
+            "read aura.md, or \"current-project\" to read current-project.md."
+        ),
+    )
+    target: Literal["user", "memory"] = Field(
+        ...,
+        description=(
+            "\"user\" reads from user-related memory files, such as preferences, "
+            "identity, communication style, and expectations. \"memory\" reads "
+            "from assistant/project memory files, such as project facts, "
+            "environment facts, conventions, tool quirks, and durable lessons."
+        ),
+    )
+
+
+class MemoryUpdateOperation(BaseModel):
+    """One operation in an atomic client-side memory update batch."""
+
+    action: MemoryUpdateAction = Field(
+        ...,
+        description="Operation to apply.",
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description="Entry content for add or replace. Alias: new_text.",
+    )
+    new_text: Optional[str] = Field(
+        default=None,
+        description="Alias for content.",
+    )
+    old_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Substring identifying the existing entry for replace or remove."
+        ),
+    )
+
+
+class MemoryUpdateToolInput(BaseModel):
+    """Input accepted by the client-side durable-memory update tool.
+
+    Conditional action validation is intentionally performed by the client. Its
+    structured validation response includes the current memory state and usage,
+    which must be returned to the model without being replaced by a local error.
+    """
+
+    action: Optional[MemoryUpdateAction] = Field(
+        default=None,
+        description=(
+            "The action to perform in single-operation shape. Omit when using "
+            "operations."
+        ),
+    )
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file without the .md suffix. Example: preference "
+            "means preference.md."
+        ),
+    )
+    target: MemoryTarget = Field(
+        ...,
+        description=(
+            "\"user\" stores facts about the user, preferences, identity, and "
+            "communication style. \"memory\" stores assistant/project notes, "
+            "environment facts, project conventions, tool quirks, durable "
+            "lessons, and working projects."
+        ),
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional new description for the memory file. Include only if the "
+            "file description should be changed."
+        ),
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description=(
+            "The entry content. Required for add and replace in single-operation "
+            "shape. Alias: new_text."
+        ),
+    )
+    new_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alias for content. If both content and new_text are set, content wins."
+        ),
+    )
+    old_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Required for replace and remove. A short unique substring identifying "
+            "the existing memory entry to modify or remove."
+        ),
+    )
+    operations: Optional[List[MemoryUpdateOperation]] = Field(
+        default=None,
+        description=(
+            "Batch shape. A list of memory update operations applied atomically. "
+            "Each operation must include its own memory file name."
+        ),
+    )
 
 
 class BrowserNavigateToolInput(BaseModel):

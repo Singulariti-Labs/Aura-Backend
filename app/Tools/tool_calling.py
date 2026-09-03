@@ -37,6 +37,9 @@ from app.Tools.browser_press import BrowserPressTool
 from app.Tools.browser_get_images import BrowserGetImagesTool
 from app.Tools.browser_vision import BrowserVisionTool
 from app.Tools.browser_console import BrowserConsoleTool
+from app.Tools.create_memory import CreateMemoryTool
+from app.Tools.memory_update import MemoryUpdateTool
+from app.Tools.read_memory import ReadMemoryTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -108,6 +111,9 @@ class Tools():
         self.browser_get_images_tool = BrowserGetImagesTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_vision_tool = BrowserVisionTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.browser_console_tool = BrowserConsoleTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.create_memory_tool = CreateMemoryTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.memory_update_tool = MemoryUpdateTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.read_memory_tool = ReadMemoryTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -162,6 +168,9 @@ class Tools():
                  self.browser_press_tool.to_tool(),
                  self.browser_get_images_tool.to_tool(),
                  self.browser_vision_tool.to_tool(),
-                 self.browser_console_tool.to_tool()
+                 self.browser_console_tool.to_tool(),
+                 self.create_memory_tool.to_tool(),
+                 self.memory_update_tool.to_tool(),
+                 self.read_memory_tool.to_tool()
                 ]
         return tools
