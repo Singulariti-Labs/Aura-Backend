@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, model_validator, Field
-from typing import Dict, Literal, Union, List, Optional
+from typing import Any, Dict, Literal, Union, List, Optional
 from enum import Enum
 
 
@@ -16,8 +16,20 @@ class ConsciousFiles(BaseModel):
     user: Optional[str] = Field(None, description="USER.md content — user knowledge")
 
 class OpenApplications(BaseModel):
-    active_apps: list[str] = Field(default_factory=list, description="List of all running applications on screen")
-    focused_app: Optional[str] = Field(None, description="Name of the focused application")
+    """Dynamic application metadata reported by the client.
+
+    Individual application objects intentionally have no fixed schema because
+    discovery adapters may attach different platform-specific fields.
+    """
+
+    active_apps: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of application metadata objects currently on screen",
+    )
+    focused_app: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Metadata object for the focused application, when available",
+    )
 
 
 class MemoryFileContext(BaseModel):

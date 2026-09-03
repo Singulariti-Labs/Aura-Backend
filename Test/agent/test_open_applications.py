@@ -27,6 +27,27 @@ class OpenApplicationsTests(unittest.TestCase):
         self.assertEqual(config.open_apps.active_apps, [])
         self.assertIsNone(config.open_apps.focused_app)
 
+    def test_dynamic_application_objects_are_allowed(self):
+        application = {
+            "name": "chrome",
+            "title": "Aura Documentation - Google Chrome",
+            "exe_path": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "pid": 1234,
+            "hwnd": 567890,
+            "is_foreground": True,
+            "is_minimized": False,
+            "get_info_type": "browser",
+            "adapter_specific_field": {"any": "value"},
+        }
+
+        open_apps = OpenApplications(
+            active_apps=[application],
+            focused_app=application,
+        )
+
+        self.assertEqual(open_apps.active_apps, [application])
+        self.assertEqual(open_apps.focused_app, application)
+
 
 if __name__ == "__main__":
     unittest.main()
