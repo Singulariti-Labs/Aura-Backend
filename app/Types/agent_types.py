@@ -39,9 +39,9 @@ class MemoryFileContext(BaseModel):
 
     name: str
     description: str
-    max_size: int = Field(alias="maxSize")
-    usage: str
-    aliases: List[str] = Field(default_factory=list)
+    max_size: Optional[int] = Field(default=None, alias="maxSize")
+    usage: Optional[str] = None
+    aliases: Optional[List[str]] = None
 
 
 class MemoryContext(BaseModel):
@@ -448,7 +448,7 @@ class CreateMemoryToolInput(BaseModel):
             "used in future tasks."
         ),
     )
-    allies: List[str] = Field(
+    aliases: List[str] = Field(
         ...,
         description=(
             "Alternative names or aliases for this memory file. These help "

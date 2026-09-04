@@ -245,9 +245,11 @@ def _format_memory_file(memory_file: MemoryFileContext) -> str:
     fields = [
         f"name: {prompt_value(memory_file.name)}",
         f"description: {prompt_value(memory_file.description)}",
-        f"max_size: {memory_file.max_size}",
-        f"usage: {prompt_value(memory_file.usage)}",
     ]
+    if memory_file.max_size is not None:
+        fields.append(f"max_size: {memory_file.max_size}")
+    if memory_file.usage is not None:
+        fields.append(f"usage: {prompt_value(memory_file.usage)}")
     if memory_file.aliases:
         fields.append(
             f"aliases: {', '.join(prompt_value(alias) for alias in memory_file.aliases)}"

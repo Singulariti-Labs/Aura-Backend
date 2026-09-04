@@ -82,7 +82,7 @@ class CreateMemoryTool(BaseTool):
             name=inputs.name,
             target=inputs.target,
             description=inputs.description,
-            allies=inputs.allies,
+            aliases=inputs.aliases,
             facts=inputs.facts,
             tool_call_id=tool_call_id,
         )

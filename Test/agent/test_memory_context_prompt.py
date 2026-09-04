@@ -94,6 +94,56 @@ class AvailableMemoriesFormatterTests(unittest.TestCase):
         self.assertEqual(context.user[0].max_size, 2200)
         self.assertIn("max_size: 2200", format_available_memories(context))
 
+    def test_optional_metadata_may_be_missing_or_null(self):
+        context = MemoryContext(
+            user=[
+                {
+                    "name": "preferences",
+                    "description": "User communication preferences",
+                },
+                {
+                    "name": "writing-style",
+                    "description": "Preferred writing style",
+                    "maxSize": None,
+                    "usage": None,
+                    "aliases": None,
+                },
+                {
+                    "name": "personal-notes",
+                    "description": "General personal notes",
+                    "usage": "120 chars used",
+                },
+            ],
+            memory=[
+                {
+                    "name": "aura",
+                    "description": "Aura project architecture",
+                    "maxSize": 4200,
+                }
+            ],
+        )
+
+        rendered = format_available_memories(context)
+
+        self.assertIn(
+            "[name: preferences description: User communication preferences]",
+            rendered,
+        )
+        self.assertIn(
+            "[name: writing-style description: Preferred writing style]",
+            rendered,
+        )
+        self.assertIn(
+            "[name: personal-notes description: General personal notes "
+            "usage: 120 chars used]",
+            rendered,
+        )
+        self.assertIn(
+            "[name: aura description: Aura project architecture max_size: 4200]",
+            rendered,
+        )
+        self.assertNotIn("None", rendered)
+
     def test_metadata_cannot_break_out_of_memory_context_block(self):
         context = MemoryContext(
             user=[

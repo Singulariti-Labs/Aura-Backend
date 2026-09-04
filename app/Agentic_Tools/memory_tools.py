@@ -51,7 +51,7 @@ class MemoryTools:
         name: str,
         target: str,
         description: str,
-        allies: Sequence[str],
+        aliases: Sequence[str],
         facts: Sequence[str],
         tool_call_id: Optional[str] = None,
     ) -> Any:
@@ -70,7 +70,7 @@ class MemoryTools:
             name: Memory filename without the ``.md`` suffix.
             target: Memory store in which the file belongs: ``user`` or ``memory``.
             description: Short description used to decide when to load the file.
-            allies: Alternative names used when retrieving the memory file.
+            aliases: Alternative names used when retrieving the memory file.
             facts: Complete replacement list of durable facts for the file.
             tool_call_id: Model tool-call ID used to correlate the client response.
 
@@ -84,7 +84,7 @@ class MemoryTools:
             "name": name,
             "target": target,
             "description": description,
-            "allies": list(allies),
+            "aliases": list(aliases),
             "facts": list(facts),
         }
 

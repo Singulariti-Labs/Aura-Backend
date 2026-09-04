@@ -20,7 +20,7 @@ CREATE_INPUT = {
     "description": (
         "User preferences, communication style, and response expectations."
     ),
-    "allies": ["prefs", "preferences", "style"],
+    "aliases": ["prefs", "preferences", "style"],
     "facts": [
         "User prefers concise answers.",
         "User prefers copy-paste-ready TypeScript code.",
@@ -40,7 +40,7 @@ class CreateMemoryInputTests(unittest.TestCase):
 
         self.assertEqual(inputs.name, "preference")
         self.assertEqual(inputs.target, "user")
-        self.assertEqual(inputs.allies, ["prefs", "preferences", "style"])
+        self.assertEqual(inputs.aliases, ["prefs", "preferences", "style"])
         self.assertEqual(len(inputs.facts), 3)
 
         for missing_field in CREATE_INPUT:
@@ -54,18 +54,18 @@ class CreateMemoryInputTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CreateMemoryToolInput(**{**CREATE_INPUT, "target": "project"})
         with self.assertRaises(ValidationError):
-            CreateMemoryToolInput(**CREATE_INPUT, aliases=["wrong-field-name"])
+            CreateMemoryToolInput(**CREATE_INPUT, allies=["wrong-field-name"])
 
     def test_json_schema_and_description_match_specification(self):
         schema = CreateMemoryToolInput.model_json_schema()
 
         self.assertEqual(
             schema["required"],
-            ["name", "target", "description", "allies", "facts"],
+            ["name", "target", "description", "aliases", "facts"],
         )
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(schema["properties"]["target"]["enum"], ["user", "memory"])
-        self.assertEqual(schema["properties"]["allies"]["items"], {"type": "string"})
+        self.assertEqual(schema["properties"]["aliases"]["items"], {"type": "string"})
         self.assertEqual(schema["properties"]["facts"]["items"], {"type": "string"})
         self.assertIn("Create a new named memory file", CREATE_MEMORY_TOOL_DESCRIPTION)
         self.assertIn("completely rewrite", CREATE_MEMORY_TOOL_DESCRIPTION)
