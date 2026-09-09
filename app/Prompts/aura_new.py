@@ -28,8 +28,6 @@ TOOL_NAME_MAP = {
                                                  - Do NOT ask for confirmation like "Should I proceed?" or "Does this look good?" — just proceed
                                                  - Do NOT use this tool after the task is fully completed
                                                  - Do NOT call this tool if you already have enough information to proceed"""),
-    "ask_tool":             ("ask",              "Send your final message to the user once the task is complete or no further action will be taken with suggestions or questions. Never use mid-task."),
-    "complete_tool":        ("complete",         "Marks the current task as complete and delivers the final result to the user. Call this tool ONLY when: 1)The task is fully finished and no further actions are needed - All TODOs (if any todo.md were created) are marked as done [x]. Use this as the LAST tool call in every task. The `result` parameter is what the user receives as the final answer/result — make it complete, clear, and actionable."),
     "create_file_tool":     ("create_file",      "Create a new file with given content"),
     "delete_file_tool":     ("delete_file",      "Delete a file from the filesystem"),
     "edit_file_tool":       ("edit_file",        "Make precise edits to an already existing file"),
@@ -656,7 +654,7 @@ def buildAuraSystemPrompt(
         "5) Only mark `[x]` with concrete evidence of completion.\n"
         "6) Complete before you expand — don't continuously grow the scope.\n"
         "7) Only add tasks achievable with your available tools.\n"
-        "8) Once ALL tasks are `[x]` completed then and only then call the `complete` tool. to provide the final response to the user\n\n"
+        "8) Once ALL tasks are `[x]` completed then and only then provide the final answer/response to the user\n\n"
         "### Task States and Management\n"
         "** 1) Task States: Use these states to track progress:**\n"
         "- [ ] Incompleted Task: pending / Task not yet started.\n"

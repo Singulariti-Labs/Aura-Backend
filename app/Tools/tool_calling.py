@@ -143,8 +143,6 @@ class Tools():
                 #  self.deep_research_tool.to_tool(),
                  self.web_search_tool.to_tool(),
                 #  self.web_scraping_tool.to_tool(),
-                 self.ask_tool.to_tool(),
-                 self.complete_tool.to_tool(),
                  self.create_file_tool.to_tool(),
                  self.delete_file_tool.to_tool(),
                  self.edit_file_tool.to_tool(),
