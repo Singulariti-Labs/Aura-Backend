@@ -248,6 +248,41 @@ def canonical_tool_result(
                         },
                     ]
                 )
+
+            # Native computer results keep screenshot bytes under either
+            # ``image.data`` (capture) or ``capture_after.image.data`` (input
+            # actions). Promote the bytes to a media block in both cases.
+            computer_capture = raw_result
+            nested_computer_capture = raw_result.get("action") != "capture"
+            if nested_computer_capture:
+                capture_after = raw_result.get("capture_after")
+                computer_capture = (
+                    capture_after if isinstance(capture_after, dict) else {}
+                )
+            computer_capture_image = (
+                computer_capture.get("image")
+                if isinstance(computer_capture.get("image"), dict)
+                else None
+            )
+            computer_capture_data = (
+                computer_capture_image.get("data")
+                if computer_capture_image is not None
+                else None
+            )
+            if computer_capture_data:
+                computer_capture_mime = str(
+                    computer_capture_image.get("mime_type") or "image/png"
+                )
+                blocks.append(
+                    {
+                        "type": "image",
+                        "media_type": computer_capture_mime,
+                        "image_url": ensure_data_url(
+                            str(computer_capture_data),
+                            computer_capture_mime,
+                        ),
+                    }
+                )
             base64_images = raw_result.get("base64_images")
             if isinstance(base64_images, list):
                 for image_data in base64_images:
@@ -277,6 +312,21 @@ def canonical_tool_result(
                 for key, value in raw_result.items()
                 if key not in excluded_text_keys
             }
+            if computer_capture_data:
+                capture_metadata = dict(computer_capture)
+                capture_metadata["image"] = {
+                    key: value
+                    for key, value in computer_capture_image.items()
+                    if key != "data"
+                }
+                capture_metadata["image"]["note"] = (
+                    "The captured image is attached in the following "
+                    "user-role message."
+                )
+                if nested_computer_capture:
+                    text_value["capture_after"] = capture_metadata
+                else:
+                    text_value["image"] = capture_metadata["image"]
             if image_data_url:
                 text_value["note"] = "Screenshot attached as native image content."
             if text_value or not blocks:

@@ -40,6 +40,7 @@ from app.Tools.browser_console import BrowserConsoleTool
 from app.Tools.create_memory import CreateMemoryTool
 from app.Tools.memory_update import MemoryUpdateTool
 from app.Tools.read_memory import ReadMemoryTool
+from app.Tools.computer_use import ComputerUseTool
 
 if TYPE_CHECKING:
     from app.Agents.supervisor import SupervisorAgent
@@ -114,6 +115,7 @@ class Tools():
         self.create_memory_tool = CreateMemoryTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.memory_update_tool = MemoryUpdateTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
         self.read_memory_tool = ReadMemoryTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
+        self.computer_use_tool = ComputerUseTool(llm=self.llm, memory=self.memory, task_id=self.task_id, chat_id=self.chat_id)
 
     
     def get_agent_tools(self):
@@ -171,6 +173,7 @@ class Tools():
                  self.browser_console_tool.to_tool(),
                  self.create_memory_tool.to_tool(),
                  self.memory_update_tool.to_tool(),
-                 self.read_memory_tool.to_tool()
+                 self.read_memory_tool.to_tool(),
+                 self.computer_use_tool.to_tool()
                 ]
         return tools
