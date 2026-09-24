@@ -1,5 +1,15 @@
-from pydantic import BaseModel, model_validator, Field
-from typing import Dict, Literal, Union, List, Optional
+from pydantic import BaseModel, ConfigDict, model_validator, Field
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Required,
+    Tuple,
+    TypedDict,
+    Union,
+)
 from enum import Enum
 
 
@@ -16,12 +26,45 @@ class ConsciousFiles(BaseModel):
     user: Optional[str] = Field(None, description="USER.md content — user knowledge")
 
 class OpenApplications(BaseModel):
-    active_apps: list[str] = Field(default_factory=list, description="List of all running applications on screen")
-    focused_app: Optional[str] = Field(None, description="Name of the focused application")
+    """Dynamic application metadata reported by the client.
+
+    Individual application objects intentionally have no fixed schema because
+    discovery adapters may attach different platform-specific fields.
+    """
+
+    active_apps: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of application metadata objects currently on screen",
+    )
+    focused_app: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Metadata object for the focused application, when available",
+    )
+
+
+class MemoryFileContext(BaseModel):
+    """Prompt-safe metadata describing one available memory file."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    description: str
+    max_size: Optional[int] = Field(default=None, alias="maxSize")
+    usage: Optional[str] = None
+    aliases: Optional[List[str]] = None
+
+
+class MemoryContext(BaseModel):
+    """Available memory-file metadata grouped by its client-side target."""
+
+    user: List[MemoryFileContext] = Field(default_factory=list)
+    memory: List[MemoryFileContext] = Field(default_factory=list)
+
 
 class AuraConfig(BaseModel):
     conscious_files: Optional[ConsciousFiles] = None
     open_apps: Optional[OpenApplications] = None
+    memory_context: Optional[MemoryContext] = None
     timezone: str = Field(default="Asia/Kolkata", description="User timezone")
     compression: bool = Field(default=True, description="Enable context compression")
     boot_me: bool = Field(default=False, description="Enable boot process for new agents")
@@ -81,7 +124,7 @@ class Role(str, Enum):
     TOOL = "tool"
 
 ROLE_TYPE = Literal["system", "user", "assistant", "tool"]  # type: ignore
-AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "patch", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console"]    # type: ignore
+AGENT_TYPE = Literal["main", "supervisor", "aura", "interaction", "deep_research", "web_scraper", "web_search", "create_file", "delete_file", "edit_file", "insert_str", "rewrite_file", "str_replace", "patch", "complete", "ask", "execute_command", "grep", "ls", "ask_user", "glob", "get_app_context", "read_file", "screenshot", "browser_navigate", "browser_snapshot", "browser_click", "browser_type", "browser_scroll", "browser_back", "browser_press", "browser_get_images", "browser_vision", "browser_console", "create_memory", "memory_update", "read_memory"]    # type: ignore
 RESPONSE_STATUS_TYPE = Literal["success", "failed", "incomplete"]
 
 # Provider mapping for user settings
@@ -377,6 +420,794 @@ class ReadFileToolInput(BaseModel):
 class ScreenshotToolInput(BaseModel):
     reason: Optional[str] = Field(None, description="Optional explanation for why the screenshot is needed")
     hide: str = Field(default="false", description="if true then tool call will not be visible to user")
+
+
+MemoryTarget = Literal["memory", "user"]
+MemoryUpdateAction = Literal["add", "replace", "remove"]
+
+
+class CreateMemoryToolInput(BaseModel):
+    """Complete contents and metadata for a named durable-memory file."""
+
+    # The client contract rejects unknown properties instead of silently
+    # ignoring misspelled metadata or fact-list fields.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file without the .md suffix. Examples: "
+            "preference creates preference.md, aura creates aura.md, "
+            "current-project creates current-project.md."
+        ),
+    )
+    target: Literal["user", "memory"] = Field(
+        ...,
+        description=(
+            "\"user\" stores facts about the user, such as identity, preferences, "
+            "communication style, and expectations. \"memory\" stores "
+            "assistant/project notes, such as environment facts, project "
+            "conventions, tool quirks, durable lessons, and active project facts."
+        ),
+    )
+    description: str = Field(
+        ...,
+        description=(
+            "Short description of what this memory file is for. This helps the "
+            "agent decide when this memory file should be loaded, updated, or "
+            "used in future tasks."
+        ),
+    )
+    aliases: List[str] = Field(
+        ...,
+        description=(
+            "Alternative names or aliases for this memory file. These help "
+            "retrieval and tool selection when the user refers to the same "
+            "memory by a different name. Example: [\"prefs\", \"preferences\", "
+            "\"style\"]."
+        ),
+    )
+    facts: List[str] = Field(
+        ...,
+        description=(
+            "Complete list of memory facts to store in this file. If the file "
+            "does not exist, it is created with these facts. If it already "
+            "exists, its metadata and facts are completely rewritten with these "
+            "values. Each fact should be short, durable, and independently "
+            "useful. Do not include temporary task progress, logs, one-off IDs, "
+            "or short-lived details."
+        ),
+    )
+
+
+class ReadMemoryToolInput(BaseModel):
+    """Identify one named durable-memory file to load from the client."""
+
+    # Reject unknown keys so misspelled file selectors never get ignored.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file to read, without the .md suffix. For "
+            "example, use \"preference\" to read preference.md, \"aura\" to "
+            "read aura.md, or \"current-project\" to read current-project.md."
+        ),
+    )
+    target: Literal["user", "memory"] = Field(
+        ...,
+        description=(
+            "\"user\" reads from user-related memory files, such as preferences, "
+            "identity, communication style, and expectations. \"memory\" reads "
+            "from assistant/project memory files, such as project facts, "
+            "environment facts, conventions, tool quirks, and durable lessons."
+        ),
+    )
+
+
+class MemoryUpdateOperation(BaseModel):
+    """One operation in an atomic client-side memory update batch."""
+
+    action: MemoryUpdateAction = Field(
+        ...,
+        description="Operation to apply.",
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description="Entry content for add or replace. Alias: new_text.",
+    )
+    new_text: Optional[str] = Field(
+        default=None,
+        description="Alias for content.",
+    )
+    old_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Substring identifying the existing entry for replace or remove."
+        ),
+    )
+
+
+class MemoryUpdateToolInput(BaseModel):
+    """Input accepted by the client-side durable-memory update tool.
+
+    Conditional action validation is intentionally performed by the client. Its
+    structured validation response includes the current memory state and usage,
+    which must be returned to the model without being replaced by a local error.
+    """
+
+    action: Optional[MemoryUpdateAction] = Field(
+        default=None,
+        description=(
+            "The action to perform in single-operation shape. Omit when using "
+            "operations."
+        ),
+    )
+    name: str = Field(
+        ...,
+        description=(
+            "Name of the memory file without the .md suffix. Example: preference "
+            "means preference.md."
+        ),
+    )
+    target: MemoryTarget = Field(
+        ...,
+        description=(
+            "\"user\" stores facts about the user, preferences, identity, and "
+            "communication style. \"memory\" stores assistant/project notes, "
+            "environment facts, project conventions, tool quirks, durable "
+            "lessons, and working projects."
+        ),
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional new description for the memory file. Include only if the "
+            "file description should be changed."
+        ),
+    )
+    content: Optional[str] = Field(
+        default=None,
+        description=(
+            "The entry content. Required for add and replace in single-operation "
+            "shape. Alias: new_text."
+        ),
+    )
+    new_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Alias for content. If both content and new_text are set, content wins."
+        ),
+    )
+    old_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "Required for replace and remove. A short unique substring identifying "
+            "the existing memory entry to modify or remove."
+        ),
+    )
+    operations: Optional[List[MemoryUpdateOperation]] = Field(
+        default=None,
+        description=(
+            "Batch shape. A list of memory update operations applied atomically. "
+            "Each operation must include its own memory file name."
+        ),
+    )
+
+
+NativeComputerUseAction = Literal[
+    "capture",
+    "click",
+    "double_click",
+    "right_click",
+    "middle_click",
+    "drag",
+    "scroll",
+    "type",
+    "key",
+    "set_value",
+    "wait",
+    "list_apps",
+    "list_windows",
+    "focus_app",
+]
+
+ComputerUseCoordinate = Tuple[int, int]
+ComputerUseModifier = Literal[
+    "cmd",
+    "shift",
+    "option",
+    "alt",
+    "ctrl",
+    "fn",
+    "win",
+    "windows",
+    "super",
+    "meta",
+]
+
+
+class ComputerUseEscalation(TypedDict):
+    """Client recommendation for retrying a failed or unverifiable action."""
+
+    recommended: Literal["px", "foreground", "page"]
+    reason: str
+
+
+class ComputerActionMetadata(TypedDict, total=False):
+    """Optional verification metadata returned by input actions."""
+
+    path: str
+    verified: bool
+    effect: Literal["confirmed", "unverifiable", "suspected_noop"]
+    escalation: ComputerUseEscalation
+    code: str
+
+
+class ComputerCaptureTarget(TypedDict, total=False):
+    """Native app/window selected for a capture."""
+
+    app: str
+    pid: int
+    window_id: int
+    title: str
+
+
+class ComputerCaptureImage(TypedDict, total=False):
+    """Optional inline screenshot bytes and dimensions returned by the client."""
+
+    mime_type: Required[Literal["image/png", "image/jpeg"]]
+    data: str
+    width: int
+    height: int
+
+
+class ComputerCaptureBounds(TypedDict):
+    """Pixel bounds of a numbered accessibility element."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class ComputerCaptureElement(TypedDict, total=False):
+    """One numbered interactable element returned by SOM or AX capture."""
+
+    element: Required[int]
+    role: str
+    label: str
+    value: str
+    disabled: bool
+    bounds: ComputerCaptureBounds
+
+
+class ComputerCaptureOutput(TypedDict, total=False):
+    """Successful client response for the native ``capture`` action."""
+
+    ok: Required[Literal[True]]
+    action: Required[Literal["capture"]]
+    mode: Required[Literal["som", "vision", "ax"]]
+    target: ComputerCaptureTarget
+    screenshot_path: str
+    image: ComputerCaptureImage
+    elements: List[ComputerCaptureElement]
+    total_elements: int
+    truncated_elements: int
+    degraded: bool
+    degraded_reason: str
+    summary: str
+    raw: Any
+
+
+class ComputerUseSuccessResult(TypedDict, total=False):
+    """Common successful response returned by the desktop client."""
+
+    ok: Required[Literal[True]]
+    action: Required[str]
+    summary: str
+    text: str
+    data: Any
+    raw: Any
+    capture_after: ComputerCaptureOutput
+    path: str
+    verified: bool
+    effect: Literal["confirmed", "unverifiable", "suspected_noop"]
+    escalation: ComputerUseEscalation
+    code: str
+
+
+class ComputerUseErrorDetails(TypedDict, total=False):
+    """Structured error returned by the desktop client."""
+
+    message: Required[str]
+    code: str
+    details: Any
+
+
+class ComputerUseErrorResult(TypedDict, total=False):
+    """Common failed response returned by the desktop client."""
+
+    ok: Required[Literal[False]]
+    action: Required[str]
+    error: Required[ComputerUseErrorDetails]
+    effect: Literal["refused", "unverifiable", "suspected_noop"]
+    escalation: ComputerUseEscalation
+    raw: Any
+
+
+class ComputerActionOutputBase(TypedDict, total=False):
+    """Fields shared by click, drag, scroll, type, key, and set-value outputs."""
+
+    path: str
+    verified: bool
+    effect: Literal["confirmed", "unverifiable", "suspected_noop", "refused"]
+    escalation: ComputerUseEscalation
+    summary: str
+    capture_after: ComputerCaptureOutput
+    error: ComputerUseErrorDetails
+    raw: Any
+
+
+class ComputerClickedTarget(TypedDict, total=False):
+    """Element or coordinate targeted by click and double-click actions."""
+
+    element: int
+    coordinate: ComputerUseCoordinate
+    button: Required[Literal["left", "right", "middle"]]
+
+
+class ComputerRightClickedTarget(TypedDict, total=False):
+    """Element or coordinate targeted by a right-click action."""
+
+    element: int
+    coordinate: ComputerUseCoordinate
+    button: Required[Literal["right"]]
+
+
+class ComputerMiddleClickedTarget(TypedDict, total=False):
+    """Element or coordinate targeted by a middle-click action."""
+
+    element: int
+    coordinate: ComputerUseCoordinate
+    button: Required[Literal["middle"]]
+
+
+class ComputerClickOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``click`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["click"]]
+    clicked: ComputerClickedTarget
+
+
+class ComputerDoubleClickOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``double_click`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["double_click"]]
+    clicked: ComputerClickedTarget
+
+
+class ComputerRightClickOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``right_click`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["right_click"]]
+    clicked: ComputerRightClickedTarget
+
+
+class ComputerMiddleClickOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``middle_click`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["middle_click"]]
+    clicked: ComputerMiddleClickedTarget
+
+
+class ComputerDraggedTarget(TypedDict, total=False):
+    """Source, destination, and optional button reported for a drag."""
+
+    from_element: int
+    to_element: int
+    from_coordinate: ComputerUseCoordinate
+    to_coordinate: ComputerUseCoordinate
+    button: Literal["left", "right", "middle"]
+
+
+class ComputerDragOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``drag`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["drag"]]
+    dragged: ComputerDraggedTarget
+
+
+class ComputerScrolledTarget(TypedDict, total=False):
+    """Target and movement reported for a scroll action."""
+
+    element: int
+    coordinate: ComputerUseCoordinate
+    direction: Required[Literal["up", "down", "left", "right"]]
+    amount: Required[int]
+
+
+class ComputerScrollOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``scroll`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["scroll"]]
+    scrolled: ComputerScrolledTarget
+
+
+class ComputerTypedTarget(TypedDict, total=False):
+    """Target and character count reported for a type action."""
+
+    element: int
+    coordinate: ComputerUseCoordinate
+    character_count: Required[int]
+
+
+class ComputerTypeOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``type`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["type"]]
+    typed: ComputerTypedTarget
+
+
+class ComputerPressedKeys(TypedDict, total=False):
+    """Key combination reported for a key action."""
+
+    keys: Required[str]
+    key: str
+    modifiers: List[str]
+
+
+class ComputerKeyOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``key`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["key"]]
+    pressed: ComputerPressedKeys
+
+
+class ComputerSetValueTarget(TypedDict, total=False):
+    """Element and value reported for a set-value action."""
+
+    element: int
+    value: Required[str]
+
+
+class ComputerSetValueOutput(ComputerActionOutputBase, total=False):
+    """Client response for the native ``set_value`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["set_value"]]
+    set: ComputerSetValueTarget
+
+
+class ComputerWaitOutput(TypedDict):
+    """Successful client response for the native ``wait`` action."""
+
+    ok: Literal[True]
+    action: Literal["wait"]
+    seconds: float
+    summary: str
+
+
+class ComputerAppInfo(TypedDict, total=False):
+    """One application returned by ``list_apps``."""
+
+    name: str
+    pid: int
+    bundle_id: str
+    app_id: str
+    path: str
+    launch_path: str
+    running: bool
+    active: bool
+    kind: str
+    window_count: int
+    last_used: Optional[str]
+
+
+class ComputerListAppsOutput(TypedDict, total=False):
+    """Successful client response for the native ``list_apps`` action."""
+
+    ok: Required[Literal[True]]
+    action: Required[Literal["list_apps"]]
+    apps: Required[List[ComputerAppInfo]]
+    summary: str
+    raw: Any
+
+
+class ComputerWindowInfo(TypedDict, total=False):
+    """One native window returned by ``list_windows``."""
+
+    window_id: Required[int]
+    pid: Required[int]
+    app_name: str
+    title: str
+    bounds: ComputerCaptureBounds
+    z_index: Optional[int]
+    is_on_screen: bool
+    on_current_space: bool
+    minimized: bool
+    visible: bool
+
+
+class ComputerListWindowsOutput(TypedDict, total=False):
+    """Successful client response for the native ``list_windows`` action."""
+
+    ok: Required[Literal[True]]
+    action: Required[Literal["list_windows"]]
+    windows: Required[List[ComputerWindowInfo]]
+    summary: str
+    raw: Any
+
+
+class ComputerFocusedTarget(TypedDict, total=False):
+    """App/window selected by ``focus_app``."""
+
+    app: str
+    pid: int
+    window_id: int
+    raised: Required[bool]
+
+
+class ComputerFocusAppOutput(TypedDict, total=False):
+    """Client response for the native ``focus_app`` action."""
+
+    ok: Required[bool]
+    action: Required[Literal["focus_app"]]
+    focused: ComputerFocusedTarget
+    effect: Literal["confirmed", "unverifiable", "suspected_noop"]
+    verified: bool
+    summary: str
+    error: ComputerUseErrorDetails
+
+
+ComputerUseResult = Union[
+    ComputerCaptureOutput,
+    ComputerClickOutput,
+    ComputerDoubleClickOutput,
+    ComputerRightClickOutput,
+    ComputerMiddleClickOutput,
+    ComputerDragOutput,
+    ComputerScrollOutput,
+    ComputerTypeOutput,
+    ComputerKeyOutput,
+    ComputerSetValueOutput,
+    ComputerWaitOutput,
+    ComputerListAppsOutput,
+    ComputerListWindowsOutput,
+    ComputerFocusAppOutput,
+    ComputerUseSuccessResult,
+    ComputerUseErrorResult,
+]
+
+
+class ComputerUseInput(BaseModel):
+    """Input accepted by the client-side native computer-use tool.
+
+    ``action`` is the only globally required field. Other fields remain optional
+    in the generated tool schema and are validated according to the selected
+    action when a request is created.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: NativeComputerUseAction = Field(
+        ...,
+        description="Native desktop action to perform.",
+    )
+    mode: Optional[Literal["som", "vision", "ax"]] = Field(
+        default=None,
+        description=(
+            "For capture only. 'som' returns a screenshot with numbered "
+            "interactable elements and accessibility data; 'vision' returns a "
+            "plain screenshot; 'ax' returns accessibility data only. The client "
+            "defaults to 'som'."
+        ),
+    )
+    app: Optional[str] = Field(
+        default=None,
+        description=(
+            "App name, executable name, or bundle ID to target. Omit it to use "
+            "the frontmost app/window. Use 'screen' for the full screen or "
+            "'desktop' for the operating-system desktop/shell."
+        ),
+    )
+    pid: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Exact process ID to use when an app name is ambiguous.",
+    )
+    window_id: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Exact native window ID to use when an app has multiple windows.",
+    )
+    max_elements: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description=(
+            "For capture only. Maximum accessibility elements to return. The "
+            "client defaults to 100 and enforces a hard maximum of 1000."
+        ),
+    )
+    element: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "One-based element index from the latest SOM capture. Prefer this "
+            "over a coordinate for pointer, scroll, and set-value actions."
+        ),
+    )
+    coordinate: Optional[ComputerUseCoordinate] = Field(
+        default=None,
+        description=(
+            "Pixel coordinate [x, y] relative to the captured window. Use only "
+            "when no SOM element index is available."
+        ),
+    )
+    button: Optional[Literal["left", "right", "middle"]] = Field(
+        default=None,
+        description=(
+            "Mouse button for a click-like action. The client defaults to left; "
+            "right_click and middle_click usually make this unnecessary."
+        ),
+    )
+    modifiers: Optional[List[ComputerUseModifier]] = Field(
+        default=None,
+        description="Modifier keys to hold during the mouse or keyboard action.",
+    )
+    from_element: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="For drag only. Source element index from the latest SOM capture.",
+    )
+    to_element: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="For drag only. Destination element index from the latest SOM capture.",
+    )
+    from_coordinate: Optional[ComputerUseCoordinate] = Field(
+        default=None,
+        description="For drag only. Source pixel coordinate [x, y].",
+    )
+    to_coordinate: Optional[ComputerUseCoordinate] = Field(
+        default=None,
+        description="For drag only. Destination pixel coordinate [x, y].",
+    )
+    direction: Optional[Literal["up", "down", "left", "right"]] = Field(
+        default=None,
+        description="For scroll only. Direction in which to scroll.",
+    )
+    amount: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="For scroll only. Scroll-wheel ticks; the client defaults to 3.",
+    )
+    value: Optional[str] = Field(
+        default=None,
+        description=(
+            "For set_value only. Value to assign to the target control. For a "
+            "dropdown, use the visible option label."
+        ),
+    )
+    text: Optional[str] = Field(
+        default=None,
+        description="For type only. Text to type into the focused or targeted control.",
+    )
+    keys: Optional[str] = Field(
+        default=None,
+        description=(
+            "For key only. A key or '+'-joined key combination, such as 'enter', "
+            "'escape', 'ctrl+s', or 'alt+tab'."
+        ),
+    )
+    seconds: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=30,
+        description="For wait only. Seconds to wait, from 0 through 30.",
+    )
+    raise_window: Optional[bool] = Field(
+        default=None,
+        description=(
+            "For focus_app only. Bring the selected window to the foreground when "
+            "true. The client defaults to false."
+        ),
+    )
+    delivery_mode: Optional[Literal["background", "foreground"]] = Field(
+        default=None,
+        description=(
+            "For input actions. Background delivery is the client default and "
+            "does not steal focus. Use foreground only when background delivery "
+            "fails or foreground interaction is explicitly needed."
+        ),
+    )
+    bring_to_front: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Only valid with delivery_mode='foreground'. Bring the target window "
+            "forward before delivering input."
+        ),
+    )
+    capture_after: Optional[bool] = Field(
+        default=None,
+        description="Return a follow-up capture so the action result can be verified.",
+    )
+
+    @model_validator(mode="after")
+    def validate_action_input(self) -> "ComputerUseInput":
+        """Enforce only the fields that the selected action needs."""
+
+        pointer_actions = {
+            "click",
+            "double_click",
+            "right_click",
+            "middle_click",
+        }
+        if self.action in pointer_actions:
+            self._require_one_target("element", "coordinate")
+
+        if self.action == "drag":
+            self._require_one_target(
+                "from_element",
+                "from_coordinate",
+                label="drag source",
+            )
+            self._require_one_target(
+                "to_element",
+                "to_coordinate",
+                label="drag destination",
+            )
+        elif self.action == "scroll" and self.direction is None:
+            raise ValueError("scroll requires direction")
+        elif self.action == "type" and self.text is None:
+            raise ValueError("type requires text")
+        elif self.action == "key" and not self.keys:
+            raise ValueError("key requires non-empty keys")
+        elif self.action == "set_value":
+            self._require_one_target("element", "coordinate")
+            if self.value is None:
+                raise ValueError("set_value requires value")
+        elif self.action == "wait" and self.seconds is None:
+            raise ValueError("wait requires seconds")
+        elif self.action == "focus_app" and not any(
+            target is not None for target in (self.app, self.pid, self.window_id)
+        ):
+            raise ValueError("focus_app requires app, pid, or window_id")
+
+        if self.bring_to_front is not None and self.delivery_mode != "foreground":
+            raise ValueError(
+                "bring_to_front is only valid with delivery_mode='foreground'"
+            )
+
+        return self
+
+    def _require_one_target(
+        self,
+        element_field: str,
+        coordinate_field: str,
+        *,
+        label: str = "target",
+    ) -> None:
+        """Require exactly one element or coordinate for an interaction target."""
+
+        supplied = [
+            getattr(self, element_field) is not None,
+            getattr(self, coordinate_field) is not None,
+        ]
+        if sum(supplied) != 1:
+            raise ValueError(
+                f"{self.action} requires exactly one {label}: "
+                f"{element_field} or {coordinate_field}"
+            )
 
 
 class BrowserNavigateToolInput(BaseModel):
