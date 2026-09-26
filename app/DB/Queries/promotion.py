@@ -502,7 +502,11 @@ async def _close_current_promo(
     await connection.execute(
         """
         UPDATE promo_redemptions
-        SET status = $2, revoked_at = CASE WHEN $2 = 'revoked' THEN $3 ELSE NULL END
+        SET status = $2,
+            revoked_at = CASE
+                WHEN $2 = 'revoked' THEN $3::timestamptz
+                ELSE NULL::timestamptz
+            END
         WHERE id = $1 AND status = 'active'
         """,
         redemption_id,

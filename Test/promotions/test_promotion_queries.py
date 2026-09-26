@@ -138,6 +138,14 @@ class PromotionQueryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(billing_updates), 1)
         self.assertIn("access_started_at", billing_updates[0][0])
 
+        redemption_updates = [
+            (sql, args)
+            for sql, args in connection.statements
+            if "UPDATE promo_redemptions" in sql
+        ]
+        self.assertEqual(len(redemption_updates), 1)
+        self.assertIn("$3::timestamptz", redemption_updates[0][0])
+
 
 if __name__ == "__main__":
     unittest.main()
