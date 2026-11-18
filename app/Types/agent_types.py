@@ -159,7 +159,7 @@ DEFAULT_MODELS = {
 #   "user_input",               // User's raw input
 #   "aura_status",              // Status messages send to aura frontend.
 #   "task_request"              // Request coming from the aura frontend for new task.
-WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input", "aura_status", "aura_message", "task_request", "aura_thinking", "aura_context_message", "aura_context_tool_response", "aura_context_tool_request", "compression", "context_sequence"]
+WS_MESSAGE_TYPE = Literal["client_tool_request", "server_tool_response", "client_tool_response", "error_message", "user_input", "aura_status", "aura_message", "task_request", "aura_thinking", "aura_context_message", "aura_context_tool_response", "aura_context_tool_request", "compression", "context_sequence", "onboarding", "onboarding_response"]
 
 class StepStatus(Enum):
     PENDING = "pending"
