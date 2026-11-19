@@ -19,7 +19,14 @@ import json
 import time
 
 
-from app.Types.agent_types import LLMConfig, StepsList, SystemInfo, AGENT_TYPE
+from app.Types.agent_types import (
+    AGENT_TYPE,
+    LLMConfig,
+    OpenAIApiMode,
+    StepsList,
+    SystemInfo,
+    get_openai_api_mode,
+)
 from app.LLM.memory import Message
 from app.LLM.memory import Memory
 from app.helper import update_memory, update_input_messages_with_screenshot_and_context
@@ -64,8 +71,12 @@ from app.LLM.model_bridge.gemini import (
 from app.LLM.model_bridge.openai import (
     openai_message_formater,
     openai_response_formater,
+    openai_responses_message_formater,
+    openai_responses_response_formater,
+    openai_responses_tool_formater,
     openai_tool_formater,
     invoke_openai_chat_completions,
+    invoke_openai_responses,
 )
 from app.RateLimit.rate_limit_service import schedule_token_usage_update
 from app.RateLimit.token_pricing import calculate_token_cost_usd_float
@@ -600,6 +611,8 @@ class LLMFactory():
             compression_reason: str = "preflight",
             runtime_task_id: Optional[str] = None,
             compression_id: Optional[str] = None,
+            openai_api_mode: Optional[OpenAIApiMode] = None,
+            reasoning_effort: Optional[str] = None,
         ) -> Dict[str, Any]:
         """Run Aura's lightweight native model-and-tool orchestration loop.
 
@@ -615,6 +628,19 @@ class LLMFactory():
 
         del chat_history
         provider = self._route_aura_provider(llm_provider, llm)
+        model_name = model_name_from_llm(llm)
+        resolved_openai_api_mode = openai_api_mode
+        if provider == "openai":
+            expected_openai_api_mode = get_openai_api_mode(model_name)
+            if (
+                resolved_openai_api_mode is not None
+                and resolved_openai_api_mode != expected_openai_api_mode
+            ):
+                raise ValueError(
+                    f"OpenAI model '{model_name}' requires Agent Task API mode "
+                    f"'{expected_openai_api_mode}', not '{resolved_openai_api_mode}'"
+                )
+            resolved_openai_api_mode = expected_openai_api_mode
 
         user_message = None
         if not force_preflight_compression:
@@ -631,10 +657,14 @@ class LLMFactory():
             user_message=user_message,
             provider=provider,
             system_prompt=system_prompt,
+            openai_api_mode=resolved_openai_api_mode,
         )
 
-        tool_map, native_tools = self._build_aura_tool_registry(tools, provider)
-        model_name = model_name_from_llm(llm)
+        tool_map, native_tools = self._build_aura_tool_registry(
+            tools,
+            provider,
+            openai_api_mode=resolved_openai_api_mode,
+        )
         output_limit = configured_output_limit(llm, max_tokens)
 
         resolved_task_id = str(task_id or f"ephemeral-{id(self)}")
@@ -727,6 +757,7 @@ class LLMFactory():
             provider=provider,
             canonical_messages=context_manager.effective_messages(),
             system_prompt=system_prompt,
+            openai_api_mode=resolved_openai_api_mode,
         )
 
         generated_messages: List[Dict[str, Any]] = []
@@ -773,6 +804,7 @@ class LLMFactory():
                     provider=provider,
                     canonical_messages=context_manager.effective_messages(),
                     system_prompt=system_prompt,
+                    openai_api_mode=resolved_openai_api_mode,
                 )
 
             if force_preflight_compression:
@@ -822,6 +854,8 @@ class LLMFactory():
                     native_messages=native_messages,
                     native_tools=native_tools,
                     output_limit=output_limit,
+                    openai_api_mode=resolved_openai_api_mode,
+                    reasoning_effort=reasoning_effort,
                 )
             except Exception as exc:
                 if not self._is_context_length_error(exc):
@@ -839,6 +873,7 @@ class LLMFactory():
                     provider=provider,
                     canonical_messages=context_manager.effective_messages(),
                     system_prompt=system_prompt,
+                    openai_api_mode=resolved_openai_api_mode,
                 )
                 raw_response = await self._invoke_aura_model(
                     provider=provider,
@@ -848,8 +883,14 @@ class LLMFactory():
                     native_messages=native_messages,
                     native_tools=native_tools,
                     output_limit=output_limit,
+                    openai_api_mode=resolved_openai_api_mode,
+                    reasoning_effort=reasoning_effort,
                 )
-            parsed = self._parse_aura_response(provider, raw_response)
+            parsed = self._parse_aura_response(
+                provider,
+                raw_response,
+                openai_api_mode=resolved_openai_api_mode,
+            )
             duration_ms = (time.perf_counter() - started_at) * 1000
             tool_calls = parsed.get("tool_calls") or []
             usage, details = self._track_aura_usage_and_cost(
@@ -1015,6 +1056,7 @@ class LLMFactory():
         user_message: Optional[Dict[str, Any]],
         provider: str,
         system_prompt: str,
+        openai_api_mode: Optional[OpenAIApiMode] = None,
     ) -> tuple[List[Dict[str, Any]], List[Any]]:
         """Normalize client history and format the conversation for a provider.
 
@@ -1030,10 +1072,13 @@ class LLMFactory():
         if provider == "anthropic":
             native_messages = anthropic_message_formater(canonical_messages)
         elif provider == "openai":
-            native_messages = openai_message_formater(
-                canonical_messages,
-                system_prompt=system_prompt,
-            )
+            if openai_api_mode == "responses":
+                native_messages = openai_responses_message_formater(canonical_messages)
+            else:
+                native_messages = openai_message_formater(
+                    canonical_messages,
+                    system_prompt=system_prompt,
+                )
         else:
             native_messages = gemini_message_formater(canonical_messages)
         return canonical_messages, native_messages
@@ -1045,12 +1090,15 @@ class LLMFactory():
         provider: str,
         canonical_messages: List[Dict[str, Any]],
         system_prompt: str,
+        openai_api_mode: Optional[OpenAIApiMode] = None,
     ) -> List[Any]:
         """Rebuild provider messages after canonical context replacement."""
 
         if provider == "anthropic":
             return anthropic_message_formater(canonical_messages)
         if provider == "openai":
+            if openai_api_mode == "responses":
+                return openai_responses_message_formater(canonical_messages)
             return openai_message_formater(
                 canonical_messages,
                 system_prompt=system_prompt,
@@ -1098,6 +1146,7 @@ class LLMFactory():
     def _build_aura_tool_registry(
         tools: Optional[List[Tool]],
         provider: str,
+        openai_api_mode: Optional[OpenAIApiMode] = None,
     ) -> tuple[Dict[str, Tool], List[Dict[str, Any]]]:
         """Index Aura tools and format their schemas for the provider.
 
@@ -1115,7 +1164,10 @@ class LLMFactory():
         if provider == "anthropic":
             native_tools = anthropic_tool_formater(selected_tools)
         elif provider == "openai":
-            native_tools = openai_tool_formater(selected_tools)
+            if openai_api_mode == "responses":
+                native_tools = openai_responses_tool_formater(selected_tools)
+            else:
+                native_tools = openai_tool_formater(selected_tools)
         else:
             native_tools = gemini_tool_formater(selected_tools)
         return tool_map, native_tools
@@ -1131,6 +1183,8 @@ class LLMFactory():
         native_messages: List[Any],
         native_tools: List[Dict[str, Any]],
         output_limit: int,
+        openai_api_mode: Optional[OpenAIApiMode] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> Any:
         """Send one Aura request through the selected provider's native API."""
 
@@ -1144,6 +1198,16 @@ class LLMFactory():
                 max_tokens=output_limit,
             )
         if provider == "openai":
+            if openai_api_mode == "responses":
+                return await invoke_openai_responses(
+                    llm=llm,
+                    model=model_name,
+                    instructions=system_prompt,
+                    input_items=native_messages,
+                    tools=native_tools,
+                    max_tokens=output_limit,
+                    reasoning_effort=reasoning_effort,
+                )
             return await invoke_openai_chat_completions(
                 llm=llm,
                 model=model_name,
@@ -1162,12 +1226,18 @@ class LLMFactory():
 
 
     @staticmethod
-    def _parse_aura_response(provider: str, raw_response: Any) -> Dict[str, Any]:
+    def _parse_aura_response(
+        provider: str,
+        raw_response: Any,
+        openai_api_mode: Optional[OpenAIApiMode] = None,
+    ) -> Dict[str, Any]:
         """Convert a native provider response into Aura's canonical response."""
 
         if provider == "anthropic":
             return anthropic_response_formater(raw_response)
         if provider == "openai":
+            if openai_api_mode == "responses":
+                return openai_responses_response_formater(raw_response)
             return openai_response_formater(raw_response)
         return gemini_response_formater(raw_response)
 
@@ -1302,11 +1372,23 @@ class LLMFactory():
             for tool_call, tool_result in zip(tool_calls, tool_results)
         )
 
-        native_messages.append(parsed_response["native_message"])
+        native_response = parsed_response["native_message"]
+        if (
+            provider == "openai"
+            and parsed_response.get("openai_api_mode") == "responses"
+        ):
+            native_messages.extend(native_response)
+        else:
+            native_messages.append(native_response)
         if provider == "anthropic":
             native_messages.extend(anthropic_message_formater(tool_results))
         elif provider == "openai":
-            native_messages.extend(openai_message_formater(tool_results))
+            if parsed_response.get("openai_api_mode") == "responses":
+                native_messages.extend(
+                    openai_responses_message_formater(tool_results)
+                )
+            else:
+                native_messages.extend(openai_message_formater(tool_results))
         else:
             native_messages.extend(
                 gemini_tool_result_formater(

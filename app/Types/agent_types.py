@@ -72,7 +72,43 @@ class AuraConfig(BaseModel):
     cwd: Optional[str] = Field(default=None, description="The current working directory in which user is working on.")
 
 
-OpenAIModels = Literal['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-mini-high', 'gpt-4.1', 'gpt-5.6-terra','gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5']
+OpenAIChatCompletionModels = Literal[
+    'gpt-3.5-turbo',
+    'gpt-4',
+    'gpt-4-turbo',
+    'gpt-4o',
+    'gpt-4o-mini',
+    'gpt-4o-mini-high',
+    'gpt-4.1',
+]
+OpenAIResponsesModels = Literal[
+    'gpt-5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.5',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna',
+]
+OpenAIModels = Union[OpenAIChatCompletionModels, OpenAIResponsesModels]
+OpenAIApiMode = Literal["chat_completions", "responses"]
+
+OPENAI_CHAT_COMPLETION_MODELS = set(OpenAIChatCompletionModels.__args__)
+OPENAI_RESPONSES_MODELS = set(OpenAIResponsesModels.__args__)
+OPENAI_MODELS_BY_API_MODE = {
+    "chat_completions": OPENAI_CHAT_COMPLETION_MODELS,
+    "responses": OPENAI_RESPONSES_MODELS,
+}
+
+
+def get_openai_api_mode(model_name: str) -> OpenAIApiMode:
+    """Return the Agent Task OpenAI API required by a supported model."""
+    if model_name in OPENAI_CHAT_COMPLETION_MODELS:
+        return "chat_completions"
+    if model_name in OPENAI_RESPONSES_MODELS:
+        return "responses"
+    raise ValueError(f"Unsupported OpenAI model: {model_name!r}")
+
+
 AnthropicModels = Literal['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-fable-5', 'claude-opus-4-5-20251101', 'claude-sonnet-5', 'claude-sonnet-4-5-20250929']
 OpenRouterModels = Literal['kimi-k2', 'deepseek', 'z-ai', 'x-ai', "openai", "xiaomi", "google", "qwen", "nvidia", "upstage"]
 GoogleModels = Literal['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro', 'gemini-3-pro', 'gemini-3-flash', 'gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite']
@@ -80,7 +116,7 @@ AgentRouterModels = Literal['claude-opus-4-5-20251101', 'deepseek-r1-0528']
 
 # Backend model metadata used to validate the UI's provider/model selection.
 MODEL_NAMES_BY_PROVIDER = {
-    "openai": set(OpenAIModels.__args__),
+    "openai": OPENAI_CHAT_COMPLETION_MODELS | OPENAI_RESPONSES_MODELS,
     "anthropic": set(AnthropicModels.__args__),
     "open_router": set(OpenRouterModels.__args__),
     "google": set(GoogleModels.__args__),
@@ -88,13 +124,20 @@ MODEL_NAMES_BY_PROVIDER = {
 }
 
 CredentialSource = Literal["platform", "custom"]
-ReasoningEffort = Literal["low", "medium", "high"]
+ReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
 
 class LLMConfig(BaseModel):
     """Validated LLM settings used to construct one task's LLM client."""
 
     provider: Literal['openai', 'anthropic', 'open_router', 'google', 'agent_router']
     model_name: Union[OpenAIModels, AnthropicModels, OpenRouterModels, GoogleModels, AgentRouterModels]
+    openai_api_mode: Optional[OpenAIApiMode] = Field(
+        default=None,
+        description=(
+            "OpenAI API used by Agent Tasks. It is derived from model_name and "
+            "must not conflict with the model capability table."
+        ),
+    )
     api_key: Optional[str] = None
     reasoning_effort: Optional[ReasoningEffort] = Field(
         default=None,
@@ -113,6 +156,16 @@ class LLMConfig(BaseModel):
                 f"Invalid model '{self.model_name}' for provider '{self.provider}'. "
                 f"Allowed models: {sorted(allowed_models)}"
             )
+        if self.provider == "openai":
+            expected_mode = get_openai_api_mode(self.model_name)
+            if self.openai_api_mode is not None and self.openai_api_mode != expected_mode:
+                raise ValueError(
+                    f"OpenAI model '{self.model_name}' requires API mode "
+                    f"'{expected_mode}', not '{self.openai_api_mode}'"
+                )
+            self.openai_api_mode = expected_mode
+        elif self.openai_api_mode is not None:
+            raise ValueError("openai_api_mode is valid only for the OpenAI provider")
         return self
 
 class Role(str, Enum):

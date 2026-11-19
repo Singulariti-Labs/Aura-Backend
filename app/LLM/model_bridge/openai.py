@@ -1,4 +1,4 @@
-"""OpenAI Chat Completions conversion and response parsing."""
+"""OpenAI Chat Completions and Responses API conversion/parsing."""
 
 from __future__ import annotations
 
@@ -188,6 +188,119 @@ def openai_message_formater(
     return formatted
 
 
+def _responses_input_content_block(block: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert canonical multimodal content to Responses API input content."""
+
+    block_type = block.get("type")
+    if block_type == "text":
+        return {"type": "input_text", "text": str(block.get("text", ""))}
+    if block_type == "image":
+        return {
+            "type": "input_image",
+            "image_url": str(block.get("image_url") or ""),
+            "detail": "auto",
+        }
+    if block_type == "document":
+        media_type = str(block.get("media_type") or "application/pdf")
+        media_type, data = parse_data_url(
+            str(block.get("document_url") or ""),
+            media_type,
+        )
+        extension = "pdf" if "pdf" in media_type else "txt"
+        return {
+            "type": "input_file",
+            "filename": f"document.{extension}",
+            "file_data": f"data:{media_type};base64,{data}",
+        }
+    if block_type == "audio":
+        media_type = str(block.get("media_type") or "audio/wav")
+        _, data = parse_data_url(str(block.get("audio_url") or ""), media_type)
+        audio_format = "mp3" if "mp3" in media_type or "mpeg" in media_type else "wav"
+        if audio_format == "wav" and "wav" not in media_type:
+            raise ValueError(
+                "OpenAI Responses API input_audio supports only MP3 and WAV. "
+                f"Received {media_type!r}."
+            )
+        return {
+            "type": "input_audio",
+            "input_audio": {"data": data, "format": audio_format},
+        }
+    raise ValueError(f"Unsupported OpenAI Responses content block type: {block_type!r}")
+
+
+def _responses_tool_output(message: Dict[str, Any]) -> Any:
+    """Build a Responses API function_call_output value from a tool message."""
+
+    content = message.get("content", [])
+    if message.get("is_error"):
+        return _tool_text(message)
+
+    if any(block.get("type") != "text" for block in content):
+        return [_responses_input_content_block(block) for block in content]
+    return _tool_text(message)
+
+
+def openai_responses_message_formater(
+    messages: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Convert canonical history into stateless Responses API input items."""
+
+    formatted: List[Dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content", [])
+
+        if role == "user":
+            formatted.append(
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        _responses_input_content_block(block) for block in content
+                    ],
+                }
+            )
+            continue
+
+        if role == "assistant":
+            text = "\n".join(
+                str(block.get("text", ""))
+                for block in content
+                if block.get("type") == "text"
+            ).strip()
+            if text:
+                formatted.append(
+                    {"type": "message", "role": "assistant", "content": text}
+                )
+            formatted.extend(
+                {
+                    "type": "function_call",
+                    "call_id": str(block.get("tool_call_id") or ""),
+                    "name": str(block.get("name") or ""),
+                    "arguments": json.dumps(
+                        block.get("input") or {}, ensure_ascii=False
+                    ),
+                }
+                for block in content
+                if block.get("type") == "tool_call"
+            )
+            continue
+
+        if role == "tool":
+            formatted.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": str(message.get("tool_call_id") or ""),
+                    "output": _responses_tool_output(message),
+                }
+            )
+            continue
+
+        raise ValueError(f"Unsupported canonical role for OpenAI Responses: {role!r}")
+
+    return formatted
+
+
 def openai_tool_formater(tools: Optional[Sequence[Any]]) -> List[Dict[str, Any]]:
     """Convert LangChain structured tools to Chat Completions function tools."""
 
@@ -202,6 +315,26 @@ def openai_tool_formater(tools: Optional[Sequence[Any]]) -> List[Dict[str, Any]]
                     "description": description,
                     "parameters": tool_json_schema(tool),
                 },
+            }
+        )
+    return formatted
+
+
+def openai_responses_tool_formater(
+    tools: Optional[Sequence[Any]],
+) -> List[Dict[str, Any]]:
+    """Convert LangChain structured tools to Responses API function tools."""
+
+    formatted: List[Dict[str, Any]] = []
+    for tool in tools or []:
+        name, description = tool_identity(tool)
+        formatted.append(
+            {
+                "type": "function",
+                "name": name,
+                "description": description,
+                "parameters": tool_json_schema(tool),
+                "strict": False,
             }
         )
     return formatted
@@ -259,6 +392,79 @@ def openai_response_formater(response: Any) -> Dict[str, Any]:
         "model": getattr(response, "model", None),
         "usage": usage,
         "native_message": message_dict,
+        "openai_api_mode": "chat_completions",
+    }
+
+
+def openai_responses_response_formater(response: Any) -> Dict[str, Any]:
+    """Normalize an OpenAI Responses API response into canonical blocks."""
+
+    output_items = [as_dict(item) for item in (getattr(response, "output", None) or [])]
+    content_blocks: List[Dict[str, Any]] = []
+
+    for item in output_items:
+        item_type = item.get("type")
+        if item_type == "message":
+            for block in item.get("content") or []:
+                block_type = block.get("type")
+                if block_type == "output_text" and block.get("text"):
+                    content_blocks.append(
+                        {"type": "text", "text": str(block.get("text"))}
+                    )
+                elif block_type == "refusal" and block.get("refusal"):
+                    content_blocks.append(
+                        {"type": "text", "text": str(block.get("refusal"))}
+                    )
+        elif item_type == "function_call":
+            arguments = item.get("arguments") or "{}"
+            try:
+                parsed_arguments = (
+                    json.loads(arguments) if isinstance(arguments, str) else arguments
+                )
+            except json.JSONDecodeError:
+                parsed_arguments = {"_raw_arguments": arguments}
+            content_blocks.append(
+                {
+                    "type": "tool_call",
+                    "tool_call_id": item.get("call_id"),
+                    "name": item.get("name"),
+                    "input": parsed_arguments or {},
+                }
+            )
+
+    usage_raw = as_dict(getattr(response, "usage", None))
+    input_tokens = int(usage_raw.get("input_tokens") or 0)
+    output_tokens = int(usage_raw.get("output_tokens") or 0)
+    usage = {
+        "input": input_tokens,
+        "output": output_tokens,
+        "total_tokens": int(
+            usage_raw.get("total_tokens") or input_tokens + output_tokens
+        ),
+    }
+
+    tool_calls = [
+        block for block in content_blocks if block.get("type") == "tool_call"
+    ]
+    status = str(getattr(response, "status", None) or "completed")
+    incomplete = as_dict(getattr(response, "incomplete_details", None))
+    finish_reason = incomplete.get("reason") if status == "incomplete" else status
+    if finish_reason == "max_output_tokens":
+        finish_reason = "max_tokens"
+    if tool_calls:
+        finish_reason = "tool_calls"
+
+    return {
+        "message": {"role": "assistant", "content": content_blocks},
+        "tool_calls": tool_calls,
+        "text": text_from_blocks(content_blocks),
+        "finish_reason": finish_reason,
+        "model": getattr(response, "model", None),
+        "usage": usage,
+        # Replay all output items, including encrypted reasoning, before tool
+        # results on the next stateless Responses API turn.
+        "native_message": output_items,
+        "openai_api_mode": "responses",
     }
 
 
@@ -292,3 +498,42 @@ async def invoke_openai_chat_completions(
             }
         )
     return await client.chat.completions.create(**request)
+
+
+async def invoke_openai_responses(
+    *,
+    llm: Any,
+    model: str,
+    instructions: str,
+    input_items: List[Dict[str, Any]],
+    tools: List[Dict[str, Any]],
+    max_tokens: int,
+    reasoning_effort: Optional[str] = None,
+) -> Any:
+    """Invoke OpenAI's native asynchronous Responses API client."""
+
+    client = getattr(llm, "root_async_client", None)
+    if client is None and hasattr(llm, "responses"):
+        client = llm
+    if client is None or not hasattr(client, "responses"):
+        raise TypeError("The supplied LLM does not expose an OpenAI Responses client.")
+
+    request: Dict[str, Any] = {
+        "model": model,
+        "instructions": instructions,
+        "input": input_items,
+        "max_output_tokens": max_tokens,
+        "store": False,
+        "include": ["reasoning.encrypted_content"],
+    }
+    if reasoning_effort:
+        request["reasoning"] = {"effort": reasoning_effort}
+    if tools:
+        request.update(
+            {
+                "tools": tools,
+                "tool_choice": "auto",
+                "parallel_tool_calls": True,
+            }
+        )
+    return await client.responses.create(**request)

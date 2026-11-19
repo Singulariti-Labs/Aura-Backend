@@ -263,6 +263,8 @@ class Agent(BaseAgent):
                             if isinstance(self.payload.get("trigger"), str)
                             else "compression_request"
                         ),
+                        openai_api_mode=self.llm_config.openai_api_mode,
+                        reasoning_effort=self.llm_config.reasoning_effort,
                     )
 
                     final_result = None

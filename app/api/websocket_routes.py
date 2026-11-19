@@ -33,7 +33,7 @@ from app.api.websocket_utils import normalize_compression_id, send_ws_message
 logger = logging.getLogger(__name__)
 ws_router = APIRouter()
 manager = ConnectionManager()
-llm_config = LLMConfig(provider="anthropic", model_name="claude-opus-4-8")
+llm_config = LLMConfig(provider="openai", model_name="gpt-5.6-luna")
 
 
 def _truncate_screenshot_for_log(value, preview_length: int = 24):

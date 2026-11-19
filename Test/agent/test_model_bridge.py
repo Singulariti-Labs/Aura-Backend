@@ -15,6 +15,7 @@ from app.LLM.model_bridge.gemini import (
     gemini_tool_formater,
 )
 from app.LLM.model_bridge.openai import openai_message_formater
+from app.Types.agent_types import LLMConfig
 
 
 HISTORY = [
@@ -66,6 +67,18 @@ class Dumpable:
 
 
 class ProviderMessageFormatterTests(unittest.TestCase):
+    def test_openai_models_derive_their_agent_task_api_mode(self):
+        self.assertEqual(
+            LLMConfig(provider="openai", model_name="gpt-4.1").openai_api_mode,
+            "chat_completions",
+        )
+        self.assertEqual(
+            LLMConfig(
+                provider="openai", model_name="gpt-5.6-terra"
+            ).openai_api_mode,
+            "responses",
+        )
+
     def test_anthropic_converts_tool_call_and_rich_result(self):
         messages = anthropic_message_formater(HISTORY)
 
@@ -260,6 +273,119 @@ class AuraInvokerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             any(message.tool_calls for message in factory.memory.messages)
         )
+
+    async def test_openai_responses_tool_loop_preserves_reasoning_items(self):
+        first_response = SimpleNamespace(
+            model="gpt-5.6-terra",
+            status="completed",
+            incomplete_details=None,
+            usage=Dumpable(
+                {"input_tokens": 12, "output_tokens": 6, "total_tokens": 18}
+            ),
+            output=[
+                Dumpable(
+                    {
+                        "id": "rs_1",
+                        "type": "reasoning",
+                        "encrypted_content": "encrypted-reasoning",
+                        "summary": [],
+                    }
+                ),
+                Dumpable(
+                    {
+                        "id": "fc_1",
+                        "type": "function_call",
+                        "call_id": "call_weather",
+                        "name": "weather",
+                        "arguments": '{"location":"Paris"}',
+                        "status": "completed",
+                    }
+                ),
+            ],
+        )
+        final_response = SimpleNamespace(
+            model="gpt-5.6-terra",
+            status="completed",
+            incomplete_details=None,
+            usage=Dumpable(
+                {"input_tokens": 22, "output_tokens": 8, "total_tokens": 30}
+            ),
+            output=[
+                Dumpable(
+                    {
+                        "id": "msg_1",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "Paris is 18C.",
+                                "annotations": [],
+                            }
+                        ],
+                    }
+                )
+            ],
+        )
+        create = AsyncMock(side_effect=[first_response, final_response])
+        fake_llm = SimpleNamespace(
+            model_name="gpt-5.6-terra",
+            max_tokens=1024,
+            root_async_client=SimpleNamespace(
+                responses=SimpleNamespace(create=create),
+            ),
+        )
+
+        async def weather(location: str):
+            return {"success": True, "temperature": 18, "location": location}
+
+        tool = StructuredTool.from_function(
+            name="weather",
+            description="Get weather for a location.",
+            coroutine=weather,
+            func=lambda location: None,
+            args_schema=WeatherInput,
+        )
+        factory = LLMFactory(memory=Memory())
+
+        result = await factory.aura_invoker(
+            system_prompt="Use tools when needed.",
+            llm=fake_llm,
+            query="Weather in Paris?",
+            llm_provider="openai",
+            agent_type="aura",
+            tools=[tool],
+            history=[],
+            reasoning_effort="low",
+        )
+
+        self.assertEqual(result["output"], "Paris is 18C.")
+        self.assertEqual(result["iterations"], 2)
+        self.assertEqual(result["usage"]["total_tokens"], 48)
+        first_request = create.await_args_list[0].kwargs
+        self.assertEqual(first_request["instructions"], "Use tools when needed.")
+        self.assertEqual(first_request["reasoning"], {"effort": "low"})
+        user_input = next(
+            item
+            for item in reversed(first_request["input"])
+            if item.get("type") == "message" and item.get("role") == "user"
+        )
+        self.assertEqual(user_input["content"][0]["type"], "input_text")
+        self.assertEqual(first_request["tools"][0]["name"], "weather")
+        self.assertNotIn("function", first_request["tools"][0])
+
+        second_input = create.await_args_list[1].kwargs["input"]
+        self.assertTrue(
+            any(item.get("type") == "reasoning" for item in second_input)
+        )
+        self.assertTrue(
+            any(item.get("type") == "function_call" for item in second_input)
+        )
+        tool_output = next(
+            item for item in second_input if item.get("type") == "function_call_output"
+        )
+        self.assertEqual(tool_output["call_id"], "call_weather")
 
 
 if __name__ == "__main__":

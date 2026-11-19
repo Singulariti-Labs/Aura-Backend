@@ -63,7 +63,7 @@ def _model_for_provider(provider: str, requested_model: Any) -> str:
 
 def _reasoning_effort_or_none(value: Any) -> Optional[str]:
     """Keep only the normalized reasoning levels supported by the UI contract."""
-    return value if value in {"low", "medium", "high"} else None
+    return value if value in {"none", "low", "medium", "high", "xhigh", "max"} else None
 
 
 def _resolve_api_key(
