@@ -40,8 +40,8 @@ from app.LLM.model_token_limits import (
 )
 from app.Context import CompressionConfig, ContextManager, context_store
 from app.Context.compression_llm import (
-    AnthropicCompressionService,
-    compression_llm_service,
+    CompressionService,
+    get_compression_service,
 )
 from app.Task.task_manager import task_manager
 from app.api.websocket_utils import send_ws_message
@@ -763,9 +763,12 @@ class LLMFactory():
         generated_messages: List[Dict[str, Any]] = []
         intermediate_steps: List[Dict[str, Any]] = []
         aggregate_usage = self._empty_aura_usage()
+        compression_service = get_compression_service(
+            compression_config.compressor_provider
+        )
         compressor_summarizer = partial(
             self._summarize_dedicated_context,
-            service=compression_llm_service,
+            service=compression_service,
             model=compression_config.compressor_model,
             max_tokens=compression_config.compressor_max_output_tokens,
             aggregate_usage=aggregate_usage,
@@ -1110,7 +1113,7 @@ class LLMFactory():
         self,
         compressor_input: str,
         *,
-        service: AnthropicCompressionService,
+        service: CompressionService,
         model: str,
         max_tokens: int,
         aggregate_usage: Dict[str, Any],
