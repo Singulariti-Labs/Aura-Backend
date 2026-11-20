@@ -33,7 +33,7 @@ EXPIRED_TOOL_CALL_TTL_SECONDS = float(
     os.getenv("EXPIRED_TOOL_CALL_TTL_SECONDS", "900")
 )
 
-_FILE_TOOLS = {"read_file", "get_file_content", "read_skill"}
+_FILE_TOOLS = {"read_file", "get_file_content", "read_skill", "read_memory"}
 _USER_TOOLS = {"ask_user"}
 
 

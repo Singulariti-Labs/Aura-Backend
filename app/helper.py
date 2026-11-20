@@ -170,6 +170,14 @@ def _should_send_aura_thinking(
     if message_type != "aura_thinking":
         return True
 
+    try:
+        from app.OnboardingVoiceAgent.context import silent_tools_enabled
+
+        if silent_tools_enabled():
+            return False
+    except ImportError:
+        pass
+
     batch_key = _tool_call_batch_key(tool_calls)
     if len(batch_key) <= 1:
         return True

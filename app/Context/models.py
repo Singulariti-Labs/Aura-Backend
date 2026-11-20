@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -16,13 +17,34 @@ CompressionStatus = Literal[
     "failed",
 ]
 
+CompressionProvider = Literal["openai", "anthropic"]
+DEFAULT_COMPRESSION_MODELS: Dict[CompressionProvider, str] = {
+    "openai": "gpt-5.6-luna",
+    "anthropic": "claude-haiku-4-5-20251001",
+}
+
+
+def _default_compression_provider() -> CompressionProvider:
+    provider = os.getenv("COMPRESSION_PROVIDER", "openai").strip().lower()
+    if provider not in DEFAULT_COMPRESSION_MODELS:
+        raise ValueError(
+            "COMPRESSION_PROVIDER must be either 'openai' or 'anthropic'"
+        )
+    return cast(CompressionProvider, provider)
+
+
+def _configured_compression_model() -> str:
+    return os.getenv("COMPRESSION_MODEL", "").strip()
+
 
 class CompressionConfig(BaseModel):
     enabled: bool = True
     # Compression uses its own tool-free provider call, independent of the
     # model currently running the agent loop.
-    compressor_provider: Literal["anthropic"] = "anthropic"
-    compressor_model: str = "claude-haiku-4-5-20251001"
+    compressor_provider: CompressionProvider = Field(
+        default_factory=_default_compression_provider
+    )
+    compressor_model: str = Field(default_factory=_configured_compression_model)
     threshold: float = Field(default=0.70, gt=0, lt=1)
     hard_threshold: float = Field(default=0.85, gt=0, le=1)
     target_ratio: float = Field(default=0.40, gt=0, lt=1)       # Target ratio is used to get the context size after compression.
@@ -37,6 +59,10 @@ class CompressionConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_policy(self):
+        if not self.compressor_model.strip():
+            self.compressor_model = DEFAULT_COMPRESSION_MODELS[
+                self.compressor_provider
+            ]
         if self.hard_threshold <= self.threshold:
             raise ValueError("hard_threshold must exceed threshold")
         if self.target_ratio >= self.threshold:

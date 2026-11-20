@@ -52,7 +52,7 @@ def _create_tool_messages(
     tool_name = getattr(agent_action, "tool", "")
     tool_call_id = _tool_call_id(agent_action, observation)
 
-    if tool_name not in {"screenshot", "browser_vision"}:
+    if tool_name not in {"screenshot", "browser_vision", "computer_use"}:
         if isinstance(observation, ToolMessage):
             return [observation]
         return [
@@ -101,6 +101,45 @@ def _create_tool_messages(
                 ]
             ),
         ]
+
+    if tool_name == "computer_use":
+        capture = _extract_computer_capture_observation(observation)
+        if not capture:
+            # Non-capture actions, capture failures, and captures without inline
+            # image data remain ordinary JSON tool messages.
+            return [
+                ToolMessage(
+                    tool_call_id=tool_call_id,
+                    content=_default_tool_content(observation),
+                    name=tool_name,
+                )
+            ]
+
+        return [
+            ToolMessage(
+                tool_call_id=tool_call_id,
+                content=json.dumps(capture["metadata"], ensure_ascii=False),
+                name=tool_name,
+            ),
+            HumanMessage(
+                content=[
+                    {
+                        "type": "text",
+                        "text": (
+                            "Inspect this native computer screenshot together "
+                            "with the capture metadata."
+                        ),
+                    },
+                    {
+                        "type": "image",
+                        "source_type": "base64",
+                        "mime_type": capture["mime_type"],
+                        "data": capture["image_base64"],
+                    },
+                ]
+            ),
+        ]
+
     screenshot = _extract_screenshot_observation(observation)
     if not screenshot or not screenshot.get("image_base64"):
         return [
@@ -191,6 +230,56 @@ def _extract_browser_vision_observation(observation: Any) -> Optional[dict]:
         "mime_type": mime_type,
         "question": question,
         "scale_note": payload.get("scale_note"),
+        "metadata": metadata,
+    }
+
+
+def _extract_computer_capture_observation(observation: Any) -> Optional[dict]:
+    """Separate capture/capture_after metadata from raw inline image data."""
+
+    payload = _observation_payload(observation)
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return None
+
+    capture = payload
+    nested_capture = payload.get("action") != "capture"
+    if nested_capture:
+        capture_after = payload.get("capture_after")
+        if (
+            not isinstance(capture_after, dict)
+            or capture_after.get("success") is not True
+            or capture_after.get("action") != "capture"
+        ):
+            return None
+        capture = capture_after
+
+    image = capture.get("image")
+    if not isinstance(image, dict):
+        return None
+    image_base64 = image.get("data")
+    mime_type = image.get("mime_type")
+    if (
+        not isinstance(image_base64, str)
+        or not image_base64
+        or mime_type not in {"image/png", "image/jpeg"}
+    ):
+        return None
+
+    metadata = dict(payload)
+    capture_metadata = dict(capture)
+    capture_metadata["image"] = {
+        key: value for key, value in image.items() if key != "data"
+    }
+    capture_metadata["image"]["note"] = (
+        "The captured image is attached in the following user-role message."
+    )
+    if nested_capture:
+        metadata["capture_after"] = capture_metadata
+    else:
+        metadata = capture_metadata
+    return {
+        "image_base64": image_base64,
+        "mime_type": mime_type,
         "metadata": metadata,
     }
 

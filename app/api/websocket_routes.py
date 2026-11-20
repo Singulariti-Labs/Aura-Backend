@@ -17,10 +17,13 @@ from app.Types.agent_types import (
     AuraConfig,
     ConsciousFiles,
     LLMConfig,
+    MemoryContext,
     OpenApplications,
     SystemInfo,
 )
 from app.LLM.model_bridge.common import normalize_history
+from app.OnboardingVoiceAgent import OnboardingVoiceAgent, extract_onboarding_query
+from app.OnboardingVoiceAgent.protocol import OnboardingProtocol
 from app.api.auth_utils import token_verifier
 from app.api.connection_manager import ConnectionManager
 from app.api.llm_config_utils import resolve_llm_config
@@ -30,7 +33,7 @@ from app.api.websocket_utils import normalize_compression_id, send_ws_message
 logger = logging.getLogger(__name__)
 ws_router = APIRouter()
 manager = ConnectionManager()
-llm_config = LLMConfig(provider="anthropic", model_name="claude-opus-4-8")
+llm_config = LLMConfig(provider="openai", model_name="gpt-5.6-luna")
 
 
 def _truncate_screenshot_for_log(value, preview_length: int = 24):
@@ -89,6 +92,26 @@ async def _send_error(
             "message": message,
         },
     )
+
+
+async def _send_onboarding_error(
+    websocket: WebSocket,
+    *,
+    task_id: str,
+    chat_id: str,
+    session_id: str,
+    error_code: str,
+    message: str,
+) -> None:
+    """Send an onboarding error using the same structured event contract."""
+
+    protocol = OnboardingProtocol.create(
+        websocket=websocket,
+        task_id=task_id,
+        chat_id=chat_id,
+        session_id=session_id,
+    )
+    await protocol.error(code=error_code, message=message)
 
 
 async def _send_compression_failure(
@@ -222,12 +245,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     _truncate_screenshot_for_log(payload),
                 )
 
+                # New clients provide runtime prompt metadata under ``config``;
+                # existing clients use ``aura_config``. Merge both during the
+                # transition and let the established aura_config fields win.
+                raw_config_data = payload.get("config") or {}
                 raw_aura_config_data = payload.get("aura_config") or {}
-                aura_config_data = (
-                    raw_aura_config_data
-                    if isinstance(raw_aura_config_data, dict)
-                    else {}
+                config_data = (
+                    raw_config_data if isinstance(raw_config_data, dict) else {}
                 )
+                aura_config_data = {
+                    **config_data,
+                    **(
+                        raw_aura_config_data
+                        if isinstance(raw_aura_config_data, dict)
+                        else {}
+                    ),
+                }
                 user_timezone = aura_config_data.get("timezone", "Asia/Kolkata")
 
                 rate_limit_decision = await check_rate_limit_for_request(
@@ -242,7 +275,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         "Your usage resets at "
                         f"{rate_limit_decision.reset_at_display}."
                     )
-                    if compression_only:
+                    if message.get("type") == "onboarding":
+                        await _send_onboarding_error(
+                            websocket=websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=str(message["session_id"]),
+                            error_code="RATE_LIMIT_EXCEEDED",
+                            message=rate_limit_message,
+                        )
+                    elif compression_only:
                         await _send_compression_failure(
                             websocket,
                             task_id=task_id,
@@ -283,6 +325,24 @@ async def websocket_endpoint(websocket: WebSocket):
                     cwd=sys_info_data.get("cwd", ""),
                 )
 
+                if message.get("type") == "onboarding":
+                    onboarding_agent = OnboardingVoiceAgent(
+                        websocket=websocket,
+                        task_id=task_id,
+                        runtime_task_id=runtime_task_id,
+                        chat_id=chat_id,
+                        session_id=str(message["session_id"]),
+                        query=query,
+                        payload=payload,
+                        system_info=system_info,
+                        dbpool=pool,
+                        user_id=user_id,
+                        rate_limit_loop=rate_limit_loop,
+                    )
+                    await onboarding_agent.run()
+                    terminal_status = TaskStatus.COMPLETED
+                    return
+
                 current_llm_config, using_task_config = resolve_llm_config(
                     api_config=payload.get("api_config"),
                     default_config=llm_config,
@@ -304,6 +364,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     open_apps=(
                         OpenApplications(**aura_config_data["open_apps"])
                         if aura_config_data.get("open_apps")
+                        else None
+                    ),
+                    memory_context=(
+                        MemoryContext(**aura_config_data["memory_context"])
+                        if aura_config_data.get("memory_context")
                         else None
                     ),
                     timezone=user_timezone,
@@ -353,7 +418,16 @@ async def websocket_endpoint(websocket: WebSocket):
             except asyncio.CancelledError:
                 terminal_status = TaskStatus.CANCELLED
                 try:
-                    if compression_only:
+                    if message.get("type") == "onboarding":
+                        await _send_onboarding_error(
+                            websocket=websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=str(message["session_id"]),
+                            error_code="ONBOARDING_CANCELLED",
+                            message="Onboarding response was cancelled",
+                        )
+                    elif compression_only:
                         await _send_compression_failure(
                             websocket,
                             task_id=task_id,
@@ -397,7 +471,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 message.get("payload", {}).get("trigger") or "manual"
                             ),
                         )
-                    else:
+                    elif message.get("type") != "onboarding":
                         await _send_error(
                             websocket,
                             task_id=task_id,
@@ -529,7 +603,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
                 compression_payload["messages"] = normalized_compression_messages
 
-            if msg_type in ("task_request", "boot_me", "compression"):
+            if msg_type in ("task_request", "boot_me", "compression", "onboarding"):
                 task_id = str(task_id or uuid.uuid4())
                 runtime_task_id = (
                     compression_id
@@ -559,15 +633,38 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                     continue
 
-                payload = message.get("payload")
-                if not isinstance(payload, dict):
+                if msg_type == "onboarding" and (
+                    not isinstance(message.get("session_id"), str)
+                    or not message["session_id"].strip()
+                ):
                     await _send_error(
                         websocket,
                         task_id=task_id,
                         chat_id=chat_id,
-                        error_code="PAYLOAD_NOT_FOUND",
-                        message="A task request payload is required",
+                        error_code="MISSING_SESSION_ID",
+                        message="A non-empty session_id is required for onboarding",
                     )
+                    continue
+
+                payload = message.get("payload")
+                if not isinstance(payload, dict):
+                    if msg_type == "onboarding":
+                        await _send_onboarding_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=message["session_id"],
+                            error_code="PAYLOAD_NOT_FOUND",
+                            message="An onboarding payload is required",
+                        )
+                    else:
+                        await _send_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            error_code="PAYLOAD_NOT_FOUND",
+                            message="A task request payload is required",
+                        )
                     continue
 
                 query = payload.get("query")
@@ -578,6 +675,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Manual/command requests intentionally have no user query;
                     # this label is used only for task admission and persistence.
                     query = "Context compression"
+                elif msg_type == "onboarding":
+                    try:
+                        query = extract_onboarding_query(payload)
+                    except ValueError as exc:
+                        await _send_onboarding_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=message["session_id"],
+                            error_code="MISSING_REQUIRED_FIELD",
+                            message=str(exc),
+                        )
+                        continue
                 elif not isinstance(query, str) or not query.strip():
                     await _send_error(
                         websocket,
@@ -613,7 +723,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         websocket=websocket,
                         pool=pool,
                         runner_factory=runner_factory,
-                        emit_status=msg_type != "compression",
+                        emit_status=msg_type not in {"compression", "onboarding"},
                         compression_trigger=(
                             str(payload.get("trigger") or "manual")
                             if msg_type == "compression"
@@ -636,6 +746,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             error_code="TASK_CREATION_FAILED",
                             message="The compression task could not be created",
                             trigger_reason=str(payload.get("trigger") or "manual"),
+                        )
+                    elif msg_type == "onboarding":
+                        await _send_onboarding_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=message["session_id"],
+                            error_code="TASK_CREATION_FAILED",
+                            message="The onboarding task could not be created",
                         )
                     else:
                         await _send_error(
@@ -662,6 +781,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             error_code=error_code,
                             message=error_message,
                             trigger_reason=str(payload.get("trigger") or "manual"),
+                        )
+                    elif msg_type == "onboarding":
+                        await _send_onboarding_error(
+                            websocket,
+                            task_id=task_id,
+                            chat_id=chat_id,
+                            session_id=message["session_id"],
+                            error_code=error_code,
+                            message=error_message,
                         )
                     else:
                         await _send_error(

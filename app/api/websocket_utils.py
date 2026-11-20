@@ -37,6 +37,7 @@ async def send_ws_message(
     chat_id: Optional[str],
     payload: Optional[dict] = None,
     compression_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> Optional[str]:
     """Send one atomic task-scoped message over a shared WebSocket.
 
@@ -48,6 +49,21 @@ async def send_ws_message(
     """
 
     message_payload = dict(payload or {})
+    try:
+        from app.OnboardingVoiceAgent.context import (
+            current_session_id,
+            silent_tools_enabled,
+        )
+
+        if session_id is None:
+            session_id = current_session_id()
+        if type == "client_tool_request" and silent_tools_enabled():
+            message_payload["silent"] = True
+            tool_input = message_payload.get("input")
+            if isinstance(tool_input, dict):
+                message_payload["input"] = {**tool_input, "hide": "true"}
+    except ImportError:
+        pass
     registered_tool_call_id: Optional[str] = None
     if type == "client_tool_request":
         registered_tool_call_id = str(
@@ -80,6 +96,8 @@ async def send_ws_message(
     }
     if compression_id is not None:
         message["compression_id"] = compression_id
+    if session_id is not None:
+        message["session_id"] = session_id
 
     send_lock = getattr(websocket.state, "send_lock", None)
     if send_lock is None:
