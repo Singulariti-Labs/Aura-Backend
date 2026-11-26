@@ -3,6 +3,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from typing import List, Dict
 from asyncpg import Pool
 from app.LLM.memory import Memory
+from app.Connectors.Composio.agent_tools import build_connector_tools
 from app.Types.agent_types import SystemInfo, AuraConfig
 from app.Tools.supervisor import SupervisorTool
 from app.Tools.interaction import InteractionTool
@@ -74,6 +75,7 @@ class Tools():
         self.user_id = user_id
         self.rate_limit_loop = rate_limit_loop
         self.credential_source = credential_source
+        self.connector_tools = build_connector_tools(user_id)
 
          # Import at runtime to break the cycle
         from app.Agents.supervisor import SupervisorAgent
@@ -174,4 +176,4 @@ class Tools():
                  self.read_memory_tool.to_tool(),
                  self.computer_use_tool.to_tool()
                 ]
-        return tools
+        return tools + self.connector_tools
